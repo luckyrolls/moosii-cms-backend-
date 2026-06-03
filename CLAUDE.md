@@ -105,6 +105,11 @@ the BuildShip-era setup lacked.)
   column on `sub_segments` stays as the app's "live image" pointer; the backend
   writes to it on approval IN ADDITION to inserting into content_images. The app's
   read path is unchanged.
+- `sub_segments.image_path` (added migration 004): deliberate redundant convenience
+  mirror of the approved image's storage_path, written on approval alongside
+  `sub_segments.image`. Canonical source is `content_images.storage_path`; this
+  column exists for easy access in the Supabase UI during build and is safe to
+  remove later.
 - (Content phase) A `content_drafts` table — to be designed — mirrors content_images
   (candidate/approved/superseded, prompts + model provenance, approval metadata) and
   holds the draft content BUNDLE until a human approves it.

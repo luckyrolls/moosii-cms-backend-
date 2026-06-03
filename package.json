@@ -9,9 +9,11 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@google/genai": "^2.7.0",
     "@supabase/supabase-js": "^2.106.2",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "openai": "^6.41.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {

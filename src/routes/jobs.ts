@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
-import { startJob } from "../jobs/runner";
+import { createAndStartJob } from "../jobs/runner";
 
 const router = Router();
 
@@ -12,20 +12,13 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { data, error } = await supabase
-    .from("jobs")
-    .insert({ type, input, status: "queued" })
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    console.error("Failed to create job:", error);
+  try {
+    const jobId = await createAndStartJob(type, input);
+    res.status(202).json({ job_id: jobId });
+  } catch (err) {
+    console.error("Failed to create job:", err);
     res.status(500).json({ error: "Failed to create job" });
-    return;
   }
-
-  startJob(data.id);
-  res.status(202).json({ job_id: data.id });
 });
 
 router.get("/:id", async (req: Request, res: Response): Promise<void> => {
