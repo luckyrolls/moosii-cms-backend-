@@ -52,11 +52,11 @@ multi-step bundle; see the content roadmap below.)
 ## Prompt model: base + overlay
 The prompt that an LLM uses to WRITE an image prompt is assembled from two layers,
 concatenated and sent together every call:
-- BASE (`prompts/base.md`): universal rules — brand aesthetic, color palette
+- BASE (`prompts/image/base.md`): universal rules — brand aesthetic, color palette
   (#441C44 purple, #FC570D orange, #BEB400 yellow on white/cream), safety rules
   (bare crib, baby on back), no text, no iconography, "depict a scene/moment not a
   symbol", output format, the metadata template.
-- OVERLAY (`prompts/topics/{topic_name}.md`): short, topic-specific guidance — WHO
+- OVERLAY (`prompts/image/topics/{topic_name}.md`): short, topic-specific guidance — WHO
   is in the image by default, emotional register, topic-specific traps to avoid.
   Keyed by `topics.name`. The overlay is NOT a fallback; it's the per-topic nudge
   layered onto the base.
@@ -82,11 +82,11 @@ default is insufficient.
 - Interface shape: generate(instructions, input) -> { text, raw, model, version }.
 - `ImageGenerator` stays a SEPARATE interface (prompt -> image bytes); image-gen and
   text-gen are independent swappable concerns.
-Both start as Gemini for images. Swapping = new implementation + factory entry + env
-var (PROMPT_WRITER, IMAGE_GENERATOR). Every generated artifact (image OR content)
-records which provider/model/version and which instruction version produced it —
-full provenance, so regressions are diffable. (This black-box recorder is the thing
-the BuildShip-era setup lacked.)
+Gemini (text) and OpenAI are both implemented. Anthropic pending. Swapping =
+new implementation + factory entry + env var (PROMPT_WRITER, IMAGE_GENERATOR).
+Every generated artifact (image OR content) records which provider/model/version
+and which instruction version produced it — full provenance, so regressions are
+diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
 
 ## Data model
 - `jobs`: id, type (text), status (queued/running/succeeded/failed), input (jsonb),
@@ -115,17 +115,17 @@ the BuildShip-era setup lacked.)
   holds the draft content BUNDLE until a human approves it.
 
 ## Scope
-- v1: image management for EXISTING lessons — generate images per SUB-SEGMENT,
+- v1 (complete): image management — generate images per sub-segment,
   candidate/approve flow, non-destructive (candidates don't overwrite the live image
   until approved; prior images kept as history).
-- NOT in v1: questionnaire images, lesson-text generation, quiz generation,
-  lesson/segment-level images. The `content_images` table is built to accommodate
-  lesson/segment images later, but they're out of scope now.
-- During transition the existing FlutterFlow CMS calls this backend (temporary
-  frontend); a Vite + React SPA replaces it later. The /jobs and approval API
-  contract is designed for the real frontend, not shortcut for FlutterFlow. An
-  `auto_approve` flag lets the old CMS skip the candidate step until the review UI
-  exists.
+- v1.5 (in progress): lesson generation — `generate_lessons` job type creates lesson
+  stubs + segments via OpenAI. Priority rubric (6 bands, 100–2000) ensures ordering
+  consistency across batches; system prompt at `prompts/lessons/generate.md`.
+- NOT yet built: sub-segment content generation, quiz generation,
+  lesson/segment-level images, MLP recompute.
+- Frontend: Vite + React SPA (separate repo). The backend API contract is defined
+  in `api-contract-spec.md` (from the frontend chat). FlutterFlow transition is
+  complete — the React SPA is the only frontend.
 
 ## Roadmap beyond v1: content creation (post–image-management)
 After image management, this backend absorbs the remaining BuildShip content
@@ -184,36 +184,86 @@ credentialed reviewers ("Reviewed by [name], RN, IBCLC"). Build the trust story
 before launch, not after a journalist asks. Not a backend concern, but it shapes
 what metadata content rows may need to carry (reviewer identity, review status).
 
+## Auth
+- **SPA routes** (`/sub-segments`, `/segments`, `/content-images`, `/lessons`):
+  JWT auth — the browser sends the Supabase access token
+  (`Authorization: Bearer <jwt>`). Backend verifies via `supabase.auth.getUser()`
+  and checks `users_internal.role`. Implemented in `src/middleware/jwtAuth.ts`.
+- **Server-to-server** (`/jobs`): `INTERNAL_API_KEY` shared secret
+  (`Authorization: Bearer <key>`). Used for internal tooling and testing only;
+  never sent by the SPA.
+- `/health` is unauthenticated.
+
+## API conventions
+- **Errors:** `{ error: { code: string, message: string } }` with appropriate
+  HTTP status. Helper: `apiError(res, status, code, message)` in `src/lib/errors.ts`.
+- **Async jobs:** return `202 { job_id }` immediately; frontend polls the `jobs`
+  table directly via Supabase (not via a backend polling endpoint).
+
 ## Secrets discipline (strict)
 - `.env` is gitignored and holds real secrets locally. `.env.example` (committed) is
   the empty template.
 - The Supabase SERVICE-ROLE key bypasses all RLS — it lives ONLY in `.env` and
   Render env vars. NEVER in code, NEVER committed, NEVER sent to any frontend.
-- `INTERNAL_API_KEY` is a shared secret guarding the job/approval endpoints
-  (Authorization: Bearer). Frontends must send it; /health is unprotected.
 - Always verify staged files before committing — confirm `.env` is excluded.
+
+## AI generation logging
+Every AI API call is logged to `ai_generation_log` (migration 005) via
+`logAiCall()` in `src/lib/aiLog.ts`. Rules:
+- Log in the **handler**, not the provider — handlers have entity context.
+- One log row per AI call. Multi-step handlers (e.g. `generateSubSegmentImage`
+  makes an LLM call then an image-gen call) produce multiple rows tied by a
+  shared `correlation_id` (UUID generated once at the top of the handler).
+- `related_entity_id` is null for intermediate calls (e.g. the prompt-writing
+  LLM call before a `content_images` row exists). Set it once the entity ID
+  is known.
+- Logging failure must NEVER throw or break generation — `logAiCall` catches
+  all errors internally.
+- Operation naming: `<artifact>_<action>` — e.g. `image_prompt_generate`,
+  `image_generate`, `lesson_generate`. Use consistent names so log queries
+  are predictable.
+- After running a new schema migration, regenerate `database.types.ts` and
+  remove any `(supabase as any)` cast added as a temporary bridge.
 
 ## Conventions
 - Build each piece as a standalone, independently-testable module; compose at the
   end. Test in isolation before wiring together (this is how each build step is
   de-risked).
 - Prompt instructions are versioned SOURCE CODE (files in repo), not config.
+  Image prompts: `prompts/image/`. Lesson prompts: `prompts/lessons/`.
 - Prefer minimal formatting and minimal dependencies. Keep it debuggable.
+- Database types (`src/types/database.types.ts`) are generated from the live schema
+  via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: `jobs` and `content_images` tables created in Supabase (migration
-      001). RLS enabled on both, no policies (service-role bypasses; add a read
-      policy when the React frontend needs direct reads).
-- [x] Express + TypeScript skeleton, `/health` endpoint, deployed to Render, public
-      health check green. Auto-deploy from GitHub `main`.
-- [x] Async job system: Supabase client, auth middleware, direct-kickoff runner,
-      stale-job reaper, job registry, dummy job type, POST /jobs + GET /jobs/:id.
-- [ ] Prompt assembly module (base + overlay → strings) — standalone.
-- [ ] LLM client (getLLMClient, Gemini first) — standalone.
-- [ ] ImageGenerator (Gemini) — standalone.
-- [ ] Storage upload helper — standalone.
-- [ ] Full generate_sub_segment_image handler — composition.
-- [ ] POST /images/:id/approve.
-- [ ] Frontend (FlutterFlow calls during transition; React SPA later).
+- [x] Schema: `jobs`, `content_images`, `ai_generation_log` tables + migrations 001–005.
+- [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
+      from GitHub `main`.
+- [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
+      concurrency cap (BATCH_CONCURRENCY).
+- [x] Retry helper: exponential backoff + jitter, 6 attempts, ~62s budget,
+      handles HTTP 429/500/503 and network errors.
+- [x] Prompt assembly: base + overlay → instructions string. Versioned prompt
+      files. `instructions_override` path for per-job tuning.
+- [x] LLM clients: Gemini (`gemini-3.5-flash`) and OpenAI (`gpt-4o`).
+      Structured output (responseSchema) supported on both.
+- [x] ImageGenerator: Gemini (`gemini-3.1-flash-image`). Imagen 4.0 provider
+      built but not active (IMAGE_GENERATOR=gemini).
+- [x] Storage upload helper. Supabase `lessons` bucket, path:
+      `illustrations/sub-segment-{id}/{imageId}.{ext}`.
+- [x] `generate_sub_segment_image` handler — full pipeline end-to-end verified.
+- [x] `POST /content-images/:id/approve` — atomic Postgres function, verified.
+- [x] `POST /content-images/:id/reject` — with approved-row guard.
+- [x] `POST /segments/:id/generate-images` — batch with concurrency cap,
+      modes: all / gaps / unapproved.
+- [x] `POST /sub-segments/:id/generate-image` — dedicated single-image route.
+- [x] `generate_lessons` handler — OpenAI, dedup against existing lessons,
+      priority rubric (6 bands, 100–2000), band_rationale in result.
+- [x] JWT auth middleware + INTERNAL_API_KEY split (SPA vs server-to-server).
+- [x] Standardized error envelope `{ error: { code, message } }`.
+- [x] `database.types.ts` generated from live schema, wired into Supabase client.
+- [ ] Sub-segment content generation (text + quiz bundle).
+- [ ] MLP recompute.
+- [ ] React SPA frontend (separate repo).
 
 Update this status section as steps complete.

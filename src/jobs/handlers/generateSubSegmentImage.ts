@@ -1,8 +1,10 @@
+import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { assembleImagePrompt } from "../../prompts/assemble";
 import { getLLMClient } from "../../llm";
 import { getImageGenerator } from "../../imagegen";
 import { uploadImage } from "../../storage/upload";
+import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
 
 type Input = {
@@ -116,6 +118,8 @@ export async function generateSubSegmentImageHandler(job: Job): Promise<unknown>
 
   if (!sub_segment_id) throw new Error("input.sub_segment_id is required");
 
+  const correlationId = randomUUID();
+
   // Step 1 — load context
   const { subSeg, lesson, track, topicName } = await loadContext(sub_segment_id);
 
@@ -146,10 +150,22 @@ export async function generateSubSegmentImageHandler(job: Job): Promise<unknown>
   } else {
     const llmProvider = (process.env.PROMPT_WRITER ?? "gemini") as LLMProvider;
     const llmClient = getLLMClient(llmProvider);
+    const llmStart = Date.now();
     const llmResult = await llmClient.generate({
       instructions: assembled.instructions,
       userPrompt: assembled.userPrompt,
       responseSchema: IMAGE_PROMPT_SCHEMA,
+    });
+    await logAiCall({
+      correlationId,
+      operation: "image_prompt_generate",
+      prompt: formatLlmPrompt(assembled.instructions, assembled.userPrompt),
+      response: llmResult.raw,
+      model: llmResult.model,
+      latencyMs: Date.now() - llmStart,
+      relatedEntityType: null,
+      relatedEntityId: null,
+      notes: `sub_segment_id: ${sub_segment_id}`,
     });
     const parsed = parseLLMResponse(llmResult.text);
     imagePrompt = parsed.prompt;
@@ -162,6 +178,7 @@ export async function generateSubSegmentImageHandler(job: Job): Promise<unknown>
   // Step 4 — generate the image
   const imageGenProvider = (process.env.IMAGE_GENERATOR ?? "imagen") as "gemini" | "imagen";
   const imageGenerator = getImageGenerator(imageGenProvider);
+  const imageStart = Date.now();
   const imageResult = await imageGenerator.generate(imagePrompt);
 
   // Step 5 — insert content_images row (storage_path placeholder; updated after upload)
@@ -190,6 +207,17 @@ export async function generateSubSegmentImageHandler(job: Job): Promise<unknown>
   if (insertErr || !contentImage) {
     throw new Error(`Failed to insert content_images row: ${insertErr?.message}`);
   }
+
+  await logAiCall({
+    correlationId,
+    operation: "image_generate",
+    prompt: imagePrompt,
+    response: imageResult.raw,
+    model: imageResult.model,
+    latencyMs: Date.now() - imageStart,
+    relatedEntityType: "content_image",
+    relatedEntityId: contentImage.id,
+  });
 
   // Step 6 — upload bytes; use content_images.id as the stable imageId
   const { path, publicUrl } = await uploadImage({

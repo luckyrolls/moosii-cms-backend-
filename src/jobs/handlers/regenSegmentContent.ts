@@ -1,0 +1,219 @@
+import { randomUUID } from "crypto";
+import { supabase } from "../../supabase";
+import {
+  loadPromptRow,
+  loadBlock,
+  composeUserMessage,
+  callAndParseCards,
+} from "./generateSegmentContent";
+import type { Job } from "../registry";
+
+type Scope = "whole_segment" | "single_card";
+
+type Input = {
+  seg_id: string;
+  tone: string;
+  scope: Scope;
+  card_id?: string; // required when scope = "single_card"
+};
+
+type SubSegmentRow = {
+  id: string;
+  title: string;
+  content: string;
+  sequence: number;
+};
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
+
+export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
+  const { seg_id, tone, scope, card_id } = job.input as Input;
+  if (!seg_id) throw new Error("input.seg_id is required");
+  if (!tone)   throw new Error("input.tone is required");
+  if (!scope)  throw new Error("input.scope is required (whole_segment | single_card)");
+  if (scope === "single_card" && !card_id) {
+    throw new Error("input.card_id is required for scope=single_card");
+  }
+
+  const correlationId = randomUUID();
+
+  // Step 1 — load segment + lesson; check publish gate
+  const { data: segment, error: segErr } = await supabase
+    .from("segments")
+    .select("id, segment_name, description, lesson_id, seg_status, approved_by")
+    .eq("id", seg_id)
+    .single();
+  if (segErr || !segment) throw new Error(`Segment not found: ${seg_id}`);
+  if (!segment.lesson_id) throw new Error(`Segment ${seg_id} has no lesson_id`);
+
+  const { data: lesson, error: lessonErr } = await supabase
+    .from("lessons")
+    .select("id, lesson_name, is_published")
+    .eq("id", segment.lesson_id)
+    .single();
+  if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
+
+  // Hard block: never regen a published lesson's content
+  if (lesson.is_published) {
+    throw new Error(
+      `Cannot regenerate content for a published lesson ("${lesson.lesson_name}"). ` +
+      `Unpublish the lesson first, then retry.`
+    );
+  }
+
+  // Step 2 — load all current sub_segments (needed for neighbor context + delete targets)
+  const { data: allCards, error: cardsErr } = await supabase
+    .from("sub_segments")
+    .select("id, title, content, sequence")
+    .eq("seg_id", seg_id)
+    .order("sequence", { ascending: true });
+  if (cardsErr) throw new Error(`Failed to load sub_segments for seg ${seg_id}: ${cardsErr.message}`);
+
+  const existingCards = (allCards ?? []) as SubSegmentRow[];
+
+  // For single_card: locate target and resolve neighbors
+  let targetCard: SubSegmentRow | undefined;
+  if (scope === "single_card") {
+    targetCard = existingCards.find((c) => c.id === card_id);
+    if (!targetCard) {
+      throw new Error(`card_id ${card_id} not found in segment ${seg_id}`);
+    }
+  }
+
+  // Step 3 — load prompt row + blocks
+  const promptRow = await loadPromptRow(tone);
+
+  const [toneContent, structureContent, lengthContent] = await Promise.all([
+    loadBlock(promptRow.tone_block_id,      "tone"),
+    loadBlock(promptRow.structure_block_id, "structure"),
+    loadBlock(promptRow.length_block_id,    "length"),
+  ]);
+
+  // Step 4 — compose prompts (single_card adds neighbor context)
+  const systemMessage = promptRow.system_message;
+  const userMessage = composeUserMessage({
+    scope:              promptRow.scope,
+    toneContent,
+    structureContent,
+    lengthContent,
+    lessonTitle:        lesson.lesson_name ?? "",
+    segmentName:        segment.segment_name ?? "",
+    segmentDescription: segment.description ?? null,
+    regenTarget: scope === "single_card" && targetCard ? {
+      sequence:   targetCard.sequence,
+      totalCards: existingCards.length,
+      oldTitle:   targetCard.title,
+      prevCard:   existingCards.find((c) => c.sequence === targetCard!.sequence - 1) ?? null,
+      nextCard:   existingCards.find((c) => c.sequence === targetCard!.sequence + 1) ?? null,
+    } : undefined,
+  });
+
+  // Step 5 — GENERATE FIRST. Only destroy after holding a valid result.
+  const logEntityType = scope === "single_card" ? "sub_segment" as const : "segment" as const;
+  const logEntityId   = scope === "single_card" ? card_id! : seg_id;
+
+  const { cards, model, finishReason } = await callAndParseCards({
+    systemMessage,
+    userMessage,
+    promptRow,
+    correlationId,
+    operation:         "segment_content_regen",
+    relatedEntityType: logEntityType,
+    relatedEntityId:   logEntityId,
+    notes:             `scope: ${scope}, tone: ${tone}`,
+  });
+
+  // Post-parse validation: single_card must produce exactly 1 card
+  if (scope === "single_card" && cards.length !== 1) {
+    throw new Error(
+      `single_card regen expected exactly 1 card, got ${cards.length}. ` +
+      `Existing content is intact. Retry the job.`
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Valid replacement is in hand. Safe to destroy old content now.
+  // content_images.sub_segment_id is ON DELETE CASCADE — images die with cards.
+  // -------------------------------------------------------------------------
+
+  if (scope === "whole_segment") {
+    // Delete all sub_segments for this segment
+    const { error: deleteErr } = await supabase
+      .from("sub_segments")
+      .delete()
+      .eq("seg_id", seg_id);
+    if (deleteErr) {
+      throw new Error(`Failed to delete sub_segments for seg ${seg_id}: ${deleteErr.message}`);
+    }
+
+    const rowsToInsert = cards.map((card, i) => ({
+      seg_id,
+      title:    card.title,
+      content:  card.content,
+      sequence: i + 1,
+    }));
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from("sub_segments")
+      .insert(rowsToInsert)
+      .select("id, title, sequence");
+    if (insertErr || !inserted) {
+      throw new Error(`Failed to insert new sub_segments for seg ${seg_id}: ${insertErr?.message}`);
+    }
+
+    // Reset content-approval: the new content is un-reviewed
+    await supabase
+      .from("segments")
+      .update({ seg_status: "pending", approved_by: null })
+      .eq("id", seg_id);
+
+    return {
+      scope,
+      seg_id,
+      sub_segments_inserted: inserted.length,
+      sub_segment_ids:       inserted.map((r) => r.id),
+      approval_reset:        true,
+      model,
+      finish_reason:         finishReason,
+    };
+  }
+
+  // scope === "single_card"
+  // Replace the target card in-place; sequence and all other cards untouched.
+  const newCard = cards[0];
+
+  // Cascade only fires on DELETE, not UPDATE — explicitly remove this card's images.
+  const { error: imgDeleteErr } = await supabase
+    .from("content_images")
+    .delete()
+    .eq("sub_segment_id", card_id!);
+  if (imgDeleteErr) {
+    throw new Error(`Failed to delete images for card ${card_id}: ${imgDeleteErr.message}`);
+  }
+
+  const { error: updateErr } = await supabase
+    .from("sub_segments")
+    .update({ title: newCard.title, content: newCard.content })
+    .eq("id", card_id!);
+  if (updateErr) {
+    throw new Error(`Failed to update sub_segment ${card_id}: ${updateErr.message}`);
+  }
+
+  // Reset content-approval for the segment
+  await supabase
+    .from("segments")
+    .update({ seg_status: "pending", approved_by: null })
+    .eq("id", seg_id);
+
+  return {
+    scope,
+    seg_id,
+    card_id,
+    card_sequence:   targetCard!.sequence,
+    approval_reset:  true,
+    model,
+    finish_reason:   finishReason,
+  };
+}

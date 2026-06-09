@@ -1,7 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
+import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
+import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
 
 type Input = {
@@ -20,13 +22,14 @@ const LESSONS_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          lesson_name:   { type: "string" },
-          description:   { type: "string" },
-          min_child_age: { type: "number" },
-          max_child_age: { type: "number" },
-          priority:      { type: "number" },
+          lesson_name:    { type: "string" },
+          description:    { type: "string" },
+          min_child_age:  { type: "number" },
+          max_child_age:  { type: "number" },
+          priority:       { type: "number" },
+          band_rationale: { type: "string" },
         },
-        required: ["lesson_name", "description", "min_child_age", "max_child_age", "priority"],
+        required: ["lesson_name", "description", "min_child_age", "max_child_age", "priority", "band_rationale"],
         additionalProperties: false,
       },
     },
@@ -58,15 +61,31 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
   // Step 2 — assemble prompts
   const instructions = await loadSystemPrompt();
 
+  const usedPriorities = (existing ?? []).map((l) => l.priority).filter(Boolean);
+
   const existingBlock = existing && existing.length > 0
-    ? `\n\nExisting lessons in this track (do NOT duplicate these):\n${JSON.stringify(existing, null, 2)}`
+    ? `\n\nExisting lessons in this track (do NOT duplicate these):\n${JSON.stringify(existing, null, 2)}\n\nExisting priority values already in use — do NOT assign these: ${usedPriorities.join(", ")}`
     : "\n\nNo lessons exist in this track yet.";
 
   const userPrompt = `${prompt}\n\nGenerate exactly ${count} lessons.${existingBlock}`;
 
   // Step 3 — generate with OpenAI
+  const correlationId = randomUUID();
   const client = getLLMClient("openai");
+  const llmStart = Date.now();
   const result = await client.generate({ instructions, userPrompt, responseSchema: LESSONS_SCHEMA });
+
+  await logAiCall({
+    correlationId,
+    operation: "lesson_generate",
+    prompt: formatLlmPrompt(instructions, userPrompt),
+    response: result.raw,
+    model: result.model,
+    latencyMs: Date.now() - llmStart,
+    relatedEntityType: null,
+    relatedEntityId: null,
+    notes: `batch of ${count} lessons for track_id: ${track_id}`,
+  });
 
   let parsed: { classes: Record<string, unknown>[] };
   try {
@@ -119,7 +138,10 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     lessons_inserted:  createdLessons.length,
     segments_inserted: segmentsToInsert.length,
     lesson_ids:        createdLessons.map((l) => l.id),
-    lessons:           createdLessons.map((l) => ({ id: l.id, lesson_name: l.lesson_name })),
+    lessons:           createdLessons.map((l) => {
+      const original = classes.find((c) => c.lesson_name === l.lesson_name);
+      return { id: l.id, lesson_name: l.lesson_name, priority: original?.priority, band_rationale: original?.band_rationale };
+    }),
     model:             result.model,
   };
 }

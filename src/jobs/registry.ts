@@ -1,6 +1,8 @@
 import { dummyHandler } from "./handlers/dummy";
 import { generateSubSegmentImageHandler } from "./handlers/generateSubSegmentImage";
 import { generateLessonsHandler } from "./handlers/generateLessons";
+import { generateSegmentContentHandler } from "./handlers/generateSegmentContent";
+import { regenSegmentContentHandler } from "./handlers/regenSegmentContent";
 
 export type Job = {
   id: string;
@@ -20,6 +22,8 @@ const registry: Record<string, JobHandler> = {
   dummy: dummyHandler,
   generate_sub_segment_image: generateSubSegmentImageHandler,
   generate_lessons: generateLessonsHandler,
+  generate_segment_content: generateSegmentContentHandler,
+  regen_segment_content:    regenSegmentContentHandler,
 };
 
 export function getHandler(type: string): JobHandler {

@@ -201,6 +201,48 @@ export type Database = {
           },
         ]
       }
+      ai_generation_log: {
+        Row: {
+          correlation_id: string | null
+          created_at: string
+          id: string
+          latency_ms: number | null
+          model: string | null
+          notes: string | null
+          operation: string
+          prompt: string
+          related_entity_id: string | null
+          related_entity_type: string | null
+          response: Json
+        }
+        Insert: {
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          model?: string | null
+          notes?: string | null
+          operation: string
+          prompt: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          response: Json
+        }
+        Update: {
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          model?: string | null
+          notes?: string | null
+          operation?: string
+          prompt?: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          response?: Json
+        }
+        Relationships: []
+      }
       articles: {
         Row: {
           author_name: string | null
