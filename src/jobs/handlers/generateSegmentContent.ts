@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
+import { generateQuiz } from "./generateQuiz";
 import type { Job } from "../registry";
 
 // database.types.ts predates migration 0001_prompts_refactor (new prompts columns +
@@ -206,10 +207,11 @@ export async function callAndParseCards(opts: CallAndParseOpts): Promise<{
 type Input = {
   seg_id: string;
   tone: string;
+  generate_quiz?: boolean; // if true, generate quiz after cards using the same correlationId
 };
 
 export async function generateSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone } = job.input as Input;
+  const { seg_id, tone, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
   if (!seg_id) throw new Error("input.seg_id is required");
   if (!tone)   throw new Error("input.tone is required");
 
@@ -289,11 +291,19 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
     throw new Error(`Failed to insert sub_segments for seg ${seg_id}: ${insertErr?.message}`);
   }
 
+  // Optional one-action flow: generate quiz from the just-written cards,
+  // sharing the same correlationId so both log entries are linked.
+  let quizResult: Awaited<ReturnType<typeof generateQuiz>> | null = null;
+  if (alsoGenerateQuiz) {
+    quizResult = await generateQuiz({ seg_id, correlationId, isRegen: false });
+  }
+
   return {
     seg_id,
     sub_segments_inserted: inserted.length,
     sub_segment_ids:       inserted.map((r) => r.id),
     model,
     finish_reason:         finishReason,
+    ...(quizResult && { quiz: quizResult }),
   };
 }
