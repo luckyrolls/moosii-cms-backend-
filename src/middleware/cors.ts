@@ -39,14 +39,7 @@ export const corsMiddleware = cors({
       callback(null, true);
       return;
     }
-    const allowed = allowedNormalized.has(normalizeOrigin(requestOrigin));
-    // TEMP diagnostic — logs every CORS decision; remove once verified live.
-    console.log(
-      `[cors] origin=${JSON.stringify(requestOrigin)} ` +
-        `normalized=${JSON.stringify(normalizeOrigin(requestOrigin))} ` +
-        `allowed=${allowed}`
-    );
-    callback(null, allowed);
+    callback(null, allowedNormalized.has(normalizeOrigin(requestOrigin)));
   },
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Authorization", "Content-Type"],

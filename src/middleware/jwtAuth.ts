@@ -20,7 +20,6 @@ export async function verifyAdminJwt(token: string): Promise<AdminAuthResult> {
   try {
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data.user) {
-      console.log(`[auth] JWT verify FAILED: ${error?.message ?? "no user"}`);
       return { ok: false, status: 401, code: "unauthorized", message: "Invalid or expired token" };
     }
     authUser = data.user;
@@ -28,9 +27,6 @@ export async function verifyAdminJwt(token: string): Promise<AdminAuthResult> {
     console.error("[auth] JWT verify threw:", err);
     return { ok: false, status: 401, code: "unauthorized", message: "Could not verify token" };
   }
-
-  // TEMP diagnostic — confirm verification + identity. Remove once stable.
-  console.log(`[auth] JWT verified sub=${authUser.id} email=${authUser.email ?? "?"}`);
 
   // The Supabase profile table's id is the auth uid.
   const { data: profile, error: lookupErr } = await supabase
@@ -40,20 +36,10 @@ export async function verifyAdminJwt(token: string): Promise<AdminAuthResult> {
     .single();
 
   if (lookupErr || !profile) {
-    console.log(
-      `[auth] role lookup MISS for sub=${authUser.id} ` +
-        `(err=${lookupErr?.message ?? "no row"}) -> DENIED`
-    );
     return { ok: false, status: 403, code: "forbidden", message: "No CMS profile for this user" };
   }
 
-  const allowed = ADMIN_ROLES.includes(profile.role);
-  // TEMP diagnostic — the authorization decision and why. Remove once stable.
-  console.log(
-    `[auth] sub=${authUser.id} role=${profile.role} ` +
-      `allowed=${allowed} (requires ${ADMIN_ROLES.join("|")})`
-  );
-  if (!allowed) {
+  if (!ADMIN_ROLES.includes(profile.role)) {
     return { ok: false, status: 403, code: "forbidden", message: "Requires admin role" };
   }
 

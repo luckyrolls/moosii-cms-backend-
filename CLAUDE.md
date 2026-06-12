@@ -24,7 +24,7 @@ is code the developer owns and can read, version, and debug. This is non-negotia
 - Supabase: Postgres (data) + Storage (image files). Backend uses the SERVICE-ROLE
   key and intentionally bypasses RLS.
 - Build: `npm install && npm run build`; start: `npm start`. Render injects PORT.
-- Auto-deploys on push to `main`.
+- Auto-deploys on push to `master` (the repo's only/default branch).
 
 ## Architecture: async job pattern
 Long AI work (image gen 15–30s, LLM 5–60s, chains 1–3 min) does NOT fit Supabase
