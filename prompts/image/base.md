@@ -1,3 +1,7 @@
+---
+version: 1
+---
+
 # Moosii — Base Image-Prompt Instructions
 
 ## Your role
