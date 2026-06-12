@@ -1,9 +1,9 @@
-import type { Tables } from "./database.types";
+import type { CmsUser } from "../middleware/jwtAuth";
 
 declare global {
   namespace Express {
     interface Request {
-      user?: Tables<"users_internal">;
+      user?: CmsUser;
     }
   }
 }

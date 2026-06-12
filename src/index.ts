@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import { authMiddleware } from "./auth";
+import { jobsAuthMiddleware } from "./auth";
 import { corsMiddleware } from "./middleware/cors";
 import { jwtAuthMiddleware } from "./middleware/jwtAuth";
 import jobsRouter from "./routes/jobs";
@@ -30,8 +30,9 @@ app.use("/segments", jwtAuthMiddleware, segmentsRouter);
 app.use("/content-images", jwtAuthMiddleware, contentImagesRouter);
 app.use("/lessons", jwtAuthMiddleware, lessonsRouter);
 
-// Server-to-server / internal tooling — shared secret
-app.use("/jobs", authMiddleware, jobsRouter);
+// Job creation — accepts the internal shared secret (server-to-server) OR a
+// CMS admin's Supabase JWT (browser).
+app.use("/jobs", jobsAuthMiddleware, jobsRouter);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
