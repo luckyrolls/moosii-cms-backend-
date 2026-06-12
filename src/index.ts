@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { authMiddleware } from "./auth";
+import { corsMiddleware } from "./middleware/cors";
 import { jwtAuthMiddleware } from "./middleware/jwtAuth";
 import jobsRouter from "./routes/jobs";
 import contentImagesRouter from "./routes/images";
@@ -11,6 +12,10 @@ import { reapStaleJobs } from "./jobs/runner";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
+
+// CORS — must come before auth so unauthenticated OPTIONS preflights are
+// answered with 2xx + CORS headers (preflights carry no Authorization header).
+app.use(corsMiddleware);
 
 app.use(express.json());
 
