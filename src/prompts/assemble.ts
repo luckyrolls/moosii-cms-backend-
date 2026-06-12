@@ -34,6 +34,30 @@ async function loadPromptFile(filePath: string): Promise<{ version: string; body
   return parseFrontmatter(raw, filePath);
 }
 
+// Parse every image prompt file (base + all topic overlays) so a missing/
+// malformed frontmatter block fails at startup (deploy-time) instead of when a
+// user triggers an image job. Throws with all offending files listed.
+export async function validateImagePrompts(): Promise<void> {
+  const files = [path.join(PROMPTS_ROOT, "base.md")];
+  const topicsDir = path.join(PROMPTS_ROOT, "topics");
+  const topicFiles = (await fs.readdir(topicsDir)).filter((f) => f.endsWith(".md"));
+  for (const f of topicFiles) files.push(path.join(topicsDir, f));
+
+  const errors: string[] = [];
+  for (const file of files) {
+    try {
+      await loadPromptFile(file);
+    } catch (err) {
+      errors.push((err as Error).message);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Image prompt validation failed:\n  - ${errors.join("\n  - ")}`);
+  }
+  console.log(`[prompts] validated ${files.length} image prompt files`);
+}
+
 function buildUserPrompt(metadata: ImagePromptMetadata): string {
   return [
     `Track: ${metadata.trackName}`,

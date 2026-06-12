@@ -9,6 +9,7 @@ import segmentsRouter from "./routes/segments";
 import subSegmentsRouter from "./routes/subSegments";
 import lessonsRouter from "./routes/lessons";
 import { reapStaleJobs } from "./jobs/runner";
+import { validateImagePrompts } from "./prompts/assemble";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -34,7 +35,18 @@ app.use("/lessons", jwtAuthMiddleware, lessonsRouter);
 // CMS admin's Supabase JWT (browser).
 app.use("/jobs", jobsAuthMiddleware, jobsRouter);
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-  reapStaleJobs().catch((err) => console.error("reapStaleJobs failed:", err));
+async function start() {
+  // Fail fast at boot if any image prompt file is malformed, so a bad prompt
+  // breaks the deploy (Render keeps the old version) rather than a user's job.
+  await validateImagePrompts();
+
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+    reapStaleJobs().catch((err) => console.error("reapStaleJobs failed:", err));
+  });
+}
+
+start().catch((err) => {
+  console.error("FATAL: startup failed:", err);
+  process.exit(1);
 });
