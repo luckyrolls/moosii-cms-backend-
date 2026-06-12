@@ -5,6 +5,27 @@ import { withRetry } from "../../lib/retry";
 
 const DEFAULT_MODEL = "gpt-4o";
 
+// OpenAI strict structured outputs require EVERY object to set
+// additionalProperties:false and to list ALL of its properties in `required`.
+// Our shared responseSchema objects are written permissively (they also feed
+// Gemini, whose dialect rejects additionalProperties), so transform a strict-
+// compliant copy here at call time. Idempotent for already-strict schemas.
+function toStrictSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toStrictSchema);
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      out[k] = toStrictSchema(v);
+    }
+    if (out.type === "object" && out.properties && typeof out.properties === "object") {
+      out.additionalProperties = false;
+      out.required = Object.keys(out.properties as Record<string, unknown>);
+    }
+    return out;
+  }
+  return node;
+}
+
 // Reasoning-class models (o1/o3/o4-*) reject non-default temperature.
 function isReasoningModel(model: string): boolean {
   return /^o[134](-|$)/.test(model);
@@ -52,7 +73,7 @@ export function createOpenAIClient(): LLMClient {
           json_schema: {
             name: "output",
             strict: true,
-            schema: responseSchema as Record<string, unknown>,
+            schema: toStrictSchema(responseSchema) as Record<string, unknown>,
           },
         };
       }
