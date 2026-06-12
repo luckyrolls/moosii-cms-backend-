@@ -37,13 +37,13 @@ export async function loadPromptRow(tone: string): Promise<SegmentContentPromptR
   const { data, error } = await db
     .from("prompts")
     .select("id, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id")
-    .eq("prompt_type", "segment_content")
+    .eq("prompt_type", "segment")
     .eq("tone", tone)
     .eq("is_active", true)
     .single();
 
   if (error || !data) {
-    throw new Error(`No active segment_content prompt for tone "${tone}": ${error?.message}`);
+    throw new Error(`No active segment prompt for tone "${tone}": ${error?.message}`);
   }
 
   const row = data as unknown as SegmentContentPromptRow;
