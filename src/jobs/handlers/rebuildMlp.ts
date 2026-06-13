@@ -160,12 +160,63 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
   };
 }
 
+type BatchResult = {
+  users_processed: number;
+  users_succeeded: number;
+  users_failed: number;
+  errors: Array<{ user_id: string; error: string }>;
+};
+
+// Rebuild every eligible user (those with a user_mlp_data row, i.e. at least one
+// child with valid birth data). One user's failure must NOT abort the batch.
+async function rebuildAllUsers(): Promise<BatchResult> {
+  const { data: rows, error } = await db.from("user_mlp_data").select("user_id");
+  if (error) throw new Error(`Failed to load eligible users: ${error.message}`);
+
+  const userIds = [
+    ...new Set(
+      ((rows ?? []) as Array<Record<string, unknown>>)
+        .map((r) => r.user_id as string)
+        .filter(Boolean)
+    ),
+  ];
+
+  let succeeded = 0;
+  const errors: Array<{ user_id: string; error: string }> = [];
+  const queue = [...userIds];
+
+  // Small worker pool; isolate per-user failures.
+  const CONCURRENCY = 3;
+  async function worker() {
+    while (queue.length > 0) {
+      const uid = queue.shift();
+      if (!uid) continue;
+      try {
+        await rebuildOneUser(uid);
+        succeeded += 1;
+      } catch (e) {
+        errors.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => worker())
+  );
+
+  return {
+    users_processed: userIds.length,
+    users_succeeded: succeeded,
+    users_failed: errors.length,
+    errors,
+  };
+}
+
 export async function rebuildMlpHandler(job: Job): Promise<unknown> {
   const input = job.input as Partial<SingleInput & BatchInput>;
 
   if (input.scope === "all") {
-    // Batch is added in the next commit.
-    throw new Error("rebuild_mlp batch (scope: 'all') is not yet implemented");
+    return rebuildAllUsers();
   }
 
   if (!input.user_id) {
