@@ -109,34 +109,24 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     ...(created_by && { created_by }),
   }));
 
-  const { data: createdLessons, error: lessonErr } = await supabase
-    .from("lessons")
-    .insert(lessonsToInsert)
-    .select("id, lesson_name, description");
+  // Step 4b/5 — insert lessons AND their segments atomically (one transaction).
+  // The Postgres function pairs each segment to its own inserted lesson by
+  // identity, so a failure on either insert rolls back the whole batch (no
+  // orphaned lessons-without-segments). `(supabase as any)` bridges the rpc
+  // until database.types.ts is regenerated (matches the images.ts pattern).
+  const { data: createdLessons, error: rpcErr } = (await (supabase as any)
+    .rpc("create_lessons_with_segments", { p_lessons: lessonsToInsert })) as {
+    data: { id: string; lesson_name: string | null; description: string | null }[] | null;
+    error: { message: string } | null;
+  };
 
-  if (lessonErr || !createdLessons) {
-    throw new Error(`Lesson insert failed: ${lessonErr?.message}`);
+  if (rpcErr || !createdLessons) {
+    throw new Error(`Lesson+segment insert failed: ${rpcErr?.message}`);
   }
-
-  // Step 5 — create one segment per lesson (matched by lesson_name, not array index)
-  const segmentsToInsert = createdLessons.map((newLesson) => {
-    const original = classes.find((c) => c.lesson_name === newLesson.lesson_name);
-    return {
-      lesson_id:    newLesson.id,
-      segment_name: original?.lesson_name ?? newLesson.lesson_name,
-      description:  original?.description ?? newLesson.description,
-    };
-  });
-
-  const { error: segErr } = await supabase
-    .from("segments")
-    .insert(segmentsToInsert);
-
-  if (segErr) throw new Error(`Segment insert failed: ${segErr.message}`);
 
   return {
     lessons_inserted:  createdLessons.length,
-    segments_inserted: segmentsToInsert.length,
+    segments_inserted: createdLessons.length,
     lesson_ids:        createdLessons.map((l) => l.id),
     lessons:           createdLessons.map((l) => {
       const original = classes.find((c) => c.lesson_name === l.lesson_name);
