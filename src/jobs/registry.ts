@@ -5,6 +5,7 @@ import { generateSegmentContentHandler } from "./handlers/generateSegmentContent
 import { regenSegmentContentHandler } from "./handlers/regenSegmentContent";
 import { generateQuizHandler } from "./handlers/generateQuiz";
 import { rebuildMlpHandler } from "./handlers/rebuildMlp";
+import { generateQuestionnaireHandler } from "./handlers/generateQuestionnaire";
 
 export type Job = {
   id: string;
@@ -28,6 +29,7 @@ const registry: Record<string, JobHandler> = {
   regen_segment_content:    regenSegmentContentHandler,
   generate_quiz:            generateQuizHandler,
   rebuild_mlp:              rebuildMlpHandler,
+  generate_questionnaire:   generateQuestionnaireHandler,
 };
 
 export function getHandler(type: string): JobHandler {

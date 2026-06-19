@@ -1,0 +1,352 @@
+import fs from "fs/promises";
+import path from "path";
+import { randomUUID } from "crypto";
+import { supabase } from "../../supabase";
+import { getLLMClient } from "../../llm";
+import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
+import type { Job } from "../registry";
+
+// database.types.ts is stale: it predates the questionnaire `age` column and a
+// few views. Untyped bridge for the questionnaire-atom writes (same pattern as
+// the other content handlers). Regenerate types to remove this.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any;
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
+//
+// TWO DISTINCT track references — do not conflate:
+//   target_track_id — the track the response rule ADDS (what answering activates).
+//                     Its name + description is the SPEC the whole atom is built
+//                     against; must exist with a substantive description.
+//   host_track_id   — the questionnaire's own track FK. Placement/visibility only;
+//                     does NOT shape content.
+type Input = {
+  target_track_id: string;
+  host_track_id: string;
+  age_months: number;   // single age gate (months) — when the questionnaire surfaces
+  topic?: string;       // theme; free string for now (NOT a topics.id)
+  topic_id?: string;    // optional real topics.id FK
+};
+
+// ---------------------------------------------------------------------------
+// The structured atom shape the LLM returns. The handler owns the score math and
+// validation — OpenAI strict schemas can't enforce minItems / threshold ranges /
+// score spread (same limitation as the quiz schema), so those are checked below.
+// ---------------------------------------------------------------------------
+type GenAnswer = { answer_text: string; score: number };
+type GenQuestion = { question_text: string; answers: GenAnswer[] };
+type GenAtom = {
+  questionnaire_name: string;
+  intro_text: string;
+  questions: GenQuestion[];
+  add_threshold: number;
+};
+
+const QUESTIONNAIRE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    questionnaire_name: { type: "string" },
+    intro_text: { type: "string" },
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          question_text: { type: "string" },
+          answers: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                answer_text: { type: "string" },
+                score: { type: "integer" },
+              },
+              required: ["answer_text", "score"],
+            },
+          },
+        },
+        required: ["question_text", "answers"],
+      },
+    },
+    add_threshold: { type: "integer" },
+  },
+  required: ["questionnaire_name", "intro_text", "questions", "add_threshold"],
+};
+
+const MAX_GEN_ATTEMPTS = 3;
+
+// Existing questionnaire rows use this default placeholder image; reuse it so the
+// draft renders coherently in the CMS before a human sets a real one.
+const DEFAULT_ONBOARDING_IMAGE =
+  "https://szhihepbqzbbmxybluql.supabase.co/storage/v1/object/public/questionnaire_and_quiz/questionnaire.jpg";
+
+function resolveProvider(): "openai" | "gemini" {
+  const p = (process.env.QUESTIONNAIRE_WRITER || "openai").toLowerCase();
+  if (p !== "openai" && p !== "gemini") {
+    throw new Error(`Invalid QUESTIONNAIRE_WRITER="${p}" (expected "openai" or "gemini")`);
+  }
+  return p;
+}
+
+async function loadSystemPrompt(): Promise<string> {
+  const filePath = path.join(process.cwd(), "prompts", "questionnaires", "generate.md");
+  const raw = await fs.readFile(filePath, "utf-8");
+  return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
+}
+
+// Validate a generated atom and compute the real max achievable score
+// (sum of the highest-value answer per question). Throws on any problem that
+// would make the questionnaire fail to discriminate; the caller retries.
+function validateAtom(atom: GenAtom): { realMax: number } {
+  if (!atom || typeof atom !== "object") throw new Error("atom is not an object");
+  if (!atom.questionnaire_name?.trim()) throw new Error("missing questionnaire_name");
+  if (!atom.intro_text?.trim()) throw new Error("missing intro_text");
+  if (!Array.isArray(atom.questions) || atom.questions.length === 0) {
+    throw new Error("no questions");
+  }
+
+  let realMax = 0;
+  atom.questions.forEach((q, i) => {
+    if (!q.question_text?.trim()) throw new Error(`question ${i + 1}: empty question_text`);
+    if (!Array.isArray(q.answers) || q.answers.length < 2) {
+      throw new Error(`question ${i + 1}: needs >= 2 answers to discriminate`);
+    }
+    const scores = q.answers.map((a) => a.score);
+    if (scores.some((s) => !Number.isInteger(s) || s < 0)) {
+      throw new Error(`question ${i + 1}: every score must be a non-negative integer`);
+    }
+    const max = Math.max(...scores);
+    const min = Math.min(...scores);
+    if (max === min) {
+      throw new Error(
+        `question ${i + 1}: answers don't spread (all score ${max}) — can't discriminate`
+      );
+    }
+    realMax += max;
+  });
+
+  if (realMax <= 0) throw new Error("real max achievable score is 0");
+
+  const th = atom.add_threshold;
+  if (!Number.isInteger(th) || th < 1 || th > realMax) {
+    throw new Error(`add_threshold ${th} out of range [1 .. ${realMax}]`);
+  }
+
+  return { realMax };
+}
+
+type GenerationResult = {
+  atom: GenAtom;
+  realMax: number;
+  model: string;
+  version: string;
+  raw: unknown;
+  attempts: number;
+};
+
+// Call the LLM and validate; retry up to MAX_GEN_ATTEMPTS on a parse/validation
+// failure (the LLM occasionally returns a non-discriminating question). Fails
+// clearly after exhausting attempts.
+async function generateAtom(opts: {
+  instructions: string;
+  userPrompt: string;
+  provider: "openai" | "gemini";
+}): Promise<GenerationResult> {
+  const client = getLLMClient(opts.provider);
+  let lastErr: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_GEN_ATTEMPTS; attempt++) {
+    const result = await client.generate({
+      instructions:   opts.instructions,
+      userPrompt:     opts.userPrompt,
+      responseSchema: QUESTIONNAIRE_SCHEMA,
+    });
+
+    if (result.finishReason === "length" || result.finishReason === "content_filter") {
+      lastErr = new Error(`LLM stopped with finish_reason="${result.finishReason}" — not parseable`);
+      console.warn(`[generate_questionnaire] attempt ${attempt}: ${lastErr.message}`);
+      continue;
+    }
+
+    let atom: GenAtom;
+    try {
+      atom = JSON.parse(result.text) as GenAtom;
+    } catch (err) {
+      lastErr = new Error(`response was not valid JSON: ${err}`);
+      console.warn(`[generate_questionnaire] attempt ${attempt}: ${lastErr.message}`);
+      continue;
+    }
+
+    try {
+      const { realMax } = validateAtom(atom);
+      return { atom, realMax, model: result.model, version: result.version, raw: result.raw, attempts: attempt };
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[generate_questionnaire] attempt ${attempt}: validation failed — ${lastErr.message}`);
+    }
+  }
+
+  throw new Error(
+    `Questionnaire generation failed after ${MAX_GEN_ATTEMPTS} attempts. Last error: ${lastErr?.message}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Handler — generate_questionnaire
+// Writes ONE questionnaire atom (questionnaire + questions + answers + one
+// response rule) as a DRAFT (is_published=false). Publishing is the human
+// approve action and is out of scope here.
+// ---------------------------------------------------------------------------
+export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
+  const { target_track_id, host_track_id, age_months, topic, topic_id } = job.input as Input;
+  if (!target_track_id) throw new Error("input.target_track_id is required");
+  if (!host_track_id)   throw new Error("input.host_track_id is required");
+  if (age_months === undefined || age_months === null) {
+    throw new Error("input.age_months is required");
+  }
+
+  const correlationId = randomUUID();
+  const provider = resolveProvider();
+
+  // 1. Resolve the TARGET track — its description is the spec for the whole atom.
+  const { data: target, error: tErr } = await db
+    .from("tracks")
+    .select("id, track_name, description")
+    .eq("id", target_track_id)
+    .single();
+  if (tErr || !target) {
+    throw new Error(`Target track not found: ${target_track_id} (${tErr?.message ?? "no row"})`);
+  }
+  if (!target.description || !target.description.trim()) {
+    throw new Error(
+      `Target track ${target_track_id} ("${target.track_name}") has no description. ` +
+      `The description is the spec the questionnaire is generated against — populate it first.`
+    );
+  }
+
+  // 2. Resolve the HOST track exists (placement only).
+  const { data: host, error: hErr } = await db
+    .from("tracks")
+    .select("id")
+    .eq("id", host_track_id)
+    .single();
+  if (hErr || !host) {
+    throw new Error(`Host track not found: ${host_track_id} (${hErr?.message ?? "no row"})`);
+  }
+
+  // 3. Generate the atom from the target track's name + description (the spec).
+  const instructions = await loadSystemPrompt();
+  const userPrompt =
+    `Target track name: ${target.track_name}\n` +
+    `Target track description:\n${target.description}\n\n` +
+    `Child age (months) this questionnaire surfaces at: ${age_months}\n` +
+    (topic ? `Theme: ${topic}\n` : "") +
+    `\nWrite the questionnaire that screens for this track.`;
+
+  const llmStart = Date.now();
+  const { atom, realMax, model, raw, attempts } = await generateAtom({ instructions, userPrompt, provider });
+
+  // 4. Write the questionnaire root as a draft.
+  const { data: q, error: qErr } = await db
+    .from("questionnaire")
+    .insert({
+      questionnaire_name: atom.questionnaire_name,
+      description:        atom.intro_text,
+      track_id:          host_track_id,   // HOST track — placement/visibility
+      topic_id:          topic_id ?? null,
+      is_score_based:    true,            // required: routing only computes a score when true
+      is_published:      false,           // draft; publishing is the human approve
+      age:               age_months,      // single age gate (months)
+      onboarding_text:   atom.intro_text,
+      onboarding_image:  DEFAULT_ONBOARDING_IMAGE,
+      with_quiz:         false,
+    })
+    .select("id")
+    .single();
+  if (qErr || !q) throw new Error(`Failed to insert questionnaire: ${qErr?.message}`);
+  const questionnaireId = q.id as string;
+
+  // Provenance — real model now; logged after the row exists so related_entity_id
+  // can carry the questionnaire. Shared correlation_id across the atom.
+  await logAiCall({
+    correlationId,
+    operation:         "questionnaire_generate",
+    prompt:            formatLlmPrompt(instructions, userPrompt),
+    response:          raw,
+    model,
+    latencyMs:         Date.now() - llmStart,
+    relatedEntityType: "questionnaire",
+    relatedEntityId:   questionnaireId,
+    notes:             `provider=${provider}, attempts=${attempts}, real_max=${realMax}, add_threshold=${atom.add_threshold}, target_track_id=${target_track_id}, age_months=${age_months}`,
+  });
+
+  // 5. Questions + answers (each answer carries a score).
+  let questionsWritten = 0;
+  let answersWritten = 0;
+  for (const question of atom.questions) {
+    const { data: insertedQ, error: qInsErr } = await db
+      .from("questionnaire_questions")
+      .insert({
+        questionnaire_id: questionnaireId,
+        question_text:    question.question_text,
+        type:             "Single Selection",
+        answer_status:    "pending",   // publish-time approval flips this to 'approved'
+      })
+      .select("question_id")
+      .single();
+    if (qInsErr || !insertedQ) throw new Error(`Failed to insert questionnaire_question: ${qInsErr?.message}`);
+
+    const answerRows = question.answers.map((a) => ({
+      question_id: insertedQ.question_id,
+      answer_text: a.answer_text,
+      score:       a.score,
+      response:    null,
+    }));
+    const { error: aInsErr } = await db.from("questionnaire_answers").insert(answerRows);
+    if (aInsErr) throw new Error(`Failed to insert questionnaire_answers: ${aInsErr.message}`);
+
+    questionsWritten += 1;
+    answersWritten += answerRows.length;
+  }
+
+  // 6. The routing rule — total score in [threshold .. real_max] → ADD the TARGET
+  //    track. Both bounds are grounded in the actual generated answer values; no
+  //    sentinel ceiling. A single add band: scores below the threshold simply add
+  //    no track (no rule), which is correct — we never fabricate a remove rule.
+  const { data: rule, error: rErr } = await db
+    .from("questionnaire_response")
+    .insert({
+      questionnaire_id: questionnaireId,
+      track_id:         target_track_id,   // TARGET track — what answering activates
+      tag_id:           null,
+      add:              true,
+      score_min_range:  atom.add_threshold,
+      score_max_range:  realMax,
+    })
+    .select("id")
+    .single();
+  if (rErr || !rule) throw new Error(`Failed to insert questionnaire_response: ${rErr?.message}`);
+
+  return {
+    questionnaire_id:  questionnaireId,
+    is_published:      false,
+    host_track_id,
+    target_track_id,
+    age_months,
+    questions_written: questionsWritten,
+    answers_written:   answersWritten,
+    response_rule_id:  rule.id,
+    add_threshold:     atom.add_threshold,
+    real_max:          realMax,
+    score_range:       { min: atom.add_threshold, max: realMax },
+    provider,
+    model,
+    attempts,
+    correlation_id:    correlationId,
+  };
+}

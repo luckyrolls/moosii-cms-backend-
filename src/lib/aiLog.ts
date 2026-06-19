@@ -7,7 +7,7 @@ export type AiLogInput = {
   response: unknown;
   model?: string;
   latencyMs?: number;
-  relatedEntityType?: "lesson" | "segment" | "sub_segment" | "content_image" | null;
+  relatedEntityType?: "lesson" | "segment" | "sub_segment" | "content_image" | "questionnaire" | null;
   relatedEntityId?: string | null;
   notes?: string | null;
 };
