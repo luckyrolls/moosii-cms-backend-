@@ -144,33 +144,50 @@ Authorization: Bearer <jwt>
 Body: {
   type: "generate_lessons",
   input: {
-    prompt: string,        // user-typed generation request, e.g.
-                           // "generate 3 lessons for newborns about safe sleep"
-    track_id: string,
-    topic_id?: string,
-    count?: number,        // default 3
-    created_by?: string    // user email/id stamped on inserted rows
+    track_id: string,         // required — track name + description read from `tracks`
+    min_child_age: number,    // required — developmental window lower bound (months)
+    max_child_age: number,    // required — developmental window upper bound (months)
+    max_lessons: number,      // required — CEILING on lessons (max, not target); >= 1
+    additional_info?: string, // optional — author instructions (authoritative override)
+    created_by?: string       // optional — user email/id stamped on inserted rows
   }
 }
 → 202 { job_id: string }
 ```
-System prompt is read from `prompts/lessons/generate.md` (versioned source file,
-not the DB prompts table). Produces N lesson **stubs** with name, description,
-age range, priority, and priority-band rationale.
+System prompt + output schema + model/params are composed from the DB `prompts`
+row (`prompt_type = 'lesson'`, `is_active = true`) — NOT a source file. The
+runtime user message supplies only data under bare section headers: TRACK
+(name/description/developmental window/max lessons), AVAILABLE TOPICS (the
+`topics.name` set, injected verbatim), EXISTING LESSONS IN THIS TRACK (for dedup),
+and AUTHOR INSTRUCTIONS (only when `additional_info` is non-empty).
 
-**Writes directly to `lessons`** (not returned for the frontend to commit).
-Also creates one `segments` row per lesson (1:1 lesson:segment model).
+Produces up to `max_lessons` lesson **stubs**, each with the full eight-field
+contract: name, description, topic, min/max child age, priority, priority-band
+rationale, and `safety_sensitive`. The model returns a `topic` NAME per lesson,
+resolved to `topic_id` via a normalized (case-insensitive, trimmed) lookup against
+`topics.name`. **Any unresolved topic fails the whole job before insert** (no
+partial write) — surfaced as an error naming the offending lesson(s) and topic
+string(s).
+
+**Writes directly to `lessons`** (not returned for the frontend to commit), via
+the `create_lessons_with_segments` transaction: all lessons + their segments
+commit atomically, or none do. Also creates one `segments` row per lesson
+(1:1 lesson:segment model).
 
 `jobs.result` on success:
 ```json
 {
-  "lessons_inserted": 3,
-  "segments_inserted": 3,
+  "lessons_inserted": 8,
+  "segments_inserted": 8,
   "lesson_ids": ["uuid", ...],
   "lessons": [
-    { "id": "uuid", "lesson_name": "...", "priority": 800, "band_rationale": "..." }
+    {
+      "id": "uuid", "lesson_name": "...", "priority": 110,
+      "topic": "feeding", "band_rationale": "...", "safety_sensitive": true
+    }
   ],
-  "model": "gpt-5.1-2025-11-13"
+  "author_instructions_used": false,
+  "model": "gpt-4o-2024-08-06"
 }
 ```
 
