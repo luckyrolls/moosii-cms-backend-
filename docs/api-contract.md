@@ -132,7 +132,8 @@ type JobType =
   | 'generate_lessons'            // §2a
   | 'generate_segment_content'    // §2b
   | 'regen_segment_content'       // §2c
-  | 'generate_quiz';              // §2d
+  | 'generate_quiz'               // §2d
+  | 'generate_questionnaire';     // §2e
 ```
 
 ---
@@ -365,6 +366,72 @@ On partial success (`shortfall` populated):
 cards complete, sharing one `correlationId` so both `ai_generation_log` entries
 are linked. The standalone `generate_quiz` job runs independently (e.g. after a
 reviewer edits the cards), replacing existing questions.
+
+---
+
+### 2e. Generate questionnaire — DELIVERED
+```
+POST /jobs
+Authorization: Bearer <jwt>
+Body: {
+  type: "generate_questionnaire",
+  input: {
+    target_track_id: string,  // required — the track the response rule ADDS when
+                              //   answered. Its name + description is the SPEC the
+                              //   whole atom is generated against; description must
+                              //   be non-empty or the job fails.
+    host_track_id: string,    // required — the questionnaire's own track FK
+                              //   (placement/visibility only; does NOT shape content)
+    age_months: number,       // required — single age gate (months) the questionnaire surfaces at
+    topic?: string,           // optional — free-string theme (NOT a topics.id)
+    topic_id?: string         // optional — real topics.id FK on the questionnaire row
+  }
+}
+→ 202 { job_id: string }
+```
+Two DISTINCT track references — do not conflate: `target_track_id` (what answering
+activates; the content spec) vs `host_track_id` (where it lives).
+
+Prompt is currently read from the file `prompts/questionnaires/generate.md` (NOT
+the DB `prompts` table yet — pending the same cutover §2a got). Provider is
+selected by the `QUESTIONNAIRE_WRITER` env var (`openai` | `gemini`, default
+`openai`).
+
+Generates ONE questionnaire **atom** as a **DRAFT** (`is_published = false`;
+publishing is the human approve action, out of scope here). The LLM returns
+`questionnaire_name`, `intro_text`, `questions[]` (each answer carries a `score`),
+and `add_threshold`. The handler owns score math + validation (OpenAI strict
+schemas can't enforce it): every question needs ≥2 answers whose scores spread,
+and `add_threshold` must fall in `[1 .. real_max]`, where `real_max` = sum of the
+highest answer score per question. On a parse/validation miss it **retries up to 3
+times**, then fails clearly.
+
+**Writes (all as draft):** one `questionnaire` row (`track_id = host_track_id`),
+its `questionnaire_questions` (status `pending`) + `questionnaire_answers`, and one
+`questionnaire_response` routing rule — score in `[add_threshold .. real_max]` →
+ADD `target_track_id`. (Scores below the threshold add nothing; no remove rule is
+fabricated.)
+
+`jobs.result` on success:
+```json
+{
+  "questionnaire_id": "uuid",
+  "is_published": false,
+  "host_track_id": "uuid",
+  "target_track_id": "uuid",
+  "age_months": 6,
+  "questions_written": 5,
+  "answers_written": 15,
+  "response_rule_id": "uuid",
+  "add_threshold": 7,
+  "real_max": 12,
+  "score_range": { "min": 7, "max": 12 },
+  "provider": "openai",
+  "model": "gpt-4o-2024-08-06",
+  "attempts": 1,
+  "correlation_id": "uuid"
+}
+```
 
 ---
 
