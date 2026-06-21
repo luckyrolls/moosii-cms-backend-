@@ -257,11 +257,40 @@ Body: {
     seg_id: string,
     tone: string,
     scope: "whole_segment" | "single_card",
-    card_id?: string   // required when scope = "single_card"
+    card_id?: string,   // required when scope = "single_card"
+    overrides?: {       // per-run prompt overrides — THIS regeneration only
+      scope?: string,
+      tone?: string,
+      structure?: string,
+      length?: string
+    }
   }
 }
 → 202 { job_id: string }
 ```
+**Per-run prompt overrides:** `overrides` lets a reviewer tune the prompt for a
+single regeneration when the default output wasn't right. Each present, non-empty
+layer replaces that layer's text for this run only; empty/whitespace or absent
+falls back to the DB default. **`system_message` is intentionally NOT overridable**,
+and `output_schema` is never touched — so the card contract can't break. The
+`prompts` row and `prompt_blocks` are **never written** (sources untouched). The
+overrides are persisted in `job.input`, and `ai_generation_log` records both the
+full rendered prompt and a note listing which layers were overridden, so deviations
+from default can be reviewed (and later promoted to defaults — a separate,
+super-admin action, not built here). The result echoes `overrides_applied: string[]`.
+
+Pre-fill the editor with the current layer texts via:
+```
+GET /segments/:id/regen-prompt?tone=<tone>
+Authorization: Bearer <jwt>
+→ 200 {
+  tone: string,
+  system_message: string,            // read-only (not overridable)
+  editable: { scope, tone, structure, length }  // starting text for `overrides`
+}
+→ 404 { error: { code: "prompt_not_found", ... } }  // no active prompt row for tone
+```
+
 **Precondition:** the segment's lesson must not be published (`lessons.is_published
 = false`). If published, the job fails immediately with a clear message: "Unpublish
 the lesson first, then retry." Does NOT silently unpublish.
@@ -288,6 +317,7 @@ before UPDATE — cascade does not fire on UPDATE). Also resets segment approval
   "sub_segments_inserted": 8,
   "sub_segment_ids": ["uuid", ...],
   "approval_reset": true,
+  "overrides_applied": ["tone", "length"],
   "model": "gpt-5.1-2025-11-13",
   "finish_reason": "stop"
 }
@@ -300,6 +330,7 @@ before UPDATE — cascade does not fire on UPDATE). Also resets segment approval
   "card_id": "uuid",
   "card_sequence": 5,
   "approval_reset": true,
+  "overrides_applied": [],
   "model": "gpt-5.1-2025-11-13",
   "finish_reason": "stop"
 }

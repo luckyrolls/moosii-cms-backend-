@@ -15,6 +15,16 @@ type Input = {
   tone: string;
   scope: Scope;
   card_id?: string; // required when scope = "single_card"
+  // Per-run prompt overrides (this regeneration only — the prompts row and
+  // prompt_blocks are NEVER written). Each layer falls back to the DB default
+  // when absent or empty/whitespace. system_message is intentionally NOT
+  // overridable; output_schema is never touched (the card contract).
+  overrides?: {
+    scope?: string;
+    tone?: string;
+    structure?: string;
+    length?: string;
+  };
 };
 
 type SubSegmentRow = {
@@ -29,7 +39,7 @@ type SubSegmentRow = {
 // ---------------------------------------------------------------------------
 
 export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone, scope, card_id } = job.input as Input;
+  const { seg_id, tone, scope, card_id, overrides } = job.input as Input;
   if (!seg_id) throw new Error("input.seg_id is required");
   if (!tone)   throw new Error("input.tone is required");
   if (!scope)  throw new Error("input.scope is required (whole_segment | single_card)");
@@ -82,19 +92,24 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     }
   }
 
-  // Step 3 — load prompt row + blocks
+  // Step 3 — load prompt row + blocks, then apply any per-run overrides.
+  // An override applies only when non-empty (empty/whitespace falls back to the
+  // DB default). system_message is never overridable; output_schema is untouched.
   const promptRow = await loadPromptRow(tone);
+  const ov = (v?: string): string | undefined => (v && v.trim() ? v : undefined);
 
-  const [toneContent, structureContent, lengthContent] = await Promise.all([
-    loadBlock(promptRow.tone_block_id,      "tone"),
-    loadBlock(promptRow.structure_block_id, "structure"),
-    loadBlock(promptRow.length_block_id,    "length"),
-  ]);
+  const systemMessage    = promptRow.system_message;
+  const scopeText        = ov(overrides?.scope)     ?? promptRow.scope;
+  const toneContent      = ov(overrides?.tone)      ?? await loadBlock(promptRow.tone_block_id, "tone");
+  const structureContent = ov(overrides?.structure) ?? await loadBlock(promptRow.structure_block_id, "structure");
+  const lengthContent    = ov(overrides?.length)    ?? await loadBlock(promptRow.length_block_id, "length");
+
+  const overridesApplied = (["scope", "tone", "structure", "length"] as const)
+    .filter((k) => ov(overrides?.[k]));
 
   // Step 4 — compose prompts (single_card adds neighbor context)
-  const systemMessage = promptRow.system_message;
   const userMessage = composeUserMessage({
-    scope:              promptRow.scope,
+    scope:              scopeText,
     toneContent,
     structureContent,
     lengthContent,
@@ -122,7 +137,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     operation:         "segment_content_regen",
     relatedEntityType: logEntityType,
     relatedEntityId:   logEntityId,
-    notes:             `scope: ${scope}, tone: ${tone}`,
+    notes:             `scope: ${scope}, tone: ${tone}, overrides: [${overridesApplied.join(", ") || "none"}]`,
   });
 
   // Post-parse validation: single_card must produce exactly 1 card
@@ -175,6 +190,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       sub_segments_inserted: inserted.length,
       sub_segment_ids:       inserted.map((r) => r.id),
       approval_reset:        true,
+      overrides_applied:     overridesApplied,
       model,
       finish_reason:         finishReason,
     };
@@ -211,9 +227,10 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     scope,
     seg_id,
     card_id,
-    card_sequence:   targetCard!.sequence,
-    approval_reset:  true,
+    card_sequence:     targetCard!.sequence,
+    approval_reset:    true,
+    overrides_applied: overridesApplied,
     model,
-    finish_reason:   finishReason,
+    finish_reason:     finishReason,
   };
 }
