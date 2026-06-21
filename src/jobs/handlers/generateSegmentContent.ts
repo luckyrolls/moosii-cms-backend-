@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
+import { lintSegmentCards, type LintHit } from "../../lib/voiceLint";
 import { generateQuiz } from "./generateQuiz";
 import type { Job } from "../registry";
 
@@ -151,6 +152,7 @@ export async function callAndParseCards(opts: CallAndParseOpts): Promise<{
   cards: Card[];
   model: string;
   finishReason: string | undefined;
+  lint: LintHit[];
 }> {
   const client = getLLMClient("openai");
   const llmStart = Date.now();
@@ -197,7 +199,10 @@ export async function callAndParseCards(opts: CallAndParseOpts): Promise<{
     throw new Error(`OpenAI returned no cards for ${opts.relatedEntityType} ${opts.relatedEntityId}`);
   }
 
-  return { cards, model: result.model, finishReason: result.finishReason };
+  // Deterministic voice lint (advisory — never throws, never blocks).
+  const lint = await lintSegmentCards(cards);
+
+  return { cards, model: result.model, finishReason: result.finishReason, lint };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +260,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
   });
 
   // Step 4 — generate (withRetry lives inside the provider)
-  const { cards, model, finishReason } = await callAndParseCards({
+  const { cards, model, finishReason, lint } = await callAndParseCards({
     systemMessage,
     userMessage,
     promptRow,
@@ -304,6 +309,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
     sub_segment_ids:       inserted.map((r) => r.id),
     model,
     finish_reason:         finishReason,
+    lint,
     ...(quizResult && { quiz: quizResult }),
   };
 }

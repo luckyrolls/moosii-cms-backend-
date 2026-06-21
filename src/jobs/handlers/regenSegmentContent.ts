@@ -129,7 +129,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   const logEntityType = scope === "single_card" ? "sub_segment" as const : "segment" as const;
   const logEntityId   = scope === "single_card" ? card_id! : seg_id;
 
-  const { cards, model, finishReason } = await callAndParseCards({
+  const { cards, model, finishReason, lint } = await callAndParseCards({
     systemMessage,
     userMessage,
     promptRow,
@@ -191,6 +191,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       sub_segment_ids:       inserted.map((r) => r.id),
       approval_reset:        true,
       overrides_applied:     overridesApplied,
+      lint,
       model,
       finish_reason:         finishReason,
     };
@@ -230,6 +231,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     card_sequence:     targetCard!.sequence,
     approval_reset:    true,
     overrides_applied: overridesApplied,
+    lint,
     model,
     finish_reason:     finishReason,
   };

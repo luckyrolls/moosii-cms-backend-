@@ -230,9 +230,22 @@ quiz result is included in `jobs.result.quiz` (see §2d for shape).
   "sub_segments_inserted": 8,
   "sub_segment_ids": ["uuid", ...],
   "model": "gpt-5.1-2025-11-13",
-  "finish_reason": "stop"
+  "finish_reason": "stop",
+  "lint": [
+    { "ruleKey": "both-true", "type": "limit", "severity": "warn",
+      "card": 0, "match": "both things can be true", "count": 3,
+      "message": "Stock phrase repeated - vary the wording." }
+  ]
 }
 ```
+**`lint`** is the deterministic voice-lint result — advisory hits (AI-tells,
+throat-clearing openers, overused/repeated phrases) for the CMS review screen to
+surface. It never blocks or alters generation; an empty array means no hits.
+Rules live in `voice_lint_rules` (editable in the DB); the matcher engine is in
+`src/lib/voiceLint.ts`. `card` is the 1-based card index, or `0` for
+segment-scope counts (`limit`/`repeat`). `severity` is `"error"` | `"warn"`.
+Runs on segment content + regen only (not quiz/questionnaire).
+
 With `generate_quiz: true`, result also includes:
 ```json
 {
@@ -318,6 +331,7 @@ before UPDATE — cascade does not fire on UPDATE). Also resets segment approval
   "sub_segment_ids": ["uuid", ...],
   "approval_reset": true,
   "overrides_applied": ["tone", "length"],
+  "lint": [ /* voice-lint hits — see §2b */ ],
   "model": "gpt-5.1-2025-11-13",
   "finish_reason": "stop"
 }
@@ -331,10 +345,14 @@ before UPDATE — cascade does not fire on UPDATE). Also resets segment approval
   "card_sequence": 5,
   "approval_reset": true,
   "overrides_applied": [],
+  "lint": [ /* voice-lint hits — see §2b */ ],
   "model": "gpt-5.1-2025-11-13",
   "finish_reason": "stop"
 }
 ```
+Both regen paths also run the voice lint (`lint`, same shape as §2b). Note: a
+`single_card` regen lints only the one regenerated card, so segment-scope rules
+(`limit`/`repeat`) can't see the rest of the segment in that case.
 
 ---
 
