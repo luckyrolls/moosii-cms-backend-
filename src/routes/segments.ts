@@ -132,4 +132,31 @@ router.get("/:id/regen-prompt", async (req: Request, res: Response): Promise<voi
   }
 });
 
+// GET /segments/:id/generation-log
+// The latest WHOLE-SEGMENT content prompt that produced this segment's current
+// cards — what a reviewer sees as "the prompt used". Scoped to content ops
+// (`segment_content`, `segment_content_regen`) so a later quiz/image log on the
+// same segment doesn't shadow it. Single-card regens log under
+// related_entity_type='sub_segment' and are intentionally excluded here.
+router.get("/:id/generation-log", async (req: Request, res: Response): Promise<void> => {
+  const segmentId = req.params.id;
+
+  const { data, error } = await supabase
+    .from("ai_generation_log")
+    .select("id, operation, prompt, model, notes, correlation_id, created_at")
+    .eq("related_entity_type", "segment")
+    .eq("related_entity_id", segmentId)
+    .in("operation", ["segment_content", "segment_content_regen"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    apiError(res, 500, "db_error", error.message);
+    return;
+  }
+
+  res.json({ found: !!data, log: data ?? null });
+});
+
 export default router;
