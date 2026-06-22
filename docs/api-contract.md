@@ -484,6 +484,41 @@ fabricated.)
 
 ---
 
+### 2f. Manage voice-lint rules (admin CRUD) — DELIVERED
+JWT-protected CRUD over the `voice_lint_rules` table — the editable phrase list
+the deterministic voice lint (§2b `lint`) runs against. Edits take effect on the
+**next** content generation (no deploy). All routes require
+`Authorization: Bearer <jwt>`; errors use `{ error: { code, message } }`.
+```
+GET    /voice-lint-rules            → 200 { rules: Rule[] }   // all, active + inactive
+POST   /voice-lint-rules            → 201 { rule: Rule }      // create
+PATCH  /voice-lint-rules/:id        → 200 { rule: Rule }      // partial update (merge + revalidate)
+DELETE /voice-lint-rules/:id        → 204                     // hard delete (or PATCH is_active=false to disable)
+```
+`Rule`:
+```ts
+{
+  id: string; rule_key: string;            // rule_key unique
+  type: "ban" | "opener" | "limit" | "conditional" | "repeat";
+  pattern: string | null; max: number | null; scope: "card" | "segment" | null;
+  requires: string | null; within_chars: number | null; min_words: number | null;
+  severity: "error" | "warn"; message: string; tone: string | null;
+  is_active: boolean; created_at: string; updated_at: string;
+}
+```
+**Server-side validation** (a bad rule cannot be saved) — required fields per type:
+- `ban` / `opener`: `pattern`, `severity`, `message`
+- `limit`: `pattern`, `max` (int ≥ 1), `scope`, `severity`, `message`
+- `conditional`: `pattern`, `requires`, `within_chars` (int ≥ 1), `message` — **`severity` forced to `warn`**
+- `repeat`: `min_words` (int ≥ 2), `scope`, `severity`, `message` (no `pattern`)
+
+Type-irrelevant fields are normalized to `null` on write. PATCH merges the body
+onto the existing row then re-validates the whole rule, so a partial edit that
+changes `type` still must satisfy the new type's requirements. Errors:
+`400 invalid_rule` (validation), `409 duplicate_rule_key`, `404 not_found`.
+
+---
+
 ## 3. MLP recompute — [DESIGN]
 
 ```

@@ -8,6 +8,7 @@ import contentImagesRouter from "./routes/images";
 import segmentsRouter from "./routes/segments";
 import subSegmentsRouter from "./routes/subSegments";
 import lessonsRouter from "./routes/lessons";
+import voiceLintRulesRouter from "./routes/voiceLintRules";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
 
@@ -30,6 +31,7 @@ app.use("/sub-segments", jwtAuthMiddleware, subSegmentsRouter);
 app.use("/segments", jwtAuthMiddleware, segmentsRouter);
 app.use("/content-images", jwtAuthMiddleware, contentImagesRouter);
 app.use("/lessons", jwtAuthMiddleware, lessonsRouter);
+app.use("/voice-lint-rules", jwtAuthMiddleware, voiceLintRulesRouter);
 
 // Job creation — accepts the internal shared secret (server-to-server) OR a
 // CMS admin's Supabase JWT (browser).
