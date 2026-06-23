@@ -113,25 +113,56 @@ diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
 - (Content phase) A `content_drafts` table — to be designed — mirrors content_images
   (candidate/approved/superseded, prompts + model provenance, approval metadata) and
   holds the draft content BUNDLE until a human approves it.
+- Content prompt composition (Level 1.5): `prompts` extended with system_message,
+  scope, output_schema, model/temperature/max_tokens and FKs tone_block_id /
+  structure_block_id / length_block_id / size_profile_id; `prompt_blocks`
+  (block_type tone|structure|length) + `prompt_block_versions`; `content_size_profiles`
+  (structured size); `voice_lint_rules` (AI-tell detection). `lessons` gained
+  `band_rationale` + `safety_sensitive`.
 
 ## Scope
 - v1 (complete): image management — generate images per sub-segment,
   candidate/approve flow, non-destructive (candidates don't overwrite the live image
   until approved; prior images kept as history).
-- v1.5 (in progress): lesson generation — `generate_lessons` job type creates lesson
-  stubs + segments via OpenAI. Priority rubric (6 bands, 100–2000) ensures ordering
-  consistency across batches; system prompt at `prompts/lessons/generate.md`.
-- NOT yet built: sub-segment content generation, quiz generation,
-  lesson/segment-level images, MLP recompute.
+- v1.5 (delivered): lesson generation — `generate_lessons` composes its prompt from
+  the DB (`prompts` row, `prompt_type='lesson'`) and emits the eight-field stub
+  contract (name, description, topic [resolved by name → topic_id], min/max child age,
+  priority via the 6-band 100–2000 rubric, band_rationale, safety_sensitive), inserting
+  lessons + their segments atomically via `create_lessons_with_segments`. (The old
+  `prompts/lessons/generate.md` file is retired.)
+- v2 (delivered): sub-segment CONTENT + QUIZ — `generate_segment_content` /
+  `regen_segment_content` / `generate_quiz`, composed per-tone from the DB (see
+  "Content prompt composition & tone management" below). NOT the critique pipeline yet.
+- NOT yet built: lesson/segment-level images; the generate→critique→revise pipeline.
+  MLP recompute is PARTIAL (`rebuild_mlp` handler exists — verification phase).
 - Frontend: Vite + React SPA (separate repo). The backend API contract is defined
-  in `api-contract-spec.md` (from the frontend chat). FlutterFlow transition is
-  complete — the React SPA is the only frontend.
+  in `docs/api-contract.md`. FlutterFlow transition is complete — the React SPA is
+  the only frontend.
 
 ## Roadmap beyond v1: content creation (post–image-management)
 After image management, this backend absorbs the remaining BuildShip content
 flows. Same architecture as images — same job runner, same candidate/approve
 lifecycle, same versioned-prompts-with-provenance discipline. The new work is
 text-shaped handlers, text prompt files, and multi-step chaining.
+
+### Content prompt composition & tone management (DELIVERED)
+Segment content composes its prompt from the DB, not files. A "tone" = one segment
+`prompts` row + a 1:1 voice block (`prompt_blocks`), selected by stable `prompts.id`
+(NOT the editable display name). Layers:
+- VOICE — per-tone `prompt_blocks` (block_type='tone'), managed via `/tones`.
+- STRUCTURE — `prompt_blocks` (block_type='structure'), a reusable library via
+  `/structure-blocks`; default `standard_arc` (neutral) vs `sturdy_6_card_arc`
+  (Sturdy/Good-Inside).
+- SIZE — structured `content_size_profiles` (word/sentence/bullet budgets) rendered
+  into the length instruction; per-tone default + `/size-profiles` CRUD.
+- TECHNICAL (shared, not user-editable) — system_message, scope, output_schema.
+`regen_segment_content` supports per-run OVERRIDES of any editable layer (prose, a
+different block/profile, or inline size numbers) without changing the tone, plus an
+optional `generate_quiz` (quiz generation always REPLACES, never appends). A
+deterministic voice LINT (`voice_lint_rules` + `src/lib/voiceLint.ts`) flags AI-tells
+post-generation into `jobs.result.lint` (advisory; never blocks). These admin tables
+are reached via JWT routes; the backend reads/writes them with the service role
+(RLS bypassed), so the CMS manages them through the API, not direct Supabase writes.
 
 ### Content generation is a BUNDLE, not a single text blob
 Generating a lesson also generates its QUIZ in the same act. A content-generation
@@ -229,16 +260,21 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - Build each piece as a standalone, independently-testable module; compose at the
   end. Test in isolation before wiring together (this is how each build step is
   de-risked).
-- Prompt instructions are versioned SOURCE CODE (files in repo), not config.
-  Image prompts: `prompts/image/`. Lesson prompts: `prompts/lessons/`.
+- Prompt instructions: IMAGE prompts are versioned files (`prompts/image/`).
+  CONTENT prompts (lesson/segment/quiz) are DB-composed (`prompts` + `prompt_blocks`
+  + `content_size_profiles`), managed via admin CRUD, not files. (Exception:
+  `generateQuestionnaire` is still file-based — pending cutover.)
 - Prefer minimal formatting and minimal dependencies. Keep it debuggable.
 - Database types (`src/types/database.types.ts`) are generated from the live schema
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: `jobs`, `content_images`, `ai_generation_log` tables + migrations 001–005.
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–015 and the
+      `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
+      in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
+      `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
-      from GitHub `main`.
+      from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
       concurrency cap (BATCH_CONCURRENCY).
 - [x] Retry helper: exponential backoff + jitter, 6 attempts, ~62s budget,
@@ -257,13 +293,23 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [x] `POST /segments/:id/generate-images` — batch with concurrency cap,
       modes: all / gaps / unapproved.
 - [x] `POST /sub-segments/:id/generate-image` — dedicated single-image route.
-- [x] `generate_lessons` handler — OpenAI, dedup against existing lessons,
-      priority rubric (6 bands, 100–2000), band_rationale in result.
+- [x] `generate_lessons` — DB-composed prompt, eight-field stub contract
+      (topic/band_rationale/safety_sensitive), atomic lessons+segments insert
+      (`create_lessons_with_segments`).
+- [x] Sub-segment CONTENT + QUIZ generation/regeneration — per-tone DB composition,
+      quiz always-replace, per-run regen overrides (prose / block / size).
+- [x] Tone management — voice/structure/size per tone, selected by stable id; admin
+      CRUD: `/tones`, `/structure-blocks`, `/size-profiles`, `/voice-lint-rules`.
+- [x] Voice lint — deterministic AI-tell detection, advisory hits in
+      `jobs.result.lint` (segment content/regen).
 - [x] JWT auth middleware + INTERNAL_API_KEY split (SPA vs server-to-server).
 - [x] Standardized error envelope `{ error: { code, message } }`.
-- [x] `database.types.ts` generated from live schema, wired into Supabase client.
-- [ ] Sub-segment content generation (text + quiz bundle).
-- [ ] MLP recompute.
+- [~] `database.types.ts` — generated, but STALE (predates 0001/006–015); content
+      handlers/routes use `(supabase as any)` bridges. Regenerate to drop them.
+- [ ] Cross-model generate→critique→revise pipeline (content quality).
+- [ ] MLP recompute — PARTIAL (`rebuild_mlp` handler; verification phase).
+- [ ] Lesson/segment-level images.
+- [ ] `generateQuestionnaire` DB-prompt cutover (still file-based).
 - [ ] React SPA frontend (separate repo).
 
 Update this status section as steps complete.
