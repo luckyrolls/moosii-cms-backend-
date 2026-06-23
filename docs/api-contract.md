@@ -509,6 +509,24 @@ fabricated.)
 }
 ```
 
+**Approve / publish (human step).** The atom is created `is_published=false`. Publish it via:
+```
+POST /questionnaires/:id/publish    → 200 { questionnaire_id, is_published: true, questions_approved }
+POST /questionnaires/:id/unpublish  → 200 { questionnaire_id, is_published: false }   // back to draft to edit
+```
+Publish sets `is_published=true` and marks the questions `approved` (requires ≥1
+question → else `409 no_questions`); unpublish reverts both. `404 not_found` if the id is unknown.
+
+**Edit the questionnaire prompt (admin).** The generator's prompt is the DB row
+`prompt_type='questionnaire'` (migration 0005). Manage it:
+```
+GET   /questionnaire-prompt    → 200 { prompt: { id, system_message, output_schema, model, temperature, max_tokens, ... } }
+PATCH /questionnaire-prompt    → 200 { prompt }   // body: { system_message?, model?, temperature?, max_tokens? }
+```
+`system_message` is the editable prompt text; `model`/`temperature`/`max_tokens` are
+optional (null = provider default). **`output_schema` is NOT editable** (response
+contract). A blank `system_message` is ignored (can't blank the prompt).
+
 ---
 
 ### 2f. Manage voice-lint rules (admin CRUD) — DELIVERED
