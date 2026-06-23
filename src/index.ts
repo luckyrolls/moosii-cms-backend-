@@ -11,6 +11,7 @@ import lessonsRouter from "./routes/lessons";
 import voiceLintRulesRouter from "./routes/voiceLintRules";
 import tonesRouter from "./routes/tones";
 import sizeProfilesRouter from "./routes/sizeProfiles";
+import structureBlocksRouter from "./routes/structureBlocks";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
 
@@ -36,6 +37,7 @@ app.use("/lessons", jwtAuthMiddleware, lessonsRouter);
 app.use("/voice-lint-rules", jwtAuthMiddleware, voiceLintRulesRouter);
 app.use("/tones", jwtAuthMiddleware, tonesRouter);
 app.use("/size-profiles", jwtAuthMiddleware, sizeProfilesRouter);
+app.use("/structure-blocks", jwtAuthMiddleware, structureBlocksRouter);
 
 // Job creation — accepts the internal shared secret (server-to-server) OR a
 // CMS admin's Supabase JWT (browser).

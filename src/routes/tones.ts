@@ -120,7 +120,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       system_message:     tmpl.system_message,
       scope:              tmpl.scope,
       output_schema:      tmpl.output_schema,
-      structure_block_id: tmpl.structure_block_id,
+      structure_block_id: nonEmpty(body.structure_block_id) ? body.structure_block_id : tmpl.structure_block_id,
       length_block_id:    tmpl.length_block_id,
       size_profile_id:    nonEmpty(body.size_profile_id) ? body.size_profile_id : tmpl.size_profile_id,
       model:              nonEmpty(body.model) ? body.model : tmpl.model,
@@ -155,6 +155,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   if (typeof body.temperature === "number")      rowPatch.temperature = body.temperature;
   if (typeof body.is_active === "boolean")       rowPatch.is_active = body.is_active;
   if ("size_profile_id" in body)                 rowPatch.size_profile_id = nonEmpty(body.size_profile_id) ? body.size_profile_id : null;
+  if ("structure_block_id" in body)             rowPatch.structure_block_id = nonEmpty(body.structure_block_id) ? body.structure_block_id : null;
 
   const { error: uErr } = await db.from("prompts").update(rowPatch).eq("id", req.params.id);
   if (uErr) { apiError(res, 500, "db_error", uErr.message); return; }

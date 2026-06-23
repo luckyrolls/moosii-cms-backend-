@@ -275,7 +275,8 @@ Body: {
     overrides?: {       // per-run prompt overrides — THIS regeneration only
       scope?: string,
       tone?: string,
-      structure?: string,
+      structure?: string,            // explicit ## Structure prose; wins over block swap
+      structure_block_id?: string,   // swap to a different structure block for this run
       length?: string,           // explicit ## Length prose; wins over size if set
       size_profile_id?: string,  // swap to a different size profile for this run
       size?: {                   // inline numeric tweaks merged over the base profile
@@ -299,6 +300,10 @@ full rendered prompt and a note listing which layers were overridden, so deviati
 from default can be reviewed (and later promoted to defaults — a separate,
 super-admin action, not built here). The result echoes `overrides_applied: string[]`
 (which may include `"size_profile_id"` / `"size"`).
+
+**Structure (## Structure) resolution precedence:** `structure` prose override →
+`structure_block_id` (a different structure block for this run) → the tone's default
+`structure_block_id` (see §2g / §2i).
 
 **Size (## Length) resolution precedence:** `length` prose override → `size_profile_id`
 (a different profile for this run) with optional inline `size` numeric tweaks merged
@@ -557,9 +562,9 @@ DELETE /tones/:id        → 204                       // removes row + its voic
   voice: { block_id: string; name: string | null; label: string | null; content: string | null } | null;
 }
 ```
-**POST (create from template)** — body `{ tone: string (required), voice_content: string (required), label?, model?, temperature?, size_profile_id? }`. Clones the shared technical layers (`system_message`/`scope`/`output_schema`/structure & length blocks/`size_profile_id`/`max_tokens`, and `model`/`temperature`/`size_profile_id` unless overridden) from an existing active tone, creates a new 1:1 voice block (name = slug of `tone`), and a new active tone row. Errors: `400 invalid_tone`, `409 duplicate_voice` (slug collision — rename), `409 no_template` (no existing tone to clone).
+**POST (create from template)** — body `{ tone: string (required), voice_content: string (required), label?, model?, temperature?, size_profile_id?, structure_block_id? }`. Clones the shared technical layers (`system_message`/`scope`/`output_schema`/`max_tokens`, and `model`/`temperature`/`size_profile_id`/`structure_block_id` unless overridden) from an existing active tone, creates a new 1:1 voice block (name = slug of `tone`), and a new active tone row. Errors: `400 invalid_tone`, `409 duplicate_voice` (slug collision — rename), `409 no_template` (no existing tone to clone).
 
-**PATCH** — body any of `{ tone, model, temperature, is_active, voice_content, voice_label, size_profile_id }`. Updates the row and/or the voice block; pass `size_profile_id: null` to clear (falls back to the length block). `404 not_found` if the id isn't a segment tone.
+**PATCH** — body any of `{ tone, model, temperature, is_active, voice_content, voice_label, size_profile_id, structure_block_id }`. Updates the row and/or the voice block; pass `size_profile_id: null` / `structure_block_id: null` to clear. `404 not_found` if the id isn't a segment tone. `structure_block_id` picks the tone's default structure (see §2i).
 
 **DELETE** — removes the tone row, and its voice block too unless another row still references it. `404 not_found` if missing.
 
@@ -596,6 +601,33 @@ DELETE /size-profiles/:id    → 204   // tones referencing it fall back to the 
 All numeric fields are optional (a non-negative integer or `null`) — the renderer
 emits a line only for fields that are set, so a profile can constrain just total
 words if you like. Errors: `400 invalid_profile`, `409 duplicate_name`, `404 not_found`.
+
+---
+
+### 2i. Manage structure blocks (admin CRUD) — DELIVERED
+JWT-protected CRUD over **structure blocks** (`prompt_blocks` where
+`block_type='structure'`) — the reusable "card arc" each tone follows. A tone
+references one via `Tone.structure_block_id` (§2g); a regen can swap it per run
+(§2c). The handler renders the chosen block as the `## Structure` section.
+```
+GET    /structure-blocks        → 200 { structure_blocks: StructureBlock[] }
+POST   /structure-blocks        → 201 { structure_block }
+PATCH  /structure-blocks/:id     → 200 { structure_block }
+DELETE /structure-blocks/:id     → 204   // 409 in_use if any tone still references it
+```
+`StructureBlock`:
+```ts
+{ id: string; name: string; label: string | null; content: string | null;
+  is_active: boolean; created_at: string; updated_at: string }
+```
+`name` is a unique slug (required on create); `content` required on create.
+Errors: `400 invalid_block`, `409 duplicate_name`, `409 in_use` (delete blocked
+while a tone references it — repoint first), `404 not_found`.
+
+> Note: the seeded default `sturdy_6_card_arc` carries voice-specific language
+> (reassurance, scripts, "both things can be true", repair) and is currently shared
+> by all tones. Prefer a neutral structure for non-Sturdy tones; edit/add blocks
+> here and repoint via tone PATCH (§2g).
 
 ---
 

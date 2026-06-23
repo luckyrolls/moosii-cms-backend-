@@ -24,7 +24,8 @@ type Input = {
   overrides?: {
     scope?: string;
     tone?: string;
-    structure?: string;
+    structure?: string;          // explicit prose for ## Structure; wins over block swap
+    structure_block_id?: string; // swap to a different structure block for this run
     length?: string;            // explicit prose for ## Length; wins over size if set
     size_profile_id?: string;   // swap to a different size profile for this run
     size?: SizeNumbers;         // inline numeric tweaks merged over the base profile
@@ -105,7 +106,9 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   const systemMessage    = promptRow.system_message;
   const scopeText        = ov(overrides?.scope)     ?? promptRow.scope;
   const toneContent      = ov(overrides?.tone)      ?? await loadBlock(promptRow.tone_block_id, "tone");
-  const structureContent = ov(overrides?.structure) ?? await loadBlock(promptRow.structure_block_id, "structure");
+  // Structure precedence: explicit prose override > block swap > tone's default block.
+  const structureContent = ov(overrides?.structure)
+    ?? await loadBlock(ov(overrides?.structure_block_id) ?? promptRow.structure_block_id, "structure");
   // Length precedence: explicit prose override > size override (profile/inline) >
   // tone's default size profile > legacy length block.
   const lengthContent    = ov(overrides?.length)
@@ -116,6 +119,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
 
   const overridesApplied: string[] = (["scope", "tone", "structure", "length"] as const)
     .filter((k) => ov(overrides?.[k]));
+  if (ov(overrides?.structure_block_id)) overridesApplied.push("structure_block_id");
   if (ov(overrides?.size_profile_id)) overridesApplied.push("size_profile_id");
   if (overrides?.size && Object.keys(overrides.size).length > 0) overridesApplied.push("size");
 
