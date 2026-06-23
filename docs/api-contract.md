@@ -222,7 +222,9 @@ takeaway — no special field, just the last card in order.
 
 When `generate_quiz: true`, quiz generation runs after cards complete, sharing
 the same `correlationId` so both `ai_generation_log` entries are linked. The
-quiz result is included in `jobs.result.quiz` (see §2d for shape).
+quiz result is included in `jobs.result.quiz` (see §2d for shape). Quiz generation
+**always replaces** any existing questions for the segment (one quiz per segment —
+re-running never duplicates).
 
 `jobs.result` on success (without quiz):
 ```json
@@ -272,6 +274,7 @@ Body: {
     tone_id: string,    // prompts.id of the segment tone (stable id, not the name; see §2g)
     scope: "whole_segment" | "single_card",
     card_id?: string,   // required when scope = "single_card"
+    generate_quiz?: boolean,  // if true, also regenerate the quiz (replaces existing)
     overrides?: {       // per-run prompt overrides — THIS regeneration only
       scope?: string,
       tone?: string,
@@ -289,6 +292,11 @@ Body: {
 }
 → 202 { job_id: string }
 ```
+**Quiz on regen:** by default the quiz is left untouched (so after a card regen it
+may be stale relative to the new cards). Pass `generate_quiz: true` to also
+regenerate it — which **replaces** the segment's existing questions (never appends),
+sharing the job's `correlationId`; the result appears in `jobs.result.quiz`.
+
 **Per-run prompt overrides:** `overrides` lets a reviewer tune the prompt for a
 single regeneration when the default output wasn't right. Each present, non-empty
 layer replaces that layer's text for this run only; empty/whitespace or absent

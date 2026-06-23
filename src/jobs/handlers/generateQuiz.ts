@@ -231,29 +231,29 @@ export async function generateQuiz(opts: {
     );
   }
 
-  // Step 9 — generate before destroy: valid questions in hand.
-  // For regen: delete existing questions (answers first, then questions).
-  if (isRegen) {
-    const { data: existingQs } = await supabase
+  // Step 9 — generate before destroy: valid questions are in hand. ALWAYS replace
+  // any existing questions for this segment — one quiz per segment, so regenerating
+  // replaces rather than appends (delete answers first, then questions). This is
+  // unconditional (not gated on isRegen) so a re-run can never duplicate the quiz.
+  const { data: existingQs } = await supabase
+    .from("quiz_questions")
+    .select("question_id")
+    .eq("segment_id", seg_id);
+
+  if (existingQs && existingQs.length > 0) {
+    const existingIds = existingQs.map((q: { question_id: string }) => q.question_id);
+
+    const { error: ansDeleteErr } = await supabase
+      .from("quiz_answers")
+      .delete()
+      .in("question_id", existingIds);
+    if (ansDeleteErr) throw new Error(`Failed to delete existing quiz_answers for seg ${seg_id}: ${ansDeleteErr.message}`);
+
+    const { error: qDeleteErr } = await supabase
       .from("quiz_questions")
-      .select("question_id")
+      .delete()
       .eq("segment_id", seg_id);
-
-    if (existingQs && existingQs.length > 0) {
-      const existingIds = existingQs.map((q: { question_id: string }) => q.question_id);
-
-      const { error: ansDeleteErr } = await supabase
-        .from("quiz_answers")
-        .delete()
-        .in("question_id", existingIds);
-      if (ansDeleteErr) throw new Error(`Failed to delete existing quiz_answers for seg ${seg_id}: ${ansDeleteErr.message}`);
-
-      const { error: qDeleteErr } = await supabase
-        .from("quiz_questions")
-        .delete()
-        .eq("segment_id", seg_id);
-      if (qDeleteErr) throw new Error(`Failed to delete existing quiz_questions for seg ${seg_id}: ${qDeleteErr.message}`);
-    }
+    if (qDeleteErr) throw new Error(`Failed to delete existing quiz_questions for seg ${seg_id}: ${qDeleteErr.message}`);
   }
 
   // Step 10 — insert questions, then their answers
