@@ -468,10 +468,10 @@ Body: {
 Two DISTINCT track references — do not conflate: `target_track_id` (what answering
 activates; the content spec) vs `host_track_id` (where it lives).
 
-Prompt is currently read from the file `prompts/questionnaires/generate.md` (NOT
-the DB `prompts` table yet — pending the same cutover §2a got). Provider is
-selected by the `QUESTIONNAIRE_WRITER` env var (`openai` | `gemini`, default
-`openai`).
+Prompt + output schema are DB-composed (the `prompts` row, `prompt_type =
+'questionnaire'`) — not a file. Provider is selected by the `QUESTIONNAIRE_WRITER`
+env var (`openai` | `gemini`, default `openai`); the schema is stored in the
+permissive `responseSchema` form so it works on either provider.
 
 Generates ONE questionnaire **atom** as a **DRAFT** (`is_published = false`;
 publishing is the human approve action, out of scope here). The LLM returns

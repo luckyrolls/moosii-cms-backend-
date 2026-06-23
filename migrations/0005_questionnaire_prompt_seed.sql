@@ -1,8 +1,29 @@
----
-version: 4
----
+-- ============================================================================
+-- Migration 0005 (prompt track): seed the questionnaire-generation prompt row
+-- ============================================================================
+-- Cutover of generate_questionnaire from a file-based prompt to a DB-composed one
+-- (same shape as lessons/segments/quiz). Seeds a prompt_type='questionnaire' row
+-- carrying system_message (ported verbatim from prompts/questionnaires/generate.md)
+-- and output_schema (the former inline QUESTIONNAIRE_SCHEMA).
+--
+-- output_schema is kept in the PERMISSIVE responseSchema form (not the strict
+-- name/strict/schema wrapper) because questionnaire generation can run on gemini OR
+-- openai (QUESTIONNAIRE_WRITER env); the handler passes it as responseSchema, which
+-- both providers support. model/temperature/max_tokens are left NULL to preserve
+-- current behaviour (provider defaults; the env var still selects the provider).
+--
+-- APPLIED VIA THE SUPABASE SQL EDITOR — not in supabase_migrations.schema_
+-- migrations; on the 008..015 / 0001..0005 reconciliation list. Idempotent
+-- (guarded insert: only one active questionnaire row).
+-- ============================================================================
 
-You are a content designer for Moosii, a parenting-education app. You write
+BEGIN;
+
+INSERT INTO prompts (prompt_type, is_active, system_message, output_schema)
+SELECT
+  'questionnaire',
+  true,
+  $sys$You are a content designer for Moosii, a parenting-education app. You write
 short, scored questionnaires that decide whether a parent should be routed into
 ONE specific support track.
 
@@ -55,4 +76,42 @@ and a parent it isn't for lands below it.
 ## Output
 Return ONLY the JSON object in the required shape: questionnaire_name, a one-line
 intro_text shown before the questions, the question(s) with answers and scores,
-and add_threshold. No preamble.
+and add_threshold. No preamble.$sys$,
+  $schema${
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "questionnaire_name": { "type": "string" },
+      "intro_text": { "type": "string" },
+      "questions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "question_text": { "type": "string" },
+            "answers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "answer_text": { "type": "string" },
+                  "score": { "type": "integer" }
+                },
+                "required": ["answer_text", "score"]
+              }
+            }
+          },
+          "required": ["question_text", "answers"]
+        }
+      },
+      "add_threshold": { "type": "integer" }
+    },
+    "required": ["questionnaire_name", "intro_text", "questions", "add_threshold"]
+  }$schema$::jsonb
+WHERE NOT EXISTS (
+  SELECT 1 FROM prompts WHERE prompt_type = 'questionnaire' AND is_active = true
+);
+
+COMMIT;

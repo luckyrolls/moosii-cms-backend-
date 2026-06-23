@@ -1,5 +1,3 @@
-import fs from "fs/promises";
-import path from "path";
 import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
@@ -44,39 +42,33 @@ type GenAtom = {
   add_threshold: number;
 };
 
-const QUESTIONNAIRE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    questionnaire_name: { type: "string" },
-    intro_text: { type: "string" },
-    questions: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          question_text: { type: "string" },
-          answers: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                answer_text: { type: "string" },
-                score: { type: "integer" },
-              },
-              required: ["answer_text", "score"],
-            },
-          },
-        },
-        required: ["question_text", "answers"],
-      },
-    },
-    add_threshold: { type: "integer" },
-  },
-  required: ["questionnaire_name", "intro_text", "questions", "add_threshold"],
+// Prompt is DB-composed (migration 0005): prompt_type='questionnaire' row carries
+// system_message + output_schema (+ optional model/params). Kept in the permissive
+// responseSchema form so it works on either provider (openai|gemini).
+type QuestionnairePromptRow = {
+  id: string;
+  system_message: string;
+  output_schema: Record<string, unknown>;
+  model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
 };
+
+async function loadQuestionnairePromptRow(): Promise<QuestionnairePromptRow> {
+  const { data, error } = await db
+    .from("prompts")
+    .select("id, system_message, output_schema, model, temperature, max_tokens")
+    .eq("prompt_type", "questionnaire")
+    .eq("is_active", true)
+    .single();
+  if (error || !data) {
+    throw new Error(`No active questionnaire prompt row found: ${error?.message ?? "not found"}`);
+  }
+  const row = data as QuestionnairePromptRow;
+  if (!row.system_message) throw new Error("Questionnaire prompt row has no system_message");
+  if (!row.output_schema)  throw new Error("Questionnaire prompt row has no output_schema");
+  return row;
+}
 
 const MAX_GEN_ATTEMPTS = 3;
 
@@ -91,12 +83,6 @@ function resolveProvider(): "openai" | "gemini" {
     throw new Error(`Invalid QUESTIONNAIRE_WRITER="${p}" (expected "openai" or "gemini")`);
   }
   return p;
-}
-
-async function loadSystemPrompt(): Promise<string> {
-  const filePath = path.join(process.cwd(), "prompts", "questionnaires", "generate.md");
-  const raw = await fs.readFile(filePath, "utf-8");
-  return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
 }
 
 // Validate a generated atom and compute the real max achievable score
@@ -156,6 +142,10 @@ async function generateAtom(opts: {
   instructions: string;
   userPrompt: string;
   provider: "openai" | "gemini";
+  responseSchema: Record<string, unknown>;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
 }): Promise<GenerationResult> {
   const client = getLLMClient(opts.provider);
   let lastErr: Error | null = null;
@@ -164,7 +154,10 @@ async function generateAtom(opts: {
     const result = await client.generate({
       instructions:   opts.instructions,
       userPrompt:     opts.userPrompt,
-      responseSchema: QUESTIONNAIRE_SCHEMA,
+      responseSchema: opts.responseSchema,
+      ...(opts.model && { model: opts.model }),
+      ...(opts.temperature !== undefined && { temperature: opts.temperature }),
+      ...(opts.maxTokens !== undefined && { maxTokens: opts.maxTokens }),
     });
 
     if (result.finishReason === "length" || result.finishReason === "content_filter") {
@@ -240,7 +233,9 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
   }
 
   // 3. Generate the atom from the target track's name + description (the spec).
-  const instructions = await loadSystemPrompt();
+  //    Prompt + output schema (+ optional params) come from the DB row.
+  const promptRow = await loadQuestionnairePromptRow();
+  const instructions = promptRow.system_message;
   const userPrompt =
     `Target track name: ${target.track_name}\n` +
     `Target track description:\n${target.description}\n\n` +
@@ -249,7 +244,15 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
     `\nWrite the questionnaire that screens for this track.`;
 
   const llmStart = Date.now();
-  const { atom, realMax, model, raw, attempts } = await generateAtom({ instructions, userPrompt, provider });
+  const { atom, realMax, model, raw, attempts } = await generateAtom({
+    instructions,
+    userPrompt,
+    provider,
+    responseSchema: promptRow.output_schema,
+    model:          promptRow.model ?? undefined,
+    temperature:    promptRow.temperature ?? undefined,
+    maxTokens:      promptRow.max_tokens ?? undefined,
+  });
 
   // 4. Write the questionnaire root as a draft.
   const { data: q, error: qErr } = await db

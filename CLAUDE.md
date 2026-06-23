@@ -261,9 +261,8 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   end. Test in isolation before wiring together (this is how each build step is
   de-risked).
 - Prompt instructions: IMAGE prompts are versioned files (`prompts/image/`).
-  CONTENT prompts (lesson/segment/quiz) are DB-composed (`prompts` + `prompt_blocks`
-  + `content_size_profiles`), managed via admin CRUD, not files. (Exception:
-  `generateQuestionnaire` is still file-based — pending cutover.)
+  CONTENT prompts (lesson/segment/quiz/questionnaire) are DB-composed (`prompts` +
+  `prompt_blocks` + `content_size_profiles`), managed via admin CRUD, not files.
 - Prefer minimal formatting and minimal dependencies. Keep it debuggable.
 - Database types (`src/types/database.types.ts`) are generated from the live schema
   via PostgREST introspection. Regenerate when the schema changes.
@@ -309,7 +308,6 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [ ] MLP recompute — PARTIAL (`rebuild_mlp` handler; verification phase).
 - [ ] Lesson/segment-level images.
-- [ ] `generateQuestionnaire` DB-prompt cutover (still file-based).
 - [ ] React SPA frontend (separate repo).
 
 Update this status section as steps complete.
