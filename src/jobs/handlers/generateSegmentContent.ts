@@ -3,6 +3,7 @@ import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import { lintSegmentCards, type LintHit } from "../../lib/voiceLint";
+import { loadSizeProfileById, renderLengthInstruction, type SizeNumbers } from "../../lib/sizeProfile";
 import { generateQuiz } from "./generateQuiz";
 import type { Job } from "../registry";
 
@@ -27,6 +28,7 @@ export type SegmentContentPromptRow = {
   tone_block_id: string | null;
   structure_block_id: string | null;
   length_block_id: string | null;
+  size_profile_id: string | null;   // default size profile for this tone (014)
 };
 
 export type Card = { title: string; content: string };
@@ -40,7 +42,7 @@ export type Card = { title: string; content: string };
 export async function loadSegmentPromptRowById(toneId: string): Promise<SegmentContentPromptRow> {
   const { data, error } = await db
     .from("prompts")
-    .select("id, tone, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id")
+    .select("id, tone, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id, size_profile_id")
     .eq("id", toneId)
     .eq("prompt_type", "segment")
     .eq("is_active", true)
@@ -68,6 +70,26 @@ export async function loadBlock(blockId: string | null, label: string): Promise<
     throw new Error(`Failed to load ${label} block (id: ${blockId}): ${error?.message}`);
   }
   return (data as { content: string }).content;
+}
+
+// Resolve the "## Length" instruction text. Precedence:
+//   1. a size profile (per-run override id, else the tone's default) rendered from
+//      its numbers, with optional inline numeric tweaks merged on top; else
+//   2. inline numeric tweaks alone (no base profile); else
+//   3. the legacy length block (back-compat for tones with no profile).
+export async function resolveLengthContent(
+  promptRow: Pick<SegmentContentPromptRow, "size_profile_id" | "length_block_id">,
+  sizeOverride?: { profileId?: string; inline?: SizeNumbers }
+): Promise<string> {
+  const baseId = sizeOverride?.profileId ?? promptRow.size_profile_id;
+  if (baseId) {
+    const prof = await loadSizeProfileById(baseId);
+    if (prof) return renderLengthInstruction({ ...prof, ...(sizeOverride?.inline ?? {}) });
+  }
+  if (sizeOverride?.inline && Object.keys(sizeOverride.inline).length > 0) {
+    return renderLengthInstruction(sizeOverride.inline);
+  }
+  return loadBlock(promptRow.length_block_id, "length");
 }
 
 // ---------------------------------------------------------------------------
@@ -247,7 +269,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
   const [toneContent, structureContent, lengthContent] = await Promise.all([
     loadBlock(promptRow.tone_block_id,      "tone"),
     loadBlock(promptRow.structure_block_id, "structure"),
-    loadBlock(promptRow.length_block_id,    "length"),
+    resolveLengthContent(promptRow),   // size profile (default) → rendered length, else block
   ]);
 
   // Step 3 — compose prompts

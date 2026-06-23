@@ -276,7 +276,13 @@ Body: {
       scope?: string,
       tone?: string,
       structure?: string,
-      length?: string
+      length?: string,           // explicit ## Length prose; wins over size if set
+      size_profile_id?: string,  // swap to a different size profile for this run
+      size?: {                   // inline numeric tweaks merged over the base profile
+        total_words_min?, total_words_max?,
+        words_per_card_min?, words_per_card_max?,
+        max_sentence_words?, max_bullet_words?, max_bullets_per_card?
+      }
     }
   }
 }
@@ -291,7 +297,13 @@ and `output_schema` is never touched — so the card contract can't break. The
 overrides are persisted in `job.input`, and `ai_generation_log` records both the
 full rendered prompt and a note listing which layers were overridden, so deviations
 from default can be reviewed (and later promoted to defaults — a separate,
-super-admin action, not built here). The result echoes `overrides_applied: string[]`.
+super-admin action, not built here). The result echoes `overrides_applied: string[]`
+(which may include `"size_profile_id"` / `"size"`).
+
+**Size (## Length) resolution precedence:** `length` prose override → `size_profile_id`
+(a different profile for this run) with optional inline `size` numeric tweaks merged
+on top → the tone's default `size_profile_id` → the legacy length block. So a reviewer
+can tweak just `size.total_words_max` for one run without touching the tone (see §2h).
 
 Pre-fill the editor with the current layer texts via:
 ```
@@ -541,17 +553,49 @@ DELETE /tones/:id        → 204                       // removes row + its voic
   model: string; temperature: number | null; max_tokens: number | null;
   system_message: string; scope: string | null;     // read-only context
   structure_block_id: string | null; length_block_id: string | null;
+  size_profile_id: string | null;                    // default content-size profile (§2h)
   voice: { block_id: string; name: string | null; label: string | null; content: string | null } | null;
 }
 ```
-**POST (create from template)** — body `{ tone: string (required), voice_content: string (required), label?, model?, temperature? }`. Clones the shared technical layers (`system_message`/`scope`/`output_schema`/structure & length blocks/`max_tokens`, and `model`/`temperature` unless overridden) from an existing active tone, creates a new 1:1 voice block (name = slug of `tone`), and a new active tone row. Errors: `400 invalid_tone`, `409 duplicate_voice` (slug collision — rename), `409 no_template` (no existing tone to clone).
+**POST (create from template)** — body `{ tone: string (required), voice_content: string (required), label?, model?, temperature?, size_profile_id? }`. Clones the shared technical layers (`system_message`/`scope`/`output_schema`/structure & length blocks/`size_profile_id`/`max_tokens`, and `model`/`temperature`/`size_profile_id` unless overridden) from an existing active tone, creates a new 1:1 voice block (name = slug of `tone`), and a new active tone row. Errors: `400 invalid_tone`, `409 duplicate_voice` (slug collision — rename), `409 no_template` (no existing tone to clone).
 
-**PATCH** — body any of `{ tone, model, temperature, is_active, voice_content, voice_label }`. Updates the row and/or the voice block. `404 not_found` if the id isn't a segment tone.
+**PATCH** — body any of `{ tone, model, temperature, is_active, voice_content, voice_label, size_profile_id }`. Updates the row and/or the voice block; pass `size_profile_id: null` to clear (falls back to the length block). `404 not_found` if the id isn't a segment tone.
 
 **DELETE** — removes the tone row, and its voice block too unless another row still references it. `404 not_found` if missing.
 
 New tones are immediately usable: pass the returned `id` as `tone_id` to
 `generate_segment_content` / `regen_segment_content` (§2b/§2c).
+
+---
+
+### 2h. Manage content-size profiles (admin CRUD) — DELIVERED
+JWT-protected CRUD over `content_size_profiles` — reusable, structured SIZE config
+(word/sentence/bullet budgets) **decoupled from tone/voice**. A tone references one
+as its default (`Tone.size_profile_id`, §2g); a regen can override per run (§2c).
+At generation time the chosen profile's numbers render into the `## Length`
+instruction (replacing the legacy length block; the block is the fallback when no
+profile is set). Seeded `short` / `standard` / `long` (migration 014).
+```
+GET    /size-profiles        → 200 { profiles: SizeProfile[] }
+POST   /size-profiles        → 201 { profile: SizeProfile }
+PATCH  /size-profiles/:id    → 200 { profile: SizeProfile }
+DELETE /size-profiles/:id    → 204   // tones referencing it fall back to the length block (FK SET NULL)
+```
+`SizeProfile`:
+```ts
+{
+  id: string; name: string;          // name unique (slug); required on create
+  label: string | null;
+  total_words_min: number | null; total_words_max: number | null;
+  words_per_card_min: number | null; words_per_card_max: number | null;
+  max_sentence_words: number | null; max_bullet_words: number | null;
+  max_bullets_per_card: number | null;
+  is_active: boolean; created_at: string; updated_at: string;
+}
+```
+All numeric fields are optional (a non-negative integer or `null`) — the renderer
+emits a line only for fields that are set, so a profile can constrain just total
+words if you like. Errors: `400 invalid_profile`, `409 duplicate_name`, `404 not_found`.
 
 ---
 

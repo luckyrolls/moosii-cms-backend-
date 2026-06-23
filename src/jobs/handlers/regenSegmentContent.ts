@@ -3,9 +3,11 @@ import { supabase } from "../../supabase";
 import {
   loadSegmentPromptRowById,
   loadBlock,
+  resolveLengthContent,
   composeUserMessage,
   callAndParseCards,
 } from "./generateSegmentContent";
+import type { SizeNumbers } from "../../lib/sizeProfile";
 import type { Job } from "../registry";
 
 type Scope = "whole_segment" | "single_card";
@@ -23,7 +25,9 @@ type Input = {
     scope?: string;
     tone?: string;
     structure?: string;
-    length?: string;
+    length?: string;            // explicit prose for ## Length; wins over size if set
+    size_profile_id?: string;   // swap to a different size profile for this run
+    size?: SizeNumbers;         // inline numeric tweaks merged over the base profile
   };
 };
 
@@ -102,10 +106,18 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   const scopeText        = ov(overrides?.scope)     ?? promptRow.scope;
   const toneContent      = ov(overrides?.tone)      ?? await loadBlock(promptRow.tone_block_id, "tone");
   const structureContent = ov(overrides?.structure) ?? await loadBlock(promptRow.structure_block_id, "structure");
-  const lengthContent    = ov(overrides?.length)    ?? await loadBlock(promptRow.length_block_id, "length");
+  // Length precedence: explicit prose override > size override (profile/inline) >
+  // tone's default size profile > legacy length block.
+  const lengthContent    = ov(overrides?.length)
+    ?? await resolveLengthContent(promptRow, {
+         profileId: ov(overrides?.size_profile_id),
+         inline: overrides?.size,
+       });
 
-  const overridesApplied = (["scope", "tone", "structure", "length"] as const)
+  const overridesApplied: string[] = (["scope", "tone", "structure", "length"] as const)
     .filter((k) => ov(overrides?.[k]));
+  if (ov(overrides?.size_profile_id)) overridesApplied.push("size_profile_id");
+  if (overrides?.size && Object.keys(overrides.size).length > 0) overridesApplied.push("size");
 
   // Step 4 — compose prompts (single_card adds neighbor context)
   const userMessage = composeUserMessage({

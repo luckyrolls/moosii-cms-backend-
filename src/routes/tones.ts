@@ -43,6 +43,7 @@ async function assembleTones(rows: any[]): Promise<any[]> {
     scope:              r.scope,           // read-only context
     structure_block_id: r.structure_block_id,
     length_block_id:    r.length_block_id,
+    size_profile_id:    r.size_profile_id, // default content-size profile (014)
     voice: r.tone_block_id && blocks[r.tone_block_id]
       ? {
           block_id: r.tone_block_id,
@@ -55,7 +56,7 @@ async function assembleTones(rows: any[]): Promise<any[]> {
 }
 
 const TONE_SELECT =
-  "id, tone, is_active, model, temperature, max_tokens, system_message, scope, tone_block_id, structure_block_id, length_block_id";
+  "id, tone, is_active, model, temperature, max_tokens, system_message, scope, tone_block_id, structure_block_id, length_block_id, size_profile_id";
 
 // GET /tones — all segment tones (active + inactive) with their voice block
 router.get("/", async (_req: Request, res: Response): Promise<void> => {
@@ -87,7 +88,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
   // 1. Template: any active segment tone supplies the shared technical fields.
   const { data: tmpl, error: tErr } = await db
     .from("prompts")
-    .select("system_message, scope, output_schema, structure_block_id, length_block_id, model, temperature, max_tokens")
+    .select("system_message, scope, output_schema, structure_block_id, length_block_id, size_profile_id, model, temperature, max_tokens")
     .eq("prompt_type", "segment").eq("is_active", true)
     .order("created_at", { ascending: true }).limit(1).maybeSingle();
   if (tErr) { apiError(res, 500, "db_error", tErr.message); return; }
@@ -121,6 +122,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       output_schema:      tmpl.output_schema,
       structure_block_id: tmpl.structure_block_id,
       length_block_id:    tmpl.length_block_id,
+      size_profile_id:    nonEmpty(body.size_profile_id) ? body.size_profile_id : tmpl.size_profile_id,
       model:              nonEmpty(body.model) ? body.model : tmpl.model,
       temperature:        typeof body.temperature === "number" ? body.temperature : tmpl.temperature,
       max_tokens:         tmpl.max_tokens,
@@ -152,6 +154,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   if (nonEmpty(body.model))                      rowPatch.model = body.model;
   if (typeof body.temperature === "number")      rowPatch.temperature = body.temperature;
   if (typeof body.is_active === "boolean")       rowPatch.is_active = body.is_active;
+  if ("size_profile_id" in body)                 rowPatch.size_profile_id = nonEmpty(body.size_profile_id) ? body.size_profile_id : null;
 
   const { error: uErr } = await db.from("prompts").update(rowPatch).eq("id", req.params.id);
   if (uErr) { apiError(res, 500, "db_error", uErr.message); return; }
