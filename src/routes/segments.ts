@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { createJob, startJobsBatch } from "../jobs/runner";
 import { apiError } from "../lib/errors";
-import { loadPromptRow, loadBlock } from "../jobs/handlers/generateSegmentContent";
+import { loadSegmentPromptRowById, loadBlock } from "../jobs/handlers/generateSegmentContent";
 
 const router = Router();
 
@@ -95,7 +95,7 @@ router.post("/:id/generate-images", async (req: Request, res: Response): Promise
   startJobsBatch(jobs.map((j) => j.job_id), limit);
 });
 
-// GET /segments/:id/regen-prompt?tone=<tone>
+// GET /segments/:id/regen-prompt?tone_id=<prompts.id>
 // Returns the current text of each prompt layer for the given tone, so the CMS
 // can pre-fill the regen prompt editor before a per-run override. The layers are
 // tone-scoped (identical across segments), so :id is contextual only.
@@ -103,14 +103,14 @@ router.post("/:id/generate-images", async (req: Request, res: Response): Promise
 // (scope / tone / structure / length) are the starting text for the regen
 // `overrides` input.
 router.get("/:id/regen-prompt", async (req: Request, res: Response): Promise<void> => {
-  const tone = (req.query.tone as string | undefined)?.trim();
-  if (!tone) {
-    apiError(res, 400, "missing_tone", "query param 'tone' is required");
+  const toneId = (req.query.tone_id as string | undefined)?.trim();
+  if (!toneId) {
+    apiError(res, 400, "missing_tone_id", "query param 'tone_id' is required");
     return;
   }
 
   try {
-    const promptRow = await loadPromptRow(tone);
+    const promptRow = await loadSegmentPromptRowById(toneId);
     const [toneContent, structureContent, lengthContent] = await Promise.all([
       loadBlock(promptRow.tone_block_id, "tone"),
       loadBlock(promptRow.structure_block_id, "structure"),
@@ -118,7 +118,8 @@ router.get("/:id/regen-prompt", async (req: Request, res: Response): Promise<voi
     ]);
 
     res.json({
-      tone,
+      tone_id: toneId,
+      tone:    promptRow.tone,
       system_message: promptRow.system_message, // read-only; not overridable
       editable: {
         scope:     promptRow.scope ?? "",

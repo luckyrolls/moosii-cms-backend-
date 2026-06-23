@@ -202,7 +202,8 @@ Body: {
   type: "generate_segment_content",
   input: {
     seg_id: string,
-    tone: string,           // selects the prompt row, e.g. "Sturdy Leadership"
+    tone_id: string,        // prompts.id of the segment tone (stable id, NOT the
+                            // display name — see §2g). Must be an active tone.
     generate_quiz?: boolean // if true, also generates the quiz in-sequence
                             // (same job, shared correlationId — see §2d)
   }
@@ -268,7 +269,7 @@ Body: {
   type: "regen_segment_content",
   input: {
     seg_id: string,
-    tone: string,
+    tone_id: string,    // prompts.id of the segment tone (stable id, not the name; see §2g)
     scope: "whole_segment" | "single_card",
     card_id?: string,   // required when scope = "single_card"
     overrides?: {       // per-run prompt overrides — THIS regeneration only
@@ -294,14 +295,15 @@ super-admin action, not built here). The result echoes `overrides_applied: strin
 
 Pre-fill the editor with the current layer texts via:
 ```
-GET /segments/:id/regen-prompt?tone=<tone>
+GET /segments/:id/regen-prompt?tone_id=<prompts.id>
 Authorization: Bearer <jwt>
 → 200 {
-  tone: string,
+  tone_id: string,
+  tone: string,                      // display name
   system_message: string,            // read-only (not overridable)
   editable: { scope, tone, structure, length }  // starting text for `overrides`
 }
-→ 404 { error: { code: "prompt_not_found", ... } }  // no active prompt row for tone
+→ 404 { error: { code: "prompt_not_found", ... } }  // no active tone with that id
 ```
 
 **Precondition:** the segment's lesson must not be published (`lessons.is_published
@@ -516,6 +518,40 @@ Type-irrelevant fields are normalized to `null` on write. PATCH merges the body
 onto the existing row then re-validates the whole rule, so a partial edit that
 changes `type` still must satisfy the new type's requirements. Errors:
 `400 invalid_rule` (validation), `409 duplicate_rule_key`, `404 not_found`.
+
+---
+
+### 2g. Manage tones (admin CRUD) — DELIVERED
+JWT-protected CRUD over **segment tones**. A tone = one segment `prompts` row +
+its 1:1 voice block (`prompt_blocks`, `block_type='tone'`). Everything selects a
+tone by its stable **`id`** (= `prompts.id`); `tone` is just the editable display
+name. The "technical" layers (`system_message`, `scope`, `output_schema`,
+structure/length blocks) are **not** editable here — only the voice + name/params.
+```
+GET    /tones            → 200 { tones: Tone[] }   // all segment tones (active + inactive)
+GET    /tones/:id        → 200 { tone: Tone }
+POST   /tones            → 201 { tone: Tone }       // create from template
+PATCH  /tones/:id        → 200 { tone: Tone }       // update voice / name / model / params / is_active
+DELETE /tones/:id        → 204                       // removes row + its voice block (if unshared)
+```
+`Tone`:
+```ts
+{
+  id: string; tone: string | null; is_active: boolean;
+  model: string; temperature: number | null; max_tokens: number | null;
+  system_message: string; scope: string | null;     // read-only context
+  structure_block_id: string | null; length_block_id: string | null;
+  voice: { block_id: string; name: string | null; label: string | null; content: string | null } | null;
+}
+```
+**POST (create from template)** — body `{ tone: string (required), voice_content: string (required), label?, model?, temperature? }`. Clones the shared technical layers (`system_message`/`scope`/`output_schema`/structure & length blocks/`max_tokens`, and `model`/`temperature` unless overridden) from an existing active tone, creates a new 1:1 voice block (name = slug of `tone`), and a new active tone row. Errors: `400 invalid_tone`, `409 duplicate_voice` (slug collision — rename), `409 no_template` (no existing tone to clone).
+
+**PATCH** — body any of `{ tone, model, temperature, is_active, voice_content, voice_label }`. Updates the row and/or the voice block. `404 not_found` if the id isn't a segment tone.
+
+**DELETE** — removes the tone row, and its voice block too unless another row still references it. `404 not_found` if missing.
+
+New tones are immediately usable: pass the returned `id` as `tone_id` to
+`generate_segment_content` / `regen_segment_content` (§2b/§2c).
 
 ---
 

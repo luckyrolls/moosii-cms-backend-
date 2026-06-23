@@ -17,6 +17,7 @@ const db = supabase as any;
 
 export type SegmentContentPromptRow = {
   id: string;
+  tone: string | null;           // display name (for logs); selection is by id
   system_message: string;
   scope: string | null;
   output_schema: Record<string, unknown>;
@@ -34,23 +35,25 @@ export type Card = { title: string; content: string };
 // Shared loaders (exported for regen handler)
 // ---------------------------------------------------------------------------
 
-export async function loadPromptRow(tone: string): Promise<SegmentContentPromptRow> {
+// Select a segment tone by its stable prompts.id (NOT the display name — names are
+// editable). Must be an active segment tone.
+export async function loadSegmentPromptRowById(toneId: string): Promise<SegmentContentPromptRow> {
   const { data, error } = await db
     .from("prompts")
-    .select("id, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id")
+    .select("id, tone, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id")
+    .eq("id", toneId)
     .eq("prompt_type", "segment")
-    .eq("tone", tone)
     .eq("is_active", true)
     .single();
 
   if (error || !data) {
-    throw new Error(`No active segment prompt for tone "${tone}": ${error?.message}`);
+    throw new Error(`No active segment tone with id "${toneId}": ${error?.message ?? "not found"}`);
   }
 
   const row = data as unknown as SegmentContentPromptRow;
-  if (!row.system_message) throw new Error(`Prompt row for tone "${tone}" has no system_message`);
-  if (!row.output_schema)  throw new Error(`Prompt row for tone "${tone}" has no output_schema`);
-  if (!row.model)          throw new Error(`Prompt row for tone "${tone}" has no model`);
+  if (!row.system_message) throw new Error(`Tone ${toneId} has no system_message`);
+  if (!row.output_schema)  throw new Error(`Tone ${toneId} has no output_schema`);
+  if (!row.model)          throw new Error(`Tone ${toneId} has no model`);
   return row;
 }
 
@@ -211,14 +214,14 @@ export async function callAndParseCards(opts: CallAndParseOpts): Promise<{
 
 type Input = {
   seg_id: string;
-  tone: string;
+  tone_id: string;         // prompts.id of the segment tone (stable; not the display name)
   generate_quiz?: boolean; // if true, generate quiz after cards using the same correlationId
 };
 
 export async function generateSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
-  if (!seg_id) throw new Error("input.seg_id is required");
-  if (!tone)   throw new Error("input.tone is required");
+  const { seg_id, tone_id, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
+  if (!seg_id)  throw new Error("input.seg_id is required");
+  if (!tone_id) throw new Error("input.tone_id is required");
 
   const correlationId = randomUUID();
 
@@ -239,7 +242,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
   if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
 
   // Step 2 — load prompt row + blocks in parallel
-  const promptRow = await loadPromptRow(tone);
+  const promptRow = await loadSegmentPromptRowById(tone_id);
 
   const [toneContent, structureContent, lengthContent] = await Promise.all([
     loadBlock(promptRow.tone_block_id,      "tone"),
@@ -268,7 +271,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
     operation:         "segment_content",
     relatedEntityType: "segment",
     relatedEntityId:   seg_id,
-    notes:             `tone: ${tone}`,
+    notes:             `tone: ${promptRow.tone ?? tone_id} (${tone_id})`,
   });
 
   // Step 5 — replace sub_segments (whole-unit: delete then insert).

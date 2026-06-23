@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import {
-  loadPromptRow,
+  loadSegmentPromptRowById,
   loadBlock,
   composeUserMessage,
   callAndParseCards,
@@ -12,7 +12,7 @@ type Scope = "whole_segment" | "single_card";
 
 type Input = {
   seg_id: string;
-  tone: string;
+  tone_id: string;  // prompts.id of the segment tone (stable; not the display name)
   scope: Scope;
   card_id?: string; // required when scope = "single_card"
   // Per-run prompt overrides (this regeneration only — the prompts row and
@@ -39,10 +39,10 @@ type SubSegmentRow = {
 // ---------------------------------------------------------------------------
 
 export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone, scope, card_id, overrides } = job.input as Input;
-  if (!seg_id) throw new Error("input.seg_id is required");
-  if (!tone)   throw new Error("input.tone is required");
-  if (!scope)  throw new Error("input.scope is required (whole_segment | single_card)");
+  const { seg_id, tone_id, scope, card_id, overrides } = job.input as Input;
+  if (!seg_id)  throw new Error("input.seg_id is required");
+  if (!tone_id) throw new Error("input.tone_id is required");
+  if (!scope)   throw new Error("input.scope is required (whole_segment | single_card)");
   if (scope === "single_card" && !card_id) {
     throw new Error("input.card_id is required for scope=single_card");
   }
@@ -95,7 +95,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   // Step 3 — load prompt row + blocks, then apply any per-run overrides.
   // An override applies only when non-empty (empty/whitespace falls back to the
   // DB default). system_message is never overridable; output_schema is untouched.
-  const promptRow = await loadPromptRow(tone);
+  const promptRow = await loadSegmentPromptRowById(tone_id);
   const ov = (v?: string): string | undefined => (v && v.trim() ? v : undefined);
 
   const systemMessage    = promptRow.system_message;
@@ -137,7 +137,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     operation:         "segment_content_regen",
     relatedEntityType: logEntityType,
     relatedEntityId:   logEntityId,
-    notes:             `scope: ${scope}, tone: ${tone}, overrides: [${overridesApplied.join(", ") || "none"}]`,
+    notes:             `scope: ${scope}, tone: ${promptRow.tone ?? tone_id} (${tone_id}), overrides: [${overridesApplied.join(", ") || "none"}]`,
   });
 
   // Post-parse validation: single_card must produce exactly 1 card
