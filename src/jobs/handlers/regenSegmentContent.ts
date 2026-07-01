@@ -8,6 +8,7 @@ import {
   callAndParseCards,
 } from "./generateSegmentContent";
 import { generateQuiz } from "./generateQuiz";
+import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { SizeNumbers } from "../../lib/sizeProfile";
 import type { Job } from "../registry";
 
@@ -134,6 +135,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     lessonTitle:        lesson.lesson_name ?? "",
     segmentName:        segment.segment_name ?? "",
     segmentDescription: segment.description ?? null,
+    avoid:              await loadPromptBanInstruction(),
     regenTarget: scope === "single_card" && targetCard ? {
       sequence:   targetCard.sequence,
       totalCards: existingCards.length,

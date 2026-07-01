@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
-import { lintSegmentCards, type LintHit } from "../../lib/voiceLint";
+import { lintSegmentCards, loadPromptBanInstruction, type LintHit } from "../../lib/voiceLint";
 import { loadSizeProfileById, renderLengthInstruction, type SizeNumbers } from "../../lib/sizeProfile";
 import { generateQuiz } from "./generateQuiz";
 import type { Job } from "../registry";
@@ -114,6 +114,7 @@ export function composeUserMessage(opts: {
   lessonTitle: string;
   segmentName: string;
   segmentDescription: string | null;
+  avoid?: string;            // error-severity voice-lint bans (prevention layer)
   regenTarget?: RegenTarget;
 }): string {
   const parts: string[] = [];
@@ -121,6 +122,7 @@ export function composeUserMessage(opts: {
   if (opts.toneContent)      parts.push(`## Tone\n\n${opts.toneContent}`);
   if (opts.structureContent) parts.push(`## Structure\n\n${opts.structureContent}`);
   if (opts.lengthContent)    parts.push(`## Length\n\n${opts.lengthContent}`);
+  if (opts.avoid)            parts.push(`## Avoid\n\n${opts.avoid}`);
 
   const ctx = [`Lesson title: ${opts.lessonTitle}`, `Segment: ${opts.segmentName}`];
   if (opts.segmentDescription) ctx.push(`Description: ${opts.segmentDescription}`);
@@ -272,7 +274,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
     resolveLengthContent(promptRow),   // size profile (default) → rendered length, else block
   ]);
 
-  // Step 3 — compose prompts
+  // Step 3 — compose prompts (avoid = error-severity voice-lint bans, injected)
   const systemMessage = promptRow.system_message;
   const userMessage = composeUserMessage({
     scope:              promptRow.scope,
@@ -282,6 +284,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
     lessonTitle:        lesson.lesson_name ?? "",
     segmentName:        segment.segment_name ?? "",
     segmentDescription: segment.description ?? null,
+    avoid:              await loadPromptBanInstruction(),
   });
 
   // Step 4 — generate (withRetry lives inside the provider)

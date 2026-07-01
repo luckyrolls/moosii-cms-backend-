@@ -534,6 +534,13 @@ JWT-protected CRUD over the `voice_lint_rules` table — the editable phrase lis
 the deterministic voice lint (§2b `lint`) runs against. Edits take effect on the
 **next** content generation (no deploy). All routes require
 `Authorization: Bearer <jwt>`; errors use `{ error: { code, message } }`.
+
+**Severity drives prevention vs detection.** A `ban`/`opener` rule with
+`severity='error'` is BOTH injected into the segment-content prompt as a hard
+"never use this" instruction (prevention — the model avoids it up front) AND
+flagged post-generation. `severity='warn'` is detection-only. `limit`/`repeat`/
+`conditional` are always detection-only (can't be prevented via prompt). So
+flipping a phrase rule to `error` in the CMS makes it actually steer generation.
 ```
 GET    /voice-lint-rules            → 200 { rules: Rule[] }   // all, active + inactive
 POST   /voice-lint-rules            → 201 { rule: Rule }      // create

@@ -166,6 +166,32 @@ async function loadVoiceRules(): Promise<Rule[]> {
   return (data ?? []) as Rule[];
 }
 
+// PREVENTION layer: render the error-severity phrase rules into a prompt
+// instruction so the model avoids them up front (complements the post-generation
+// lint). Only `error` severity + phrase types (ban / opener) — warn stays
+// detection-only, and limit/repeat/conditional can't be prevented via prompt.
+// Never throws — returns "" on any error or when there are no error-phrase rules.
+export async function loadPromptBanInstruction(): Promise<string> {
+  try {
+    const rules = await loadVoiceRules();
+    const q = (p: string) => `"${p}"`;
+    const bans = rules
+      .filter((r) => r.severity === "error" && r.type === "ban" && r.pattern)
+      .map((r) => q(r.pattern as string));
+    const openers = rules
+      .filter((r) => r.severity === "error" && r.type === "opener" && r.pattern)
+      .map((r) => q(r.pattern as string));
+
+    const parts: string[] = [];
+    if (bans.length)    parts.push(`Never use these phrases or close variants of them: ${bans.join(", ")}.`);
+    if (openers.length) parts.push(`Never open a card with: ${openers.join(", ")}.`);
+    return parts.join(" ");
+  } catch (err) {
+    console.warn(`[voiceLint] loadPromptBanInstruction failed: ${err instanceof Error ? err.message : String(err)}`);
+    return "";
+  }
+}
+
 // Load active rules and lint the cards. Never throws — a lint failure must not
 // break generation; on any error it returns an empty hit list.
 export async function lintSegmentCards(cards: LintCard[]): Promise<LintHit[]> {
