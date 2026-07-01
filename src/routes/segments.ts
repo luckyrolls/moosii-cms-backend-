@@ -160,4 +160,37 @@ router.get("/:id/generation-log", async (req: Request, res: Response): Promise<v
   res.json({ found: !!data, log: data ?? null });
 });
 
+// POST /segments/:id/approve — content approval. Goes through the backend
+// (service-role) so it bypasses the segments RLS wall that blocks a direct
+// browser UPDATE. Mirrors the image-approve / questionnaire-publish pattern.
+router.post("/:id/approve", async (req: Request, res: Response): Promise<void> => {
+  const approvedBy = (req.body ?? {}).approved_by as string | undefined;
+  const { data, error } = await supabase
+    .from("segments")
+    .update({
+      seg_status: "complete",
+      approved_by: approvedBy ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", req.params.id)
+    .select("id, seg_status, approved_by")
+    .maybeSingle();
+  if (error) { apiError(res, 500, "db_error", error.message); return; }
+  if (!data) { apiError(res, 404, "not_found", "segment not found"); return; }
+  res.json({ segment: data });
+});
+
+// POST /segments/:id/unapprove — revert content approval to pending.
+router.post("/:id/unapprove", async (req: Request, res: Response): Promise<void> => {
+  const { data, error } = await supabase
+    .from("segments")
+    .update({ seg_status: "pending", approved_by: null, updated_at: new Date().toISOString() })
+    .eq("id", req.params.id)
+    .select("id, seg_status, approved_by")
+    .maybeSingle();
+  if (error) { apiError(res, 500, "db_error", error.message); return; }
+  if (!data) { apiError(res, 404, "not_found", "segment not found"); return; }
+  res.json({ segment: data });
+});
+
 export default router;
