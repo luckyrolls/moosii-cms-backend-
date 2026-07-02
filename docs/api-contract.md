@@ -664,20 +664,148 @@ while a tone references it — repoint first), `404 not_found`.
 
 ---
 
-## 3. MLP recompute — [DESIGN]
+### 2j. Classify free-form parent update — slice 1 DELIVERED (enrich-only, dry-run, internal/test)
+
+Layer 3 of the questionnaire roadmap (free-form intake → classify →
+enrich/suppress). Built ENRICH-ONLY and DRY-RUN first; INTERNAL/TEST-ONLY
+until the distress path (below) is real. A parent's prose is classified against
+the live catalog of tracks + the questionnaires that route into them, and the
+classifier PROPOSES track activations. It does not apply them yet.
+
+**Two deliberate deviations from the §Conventions defaults — stated so they
+don't read as mistakes:**
+1. **Synchronous, not 202+poll.** A single classification is short (one LLM
+   call) and the CMS harness is interactive tuning — you want the result inline,
+   not a poll cycle. So this endpoint returns the classification directly, unlike
+   AI *generation* work (which stays async). The future async path — processing
+   app-submitted updates off the `user_update_events` log as a job — is separate
+   and still `[DESIGN]`.
+2. **Not a `POST /jobs` type (for this path).** Because it's synchronous and
+   side-effect-free by default, the harness path is a direct endpoint, not a job.
+   If/when the app feeds updates for async processing, THAT path may become a
+   `classify_update` job type; this one isn't.
+
+Auth: **JWT** (browser SPA → backend), like every other CMS-facing route. Not
+`INTERNAL_API_KEY` — the harness is a browser client, and INTERNAL_API_KEY is
+reserved for server-to-server/cron (§Conventions).
 
 ```
-POST /mlp/recompute                    // [DECIDE] all users? one user? trigger scope
-Body: { user_id?: string, ... }        // [DECIDE]
-→ 202 { job_id: string }
+POST /classify-update
+Authorization: Bearer <jwt>
+Body: {
+  user_id: string,
+  child_id: string,
+  raw_text: string,
+  persist?: boolean,   // default false. true = write event to user_update_events
+  apply?:   boolean    // default false. NO-OP until enrich-apply slice ships.
+}
+→ 200 {
+  classification: {
+    relevant: boolean,            // false = no actionable signal (the COMMON case)
+    signals: [
+      { type: string,             // e.g. "milestone" | "concern"
+        value: string,            // e.g. "crawling"
+        confidence: number,       // 0..1
+        evidence_span: string }   // substring of raw_text that triggered it
+    ]
+  },
+  proposed_enrichments: [         // tracks that WOULD activate (dry-run: not applied)
+    { action: "activate_track",
+      track_id: string,           // validated against the real catalog before return
+      track_name: string,
+      confidence: number,
+      source_signal: string }
+  ],
+  redundant_questionnaires: [],   // SUPPRESS layer — not built. Always [] for now.
+  distress: { detected: false },  // STUBBED false. Real path required before app-facing input.
+  provenance: {
+    model: string, prompt_version: string,
+    catalog_version: string, correlation_id: string
+  }
+}
+→ error: { error: { code, message } }   // standard envelope (§Conventions)
 ```
-Repopulates the materialized `user_mlp` table. **There is no recompute function
-in the DB** — this logic lives here (port from BuildShip / app logic). Inputs to
-the ordering algorithm: item `priority`, track `priority`/`order`/`weight`,
-`age_track_weights` (age-bracketed), global `consts` (`weight_factor`,
-`mlp_limit`, `daily_limit`). Triggered when tracks change (CMS) or a user answers
-a questionnaire (runtime — `[DECIDE]` whether that path is backend or app/edge).
-`user_mlp_mods` holds per-user manual overrides the recompute must respect.
+
+**Invariants that hold as the feature grows (shape never changes):**
+- `redundant_questionnaires` and `distress` are PRESENT-BUT-EMPTY from day one;
+  later slices populate them, the shape doesn't move.
+- `relevant: false` is a valid, expected, COMMON outcome — not an error. The
+  classifier is prompted to prefer it and not stretch for weak matches.
+- Proposed `track_id`s are always validated against the real catalog before
+  returning; unresolved ids are dropped (anti-hallucination gate, same discipline
+  as §2e validating `add_threshold` against real answer scores).
+- Nothing mutates user state unless `apply=true` — and `apply` is a no-op until
+  the enrich-apply slice. Classification is pure.
+
+**`distress` is stubbed `false` ONLY because this is internal/test-only.** Before
+any parent-facing free-text input ships in the app, a real concern/distress path
+is required: lower confidence bar than the milestone path, enriches toward support
+only, and a possibly-concerning update must NEVER resolve to a no-op. This is a
+hard gate on app integration, tracked here so it can't be skipped.
+
+**Prompt + catalog:** classifier prompt lives in the DB `prompts` tables
+(`prompt_type='classify_update'`), versioned, per the no-hardcoded-prompts rule.
+The catalog (every track's name+description + the questionnaires that route into
+each, read from `questionnaire_response` via the §7 view) is assembled fresh per
+call through one function and stamped as `catalog_version` for provenance — so the
+later swap from "whole catalog" to "filtered candidate set" is a one-function
+change with no contract impact. Track DESCRIPTIONS are load-bearing here, same
+single source of truth as §2a / §2e.
+
+**Append-only log:** `user_update_events` stores raw prose verbatim (`user_id`,
+`child_id`, `raw_text`, `source`, `created_at`, `processing_status`,
+`correlation_id`) — source of truth, never mutated. Written only when
+`persist=true`. Derived classifications are separate linked rows, never
+overwriting the prose.
+
+**Build slices:** (1) dry-run classify-and-propose, synchronous, no apply [this
+section]; (2) enrich-apply — activate proposed tracks via the existing
+`user_active_tracks` machinery when `apply=true`; (3) suppress —
+`redundant_questionnaires` populates, gated to suppressible questionnaires only,
+clinical screens structurally never-suppressible; (4) real distress path +
+app-facing input. Later slices only fill fields; they don't change this shape.
+
+**Slice 1 — DELIVERED** (`POST /classify-update`, JWT, synchronous): prompt in DB
+(`prompt_type='classify_update'`, migration 016); catalog assembled fresh per call
+via `assembleCatalog()` and hashed for `catalog_version`; provider via
+`CLASSIFY_WRITER` (default openai). Confidence floor `0.6` (below → dropped, and if
+no signal survives → `relevant:false`). Proposed `track_id`s validated against the
+catalog; unresolved dropped. `prompt_version` = `sha256(system_message)[:12]`.
+`persist=true` writes `user_update_events` (raw prose) + `user_update_signals`
+(derived, with `matched`/`matched_track_id` for later unmatched-signal queries);
+`apply=true` is a no-op. `distress` stubbed `false` — internal/test-only until the
+slice-4 path exists.
+
+---
+
+## 3. MLP recompute — DELIVERED
+
+The recompute logic lives here (`rebuildOneUser()` + the atomic `rebuild_user_mlp`
+rpc, migration 007) and writes the production `user_mlp` table (cut over from the
+`user_mlp_v2` shadow in migration 017). Two entry points:
+
+**App-facing (mobile) — `POST /mlp/recompute`** — the path the RN app uses after
+onboarding / a completed questionnaire.
+```
+POST /mlp/recompute
+Authorization: Bearer <end-user Supabase JWT>   // the app's anon-key session token
+Body: {}                                         // user_id is derived from the token, NEVER the body
+→ 200 { ok: true, user_id, items_written }        // SYNCHRONOUS — recompute done before responding
+→ 401 unauthorized (bad/missing token) · 500 recompute_failed
+```
+Verifies **any** signed-in Supabase user (not the admin gate), recomputes only
+**that** user's MLP, synchronously (one fast rpc — no job/poll; the app can't read
+the `jobs` table under its RLS anyway). Dependency: whatever applies a
+questionnaire's routing → `user_active_tracks` must run **before** this, or the
+recompute won't reflect the new answers.
+
+**Admin/server — `POST /jobs { type:"rebuild_mlp" }`** — `input:{ user_id }` for one
+user, or `input:{ scope:"all" }` for a full rebuild. Async (202 + job). Admin JWT
+or `INTERNAL_API_KEY`. Used by CMS/tooling.
+
+Ordering inputs: item `priority`, track `priority`/`order`/`weight`,
+`age_track_weights`, global `consts`. `user_mlp_mods` (per-user manual overrides)
+— **not yet applied by the recompute** (BuildShip did; port pending).
 
 ---
 
@@ -702,14 +830,16 @@ Poll while `queued`/`running`; stop on `succeeded`/`failed`. Define once as a
 shared constant; the reaper and the frontend poll both key off these strings.
 
 All content/quiz/lesson job types flow through the same `jobs` table and the
-same polling model. New `jobs.type` values in use:
+same polling model. The authoritative `JobType` union is defined once in §2
+("Job types in use") — this list must match it, not restate a divergent copy:
 ```ts
 type JobType =
   | 'generate_sub_segment_image'
   | 'generate_lessons'
   | 'generate_segment_content'
   | 'regen_segment_content'
-  | 'generate_quiz';
+  | 'generate_quiz'
+  | 'generate_questionnaire';   // §2e
 ```
 
 ---
@@ -750,6 +880,15 @@ backend must preserve and the frontend leans on:
   `segment_id`, `lesson_id`, `answer_status`) and `quiz_answers` (`id`,
   `question_id`, `answer_text`, `is_correct`, `response`, `score`). Separate rows,
   not jsonb. See §7 for the legacy tables these replace.
+- **Questionnaire atom tables (§2e):** `questionnaire` (`id`, `track_id` = HOST
+  track, `age` = single age gate in months, `is_published`, `is_score_based`,
+  `intro_text`), `questionnaire_questions` (`answer_status` `pending`/`approved`),
+  `questionnaire_answers` (each carries a `score`), and `questionnaire_response`
+  (the routing rule — `score_min_range`, `score_max_range`, `track_id` = TARGET
+  track, `add`, `tag_id`). Two distinct track refs: host on `questionnaire`,
+  target on `questionnaire_response`. Routing is read via the
+  `questionnaire_response_with_track_tag` view (§7). The atom is created as a
+  draft (`is_published=false`); publish is the human approve step (§2e).
 
 ---
 
@@ -762,7 +901,7 @@ backend must preserve and the frontend leans on:
   per lesson. Not returned for the frontend to commit.
 - **Content gen grain (was §6.2):** segment-level. One `generate_segment_content`
   job per segment, writes N `sub_segments` rows.
-- **Prompt composition:** backend-owned. CMS sends references (`seg_id`, `tone`);
+- **Prompt composition:** backend-owned. CMS sends references (`seg_id`, `tone_id`);
   backend fetches `prompts` + `prompt_blocks` from DB and composes. No prompt text
   in API requests.
 

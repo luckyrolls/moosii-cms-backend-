@@ -14,6 +14,8 @@ import sizeProfilesRouter from "./routes/sizeProfiles";
 import structureBlocksRouter from "./routes/structureBlocks";
 import questionnairesRouter from "./routes/questionnaires";
 import questionnairePromptRouter from "./routes/questionnairePrompt";
+import classifyUpdateRouter from "./routes/classifyUpdate";
+import mlpRouter from "./routes/mlp";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
 
@@ -42,6 +44,11 @@ app.use("/size-profiles", jwtAuthMiddleware, sizeProfilesRouter);
 app.use("/structure-blocks", jwtAuthMiddleware, structureBlocksRouter);
 app.use("/questionnaires", jwtAuthMiddleware, questionnairesRouter);
 app.use("/questionnaire-prompt", jwtAuthMiddleware, questionnairePromptRouter);
+app.use("/classify-update", jwtAuthMiddleware, classifyUpdateRouter);
+
+// App-facing (mobile): verifies the end-user's Supabase JWT itself (NOT the admin
+// gate). Mounted without jwtAuthMiddleware.
+app.use("/mlp", mlpRouter);
 
 // Job creation — accepts the internal shared secret (server-to-server) OR a
 // CMS admin's Supabase JWT (browser).
