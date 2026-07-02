@@ -7,10 +7,10 @@ import {
 } from "../../mlp/generateFullMLP";
 import type { Job } from "../registry";
 
-// The MLP views, the `tracks` table, user_mlp_v2, and the rebuild_user_mlp rpc
-// are not in the generated database.types yet. Use an untyped bridge (same
-// pattern as generateSegmentContent). Regenerate types after running the
-// migrations and drop this cast.
+// The MLP views, the `tracks` table, user_mlp, and the rebuild_user_mlp rpc
+// (which writes production user_mlp as of migration 017) are not in the generated
+// database.types yet. Use an untyped bridge (same pattern as generateSegmentContent).
+// Regenerate types after running the migrations and drop this cast.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 

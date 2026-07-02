@@ -306,7 +306,9 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [~] `database.types.ts` — generated, but STALE (predates 0001/006–015); content
       handlers/routes use `(supabase as any)` bridges. Regenerate to drop them.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
-- [ ] MLP recompute — PARTIAL (`rebuild_mlp` handler; verification phase).
+- [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
+      `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. Still needed:
+      an app-facing `POST /mlp/recompute` (end-user JWT, user-scoped) for the mobile trigger.
 - [ ] Lesson/segment-level images.
 - [ ] React SPA frontend (separate repo).
 
