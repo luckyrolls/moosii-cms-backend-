@@ -460,7 +460,13 @@ Body: {
                               //   (placement/visibility only; does NOT shape content)
     age_months: number,       // required — single age gate (months) the questionnaire surfaces at
     topic?: string,           // optional — free-string theme (NOT a topics.id)
-    topic_id?: string         // optional — real topics.id FK on the questionnaire row
+    topic_id?: string,        // optional — real topics.id FK on the questionnaire row
+    milestone_id?: string     // optional — milestones.id. When present the questionnaire
+                              //   is born MAPPED (questionnaire.milestone_id) and is
+                              //   suppressible per slice 3 (redundant once the child has
+                              //   that fact). Absent → NULL (unsuppressible by
+                              //   construction). Validated against milestones; the job
+                              //   fails clearly if it doesn't resolve.
   }
 }
 → 202 { job_id: string }
@@ -496,6 +502,7 @@ fabricated.)
   "host_track_id": "uuid",
   "target_track_id": "uuid",
   "age_months": 6,
+  "milestone_id": null,
   "questions_written": 5,
   "answers_written": 15,
   "response_rule_id": "uuid",

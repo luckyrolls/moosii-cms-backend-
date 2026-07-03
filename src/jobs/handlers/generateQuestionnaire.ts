@@ -26,6 +26,8 @@ type Input = {
   age_months: number;   // single age gate (months) — when the questionnaire surfaces
   topic?: string;       // theme; free string for now (NOT a topics.id)
   topic_id?: string;    // optional real topics.id FK
+  milestone_id?: string; // optional milestones.id — born mapped, suppressible per slice 3.
+                         //   Absent → NULL (unsuppressible). Validated against milestones.
 };
 
 // ---------------------------------------------------------------------------
@@ -196,11 +198,25 @@ async function generateAtom(opts: {
 // approve action and is out of scope here.
 // ---------------------------------------------------------------------------
 export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
-  const { target_track_id, host_track_id, age_months, topic, topic_id } = job.input as Input;
+  const { target_track_id, host_track_id, age_months, topic, topic_id, milestone_id } = job.input as Input;
   if (!target_track_id) throw new Error("input.target_track_id is required");
   if (!host_track_id)   throw new Error("input.host_track_id is required");
   if (age_months === undefined || age_months === null) {
     throw new Error("input.age_months is required");
+  }
+
+  // Optional milestone mapping (slice 3): if provided, the questionnaire is born
+  // MAPPED (suppressible when a child has the fact). Validate it resolves to a real
+  // milestones row — a dangling map is unconstructable at the FK, but fail EARLY
+  // and clearly here rather than surfacing a raw FK error at insert time.
+  if (milestone_id) {
+    const { data: ms, error: msErr } = await db
+      .from("milestones")
+      .select("id")
+      .eq("id", milestone_id)
+      .maybeSingle();
+    if (msErr) throw new Error(`Failed to validate milestone_id: ${msErr.message}`);
+    if (!ms) throw new Error(`input.milestone_id ${milestone_id} does not resolve to a real milestones row`);
   }
 
   const correlationId = randomUUID();
@@ -268,6 +284,7 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
       onboarding_text:   atom.intro_text,
       onboarding_image:  DEFAULT_ONBOARDING_IMAGE,
       with_quiz:         false,
+      milestone_id:      milestone_id ?? null,  // born mapped (slice 3) or unsuppressible
     })
     .select("id")
     .single();
@@ -341,6 +358,7 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
     host_track_id,
     target_track_id,
     age_months,
+    milestone_id:      milestone_id ?? null,
     questions_written: questionsWritten,
     answers_written:   answersWritten,
     response_rule_id:  rule.id,
