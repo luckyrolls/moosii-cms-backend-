@@ -22,6 +22,16 @@ export const MILESTONE_ALIASES: Record<string, string[]> = {
 
 export type MilestoneFact = { milestone_id: string; confidence: number | null };
 
+// Negation / not-yet-reached cues. A milestone described as NOT reached ("not
+// crawling yet", "hasn't rolled", "won't walk", "yet to sit up") is a deliberately
+// UNSERVED class (screening boundary — clinical territory), NOT a fact to record:
+// the concern signal stands but resolves to NO milestone. This gate is FAIL-CLOSED
+// on purpose — a false "milestone reached" fact is permanent and would let slice-3
+// suppress the very questionnaire that catches the error, whereas a missed genuine
+// positive is merely re-recorded on the next update. So any negation cue → skip.
+const NEGATION_RE =
+  /\b(?:not|no|never|without|hasn'?t|haven'?t|hadn'?t|isn'?t|wasn'?t|aren'?t|weren'?t|won'?t|can'?t|cannot|couldn'?t|didn'?t|doesn'?t|don'?t|yet)\b/i;
+
 // Load the taxonomy (name -> id) from the DB (source of truth for the ids).
 export async function loadMilestoneIds(): Promise<Map<string, string>> {
   const { data, error } = await supabase.from("milestones").select("id, name");
@@ -29,16 +39,25 @@ export async function loadMilestoneIds(): Promise<Map<string, string>> {
   return new Map((data ?? []).map((m) => [m.name, m.id]));
 }
 
-// Resolve classify signals -> milestone facts (deduped). A signal resolves if its
-// value contains the slug (spaced) or any alias phrase. Confidence carried through.
+// Resolve classify signals -> milestone facts (deduped). Two gates guard every
+// fact-write, because a written milestone is a permanent, downstream-trusted fact:
+//   GATE 1 — TYPE: only type='milestone' signals may write a milestone. A concern
+//     ("not crawling yet") is NOT a reached-milestone claim, even if its words
+//     overlap a milestone name.
+//   GATE 2 — POLARITY: a negated/not-yet value never resolves (NEGATION_RE), so
+//     "not crawling yet" can never normalize-match milestone 'crawling'.
+// A signal resolves only if it clears both gates AND its value contains the slug
+// (spaced) or an alias phrase. Confidence carried through.
 export function resolveMilestoneFacts(
-  signals: { value: string; confidence: number }[],
+  signals: { type: string; value: string; confidence: number }[],
   nameToId: Map<string, string>,
 ): MilestoneFact[] {
   const facts: MilestoneFact[] = [];
   const seen = new Set<string>();
   for (const s of signals) {
+    if (s.type !== "milestone") continue;              // GATE 1: type
     const v = (s.value ?? "").toLowerCase();
+    if (NEGATION_RE.test(v)) continue;                 // GATE 2: polarity (fail-closed)
     let slug: string | undefined;
     for (const [key, phrases] of Object.entries(MILESTONE_ALIASES)) {
       if (v.includes(key.replace(/_/g, " ")) || phrases.some((p) => v.includes(p))) { slug = key; break; }
