@@ -1,9 +1,7 @@
 import { createHash } from "crypto";
 import { supabase } from "../supabase";
 
-// tracks/questionnaire tables + the §7 view aren't in database.types.ts. Untyped bridge.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any;
+const db = supabase;
 
 // The classifier reads the track catalog ONLY through assembleCatalog(), so a later
 // swap from "whole catalog" to a filtered candidate set is a one-function change.
@@ -45,7 +43,9 @@ export async function assembleCatalog(): Promise<Catalog> {
     .eq("item_type", "track");
   if (rErr) throw new Error(`Failed to load routing rules: ${rErr.message}`);
 
-  const qIds = [...new Set((routes ?? []).map((r: any) => r.questionnaire_id).filter(Boolean))];
+  const qIds = [...new Set(
+    (routes ?? []).map((r) => r.questionnaire_id).filter((x): x is string => !!x)
+  )];
 
   // 3. questionnaire names + 4. their questions (only the referenced ones)
   const nameById = new Map<string, string | null>();
@@ -55,27 +55,31 @@ export async function assembleCatalog(): Promise<Catalog> {
       db.from("questionnaire").select("id, questionnaire_name").in("id", qIds),
       db.from("questionnaire_questions").select("questionnaire_id, question_text").in("questionnaire_id", qIds),
     ]);
-    for (const q of qs ?? []) nameById.set(q.id, q.questionnaire_name);
+    for (const q of qs ?? []) if (q.id) nameById.set(q.id, q.questionnaire_name);
     for (const q of questions ?? []) {
-      const arr = questionsById.get(q.questionnaire_id) ?? [];
+      const qid = q.questionnaire_id;
+      if (!qid) continue;
+      const arr = questionsById.get(qid) ?? [];
       if (q.question_text) arr.push(q.question_text);
-      questionsById.set(q.questionnaire_id, arr);
+      questionsById.set(qid, arr);
     }
   }
 
   const routesByTrack = new Map<string, CatalogRoute[]>();
   for (const r of routes ?? []) {
-    const arr = routesByTrack.get(r.track_id) ?? [];
+    const tid = r.track_id, qid = r.questionnaire_id;
+    if (!tid || !qid) continue;
+    const arr = routesByTrack.get(tid) ?? [];
     arr.push({
-      questionnaire_id:   r.questionnaire_id,
-      questionnaire_name: nameById.get(r.questionnaire_id) ?? null,
-      questions:          questionsById.get(r.questionnaire_id) ?? [],
+      questionnaire_id:   qid,
+      questionnaire_name: nameById.get(qid) ?? null,
+      questions:          questionsById.get(qid) ?? [],
       score_range:        { min: r.score_min_range ?? null, max: r.score_max_range ?? null },
     });
-    routesByTrack.set(r.track_id, arr);
+    routesByTrack.set(tid, arr);
   }
 
-  const catalogTracks: CatalogTrack[] = (tracks ?? []).map((t: any) => ({
+  const catalogTracks: CatalogTrack[] = (tracks ?? []).map((t) => ({
     id:          t.id,
     name:        t.track_name,
     description: t.description,

@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
   public: {
     Tables: {
       account_types: {
@@ -36,7 +41,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_account_types_user_id"
+            foreignKeyName: "account_types_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -89,17 +94,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_accounts_user_id"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_accounts_type_id"
+            foreignKeyName: "accounts_type_id_fkey"
             columns: ["type_id"]
             isOneToOne: false
             referencedRelation: "account_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -114,7 +119,7 @@ export type Database = {
         Insert: {
           admin_email?: string | null
           created_at?: string
-          id: number
+          id?: number
           updated_at?: string | null
         }
         Update: {
@@ -152,52 +157,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_age_track_weights_track_id"
+            foreignKeyName: "age_track_weights_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      answers_legacy: {
-        Row: {
-          answer_text: string | null
-          created_at: string
-          id: string
-          is_correct: boolean | null
-          question_id: string | null
-          response: string | null
-          score: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          answer_text?: string | null
-          created_at?: string
-          id?: string
-          is_correct?: boolean | null
-          question_id?: string | null
-          response?: string | null
-          score?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          answer_text?: string | null
-          created_at?: string
-          id?: string
-          is_correct?: boolean | null
-          question_id?: string | null
-          response?: string | null
-          score?: number | null
-          updated_at?: string | null
-        }
-        Relationships: [
           {
-            foreignKeyName: "fk_answers_legacy_question_id"
-            columns: ["question_id"]
+            foreignKeyName: "age_track_weights_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "questions_legacy"
-            referencedColumns: ["id"]
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "age_track_weights_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -242,6 +220,54 @@ export type Database = {
           response?: Json
         }
         Relationships: []
+      }
+      answers_legacy: {
+        Row: {
+          answer_text: string | null
+          created_at: string
+          id: string
+          is_correct: boolean | null
+          question_id: string | null
+          response: string | null
+          score: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          answer_text?: string | null
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          question_id?: string | null
+          response?: string | null
+          score?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          answer_text?: string | null
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          question_id?: string | null
+          response?: string | null
+          score?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions_legacy"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       articles: {
         Row: {
@@ -314,6 +340,47 @@ export type Database = {
           user_b_id?: string
         }
         Relationships: []
+      }
+      child_milestones: {
+        Row: {
+          child_id: string
+          confidence: number | null
+          created_at: string
+          first_reported_at: string
+          id: string
+          milestone_id: string
+          source: string
+          source_ref: string | null
+        }
+        Insert: {
+          child_id: string
+          confidence?: number | null
+          created_at?: string
+          first_reported_at?: string
+          id?: string
+          milestone_id: string
+          source: string
+          source_ref?: string | null
+        }
+        Update: {
+          child_id?: string
+          confidence?: number | null
+          created_at?: string
+          first_reported_at?: string
+          id?: string
+          milestone_id?: string
+          source?: string
+          source_ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_milestones_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "milestones"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       children: {
         Row: {
@@ -401,14 +468,14 @@ export type Database = {
         Insert: {
           abbreviated_title?: string | null
           created_at?: string
-          id: number
+          id?: number
           item_description?: string
           item_id?: string | null
           item_name?: string
           item_type?: string | null
           lesson_id?: string | null
           questionnaire_id?: string | null
-          score: number
+          score?: number
           task_image?: string | null
           updated_at?: string | null
           user_id: string
@@ -432,25 +499,81 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_completed_items_user_id"
-            columns: ["user_id"]
+            foreignKeyName: "completed_items_lesson_id_fkey"
+            columns: ["lesson_id"]
             isOneToOne: false
-            referencedRelation: "user"
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "completed_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_completed_items_lesson_id"
+            foreignKeyName: "completed_items_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_completed_items_questionnaire_id"
+            foreignKeyName: "completed_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "completed_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "completed_items_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
             referencedRelation: "questionnaire"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "completed_items_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -468,14 +591,14 @@ export type Database = {
         }
         Insert: {
           daily_limit?: number | null
-          free_trial_days: number
-          id: number
+          free_trial_days?: number
+          id?: number
           mlp_limit?: number | null
-          monthly_fee: number
+          monthly_fee?: number
           moosi_to_add: number
           updated_at?: string | null
           weight_factor?: number | null
-          yearly_fee: number
+          yearly_fee?: number
         }
         Update: {
           daily_limit?: number | null
@@ -534,7 +657,7 @@ export type Database = {
           status?: string
           storage_path: string
           sub_segment_id?: string | null
-          tags: string[]
+          tags?: string[]
           topic_name?: string | null
         }
         Update: {
@@ -562,34 +685,145 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_content_images_lesson_id"
+            foreignKeyName: "content_images_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_images_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "content_images_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_images_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_content_images_segment_id"
+            foreignKeyName: "content_images_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_images_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "content_images_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "content_images_segment_id_fkey"
             columns: ["segment_id"]
             isOneToOne: false
             referencedRelation: "segments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_content_images_sub_segment_id"
+            foreignKeyName: "content_images_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "content_images_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_images_sub_segment_id_fkey"
+            columns: ["sub_segment_id"]
+            isOneToOne: false
+            referencedRelation: "sub_segment_image_fallback"
+            referencedColumns: ["sub_segment_id"]
+          },
+          {
+            foreignKeyName: "content_images_sub_segment_id_fkey"
             columns: ["sub_segment_id"]
             isOneToOne: false
             referencedRelation: "sub_segments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_content_images_job_id"
-            columns: ["job_id"]
+            foreignKeyName: "content_images_sub_segment_id_fkey"
+            columns: ["sub_segment_id"]
             isOneToOne: false
-            referencedRelation: "jobs"
-            referencedColumns: ["id"]
+            referencedRelation: "sub_segments_image_fallback"
+            referencedColumns: ["sub_segment_id"]
           },
         ]
+      }
+      content_size_profiles: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string | null
+          max_bullet_words: number | null
+          max_bullets_per_card: number | null
+          max_sentence_words: number | null
+          name: string
+          total_words_max: number | null
+          total_words_min: number | null
+          updated_at: string
+          words_per_card_max: number | null
+          words_per_card_min: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          max_bullet_words?: number | null
+          max_bullets_per_card?: number | null
+          max_sentence_words?: number | null
+          name: string
+          total_words_max?: number | null
+          total_words_min?: number | null
+          updated_at?: string
+          words_per_card_max?: number | null
+          words_per_card_min?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          max_bullet_words?: number | null
+          max_bullets_per_card?: number | null
+          max_sentence_words?: number | null
+          name?: string
+          total_words_max?: number | null
+          total_words_min?: number | null
+          updated_at?: string
+          words_per_card_max?: number | null
+          words_per_card_min?: number | null
+        }
+        Relationships: []
       }
       continue_streak: {
         Row: {
@@ -611,6 +845,130 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      demographic_answers: {
+        Row: {
+          answer_key: string | null
+          created_at: string
+          display_text: string
+          id: string
+          is_active: boolean
+          question_id: string
+          sort_order: number
+          updated_at: string | null
+        }
+        Insert: {
+          answer_key?: string | null
+          created_at?: string
+          display_text: string
+          id?: string
+          is_active?: boolean
+          question_id: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Update: {
+          answer_key?: string | null
+          created_at?: string
+          display_text?: string
+          id?: string
+          is_active?: boolean
+          question_id?: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demographic_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "demographic_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      demographic_questions: {
+        Row: {
+          created_at: string
+          help_text: string | null
+          id: string
+          is_active: boolean
+          prompt_text: string
+          question_key: string
+          sort_order: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          help_text?: string | null
+          id?: string
+          is_active?: boolean
+          prompt_text: string
+          question_key: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          help_text?: string | null
+          id?: string
+          is_active?: boolean
+          prompt_text?: string
+          question_key?: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      demographic_track_rules: {
+        Row: {
+          answer_id: string
+          created_at: string
+          id: string
+          track_id: string
+        }
+        Insert: {
+          answer_id: string
+          created_at?: string
+          id?: string
+          track_id: string
+        }
+        Update: {
+          answer_id?: string
+          created_at?: string
+          id?: string
+          track_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demographic_track_rules_answer_id_fkey"
+            columns: ["answer_id"]
+            isOneToOne: false
+            referencedRelation: "demographic_answers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demographic_track_rules_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demographic_track_rules_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "demographic_track_rules_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+        ]
       }
       faqs: {
         Row: {
@@ -690,18 +1048,60 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_friends_user_a"
+            foreignKeyName: "friends_user_a_fkey"
+            columns: ["user_a"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "friends_user_a_fkey"
             columns: ["user_a"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_friends_user_b"
+            foreignKeyName: "friends_user_a_fkey"
+            columns: ["user_a"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "friends_user_a_fkey"
+            columns: ["user_a"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "friends_user_b_fkey"
+            columns: ["user_b"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "friends_user_b_fkey"
             columns: ["user_b"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "friends_user_b_fkey"
+            columns: ["user_b"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "friends_user_b_fkey"
+            columns: ["user_b"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -774,7 +1174,7 @@ export type Database = {
         Insert: {
           created_at?: string
           group_id: string
-          id: number
+          id?: number
           role: string
           updated_at?: string | null
           user_id: string
@@ -789,18 +1189,60 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_group_member_user_id"
+            foreignKeyName: "group_member_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_member_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups_data"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_member_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_member_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "user_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_member_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "group_member_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_group_member_group_id"
-            columns: ["group_id"]
+            foreignKeyName: "group_member_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "groups_data"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "group_member_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -837,7 +1279,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_group_message_group_chat_id"
+            foreignKeyName: "group_message_group_chat_id_fkey"
             columns: ["group_chat_id"]
             isOneToOne: false
             referencedRelation: "group_chat"
@@ -982,7 +1424,7 @@ export type Database = {
           error?: Json | null
           finished_at?: string | null
           id?: string
-          input: Json
+          input?: Json
           result?: Json | null
           started_at?: string | null
           status?: string
@@ -1025,18 +1467,53 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_lesson_tags_tag_id"
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_lesson_tags_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "lesson_tags_tag_id_fkey"
+            columns: ["tag_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
-            referencedColumns: ["id"]
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
           },
         ]
       }
@@ -1044,6 +1521,7 @@ export type Database = {
         Row: {
           abbreviated_title: string
           article: string | null
+          band_rationale: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -1060,6 +1538,7 @@ export type Database = {
           published_by: string | null
           quiz_onboarding_image: string
           quiz_onboarding_text: string
+          safety_sensitive: boolean
           segment_status: string | null
           status: string | null
           task_image: string | null
@@ -1073,6 +1552,7 @@ export type Database = {
         Insert: {
           abbreviated_title?: string
           article?: string | null
+          band_rationale?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1089,6 +1569,7 @@ export type Database = {
           published_by?: string | null
           quiz_onboarding_image?: string
           quiz_onboarding_text?: string
+          safety_sensitive?: boolean
           segment_status?: string | null
           status?: string | null
           task_image?: string | null
@@ -1102,6 +1583,7 @@ export type Database = {
         Update: {
           abbreviated_title?: string
           article?: string | null
+          band_rationale?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1118,6 +1600,7 @@ export type Database = {
           published_by?: string | null
           quiz_onboarding_image?: string
           quiz_onboarding_text?: string
+          safety_sensitive?: boolean
           segment_status?: string | null
           status?: string | null
           task_image?: string | null
@@ -1130,18 +1613,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_lessons_track_id"
+            foreignKeyName: "lessons_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_lessons_topic_id"
-            columns: ["topic_id"]
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "topics"
-            referencedColumns: ["id"]
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -1178,13 +1675,34 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_message_chat_id"
+            foreignKeyName: "Message_chat_id_fkey"
             columns: ["chat_id"]
             isOneToOne: false
             referencedRelation: "chat"
             referencedColumns: ["id"]
           },
         ]
+      }
+      milestones: {
+        Row: {
+          created_at: string
+          id: string
+          label: string | null
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          name?: string
+        }
+        Relationships: []
       }
       new_user_tracks: {
         Row: {
@@ -1207,11 +1725,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_new_user_tracks_track_id"
+            foreignKeyName: "new_user_tracks_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "new_user_tracks_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "new_user_tracks_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -1228,7 +1760,7 @@ export type Database = {
         }
         Insert: {
           fcm_token?: string | null
-          id: number
+          id?: number
           message_body?: string | null
           response_json?: Json | null
           status?: string | null
@@ -1248,11 +1780,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_notification_log_user_id"
+            foreignKeyName: "notification_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "notification_log_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "notification_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1289,11 +1842,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_notifications_user_id"
+            foreignKeyName: "Notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "Notifications_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "Notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "Notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1306,7 +1880,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          id: number
+          id?: number
           link: string
           updated_at?: string | null
         }
@@ -1354,17 +1928,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_payment_history_user_id"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_payment_history_plan_id"
+            foreignKeyName: "payment_history_plan_id_fkey"
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1411,11 +1985,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_posts_created_by"
+            foreignKeyName: "posts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "posts_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "posts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "posts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1428,7 +2023,9 @@ export type Database = {
           id: string
           phone: string
           subscription_end_date: string | null
-          subscription_status: string | null
+          subscription_status:
+            | Database["public"]["Enums"]["subscription_status"]
+            | null
           updated_at: string | null
           username: string
         }
@@ -1440,7 +2037,9 @@ export type Database = {
           id: string
           phone: string
           subscription_end_date?: string | null
-          subscription_status?: string | null
+          subscription_status?:
+            | Database["public"]["Enums"]["subscription_status"]
+            | null
           updated_at?: string | null
           username: string
         }
@@ -1452,9 +2051,76 @@ export type Database = {
           id?: string
           phone?: string
           subscription_end_date?: string | null
-          subscription_status?: string | null
+          subscription_status?:
+            | Database["public"]["Enums"]["subscription_status"]
+            | null
           updated_at?: string | null
           username?: string
+        }
+        Relationships: []
+      }
+      prompt_block_versions: {
+        Row: {
+          block_id: string
+          content: string
+          created_at: string
+          edited_by: string | null
+          id: string
+        }
+        Insert: {
+          block_id: string
+          content: string
+          created_at?: string
+          edited_by?: string | null
+          id?: string
+        }
+        Update: {
+          block_id?: string
+          content?: string
+          created_at?: string
+          edited_by?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_block_versions_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompt_blocks: {
+        Row: {
+          block_type: string
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          block_type: string
+          content: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          block_type?: string
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1463,33 +2129,99 @@ export type Database = {
           created_at: string
           default: boolean | null
           id: string
+          is_active: boolean
+          length_block_id: string | null
+          max_tokens: number | null
+          model: string | null
+          output_schema: Json | null
           prompt: string | null
           prompt_type: string | null
+          question_count: number
+          scope: string | null
+          size_profile_id: string | null
+          structure_block_id: string | null
+          system_message: string | null
+          temperature: number | null
           tone: string | null
+          tone_block_id: string | null
           updated_at: string | null
         }
         Insert: {
           created_at?: string
           default?: boolean | null
           id?: string
+          is_active?: boolean
+          length_block_id?: string | null
+          max_tokens?: number | null
+          model?: string | null
+          output_schema?: Json | null
           prompt?: string | null
           prompt_type?: string | null
+          question_count?: number
+          scope?: string | null
+          size_profile_id?: string | null
+          structure_block_id?: string | null
+          system_message?: string | null
+          temperature?: number | null
           tone?: string | null
+          tone_block_id?: string | null
           updated_at?: string | null
         }
         Update: {
           created_at?: string
           default?: boolean | null
           id?: string
+          is_active?: boolean
+          length_block_id?: string | null
+          max_tokens?: number | null
+          model?: string | null
+          output_schema?: Json | null
           prompt?: string | null
           prompt_type?: string | null
+          question_count?: number
+          scope?: string | null
+          size_profile_id?: string | null
+          structure_block_id?: string | null
+          system_message?: string | null
+          temperature?: number | null
           tone?: string | null
+          tone_block_id?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prompts_length_block_id_fkey"
+            columns: ["length_block_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_blocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompts_size_profile_id_fkey"
+            columns: ["size_profile_id"]
+            isOneToOne: false
+            referencedRelation: "content_size_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompts_structure_block_id_fkey"
+            columns: ["structure_block_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_blocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompts_tone_block_id_fkey"
+            columns: ["tone_block_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       questionnaire: {
         Row: {
+          age: number | null
           created_at: string
           description: string | null
           id: string
@@ -1507,6 +2239,7 @@ export type Database = {
           with_quiz: boolean | null
         }
         Insert: {
+          age?: number | null
           created_at?: string
           description?: string | null
           id?: string
@@ -1524,6 +2257,7 @@ export type Database = {
           with_quiz?: boolean | null
         }
         Update: {
+          age?: number | null
           created_at?: string
           description?: string | null
           id?: string
@@ -1542,18 +2276,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_track_id"
+            foreignKeyName: "questionnaire_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_topic_id"
-            columns: ["topic_id"]
+            foreignKeyName: "questionnaire_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "topics"
-            referencedColumns: ["id"]
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -1587,7 +2335,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_answers_question_id"
+            foreignKeyName: "questionnaire_answers_question_id_fkey"
             columns: ["question_id"]
             isOneToOne: false
             referencedRelation: "questionnaire_questions"
@@ -1628,10 +2376,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_questions_questionnaire_id"
+            foreignKeyName: "questionnaire_questions_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
             referencedRelation: "questionnaire"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_questions_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
             referencedColumns: ["id"]
           },
         ]
@@ -1675,25 +2430,53 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_response_track_id"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_questionnaire_response_questionnaire_id"
+            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
             referencedRelation: "questionnaire"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_response_tag_id"
+            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -1730,32 +2513,67 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_user_answers_user_id"
-            columns: ["user_id"]
+            foreignKeyName: "questionnaire_user_answers_answer_id_fkey"
+            columns: ["answer_id"]
             isOneToOne: false
-            referencedRelation: "user"
+            referencedRelation: "answers_legacy"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_user_answers_questionnaire_id"
-            columns: ["questionnaire_id"]
+            foreignKeyName: "questionnaire_user_answers_question_id_fkey"
+            columns: ["question_id"]
             isOneToOne: false
-            referencedRelation: "questionnaire"
+            referencedRelation: "lesson_questions"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_user_answers_question_id"
+            foreignKeyName: "questionnaire_user_answers_question_id_fkey"
             columns: ["question_id"]
             isOneToOne: false
             referencedRelation: "questions_legacy"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_user_answers_answer_id"
-            columns: ["answer_id"]
+            foreignKeyName: "questionnaire_user_answers_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
             isOneToOne: false
-            referencedRelation: "answers_legacy"
+            referencedRelation: "questionnaire"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1804,17 +2622,66 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questions_legacy_segment_id"
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "questions_segment_id_fkey"
             columns: ["segment_id"]
             isOneToOne: false
             referencedRelation: "segments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questions_legacy_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "questions_segment_id_fkey"
+            columns: ["segment_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
             referencedColumns: ["id"]
           },
         ]
@@ -1852,7 +2719,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_quiz_answers_question_id"
+            foreignKeyName: "quiz_answers_question_id_fkey"
             columns: ["question_id"]
             isOneToOne: false
             referencedRelation: "quiz_questions"
@@ -1899,10 +2766,31 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_quiz_questions_segment_id"
+            foreignKeyName: "quiz_questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "quiz_questions_segment_id_fkey"
             columns: ["segment_id"]
             isOneToOne: false
             referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "quiz_questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
             referencedColumns: ["id"]
           },
         ]
@@ -1940,18 +2828,60 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_quiz_response_track_id"
+            foreignKeyName: "quiz_response_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "quiz_response_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_response_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_response_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_response_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "quiz_response_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_quiz_response_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "quiz_response_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
-            referencedColumns: ["id"]
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "quiz_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -1982,18 +2912,46 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_quiz_user_progress_question_id"
-            columns: ["question_id"]
+            foreignKeyName: "quiz_user_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
             isOneToOne: false
-            referencedRelation: "quiz_questions"
-            referencedColumns: ["question_id"]
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
           },
           {
-            foreignKeyName: "fk_quiz_user_progress_lesson_id"
+            foreignKeyName: "quiz_user_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_user_progress_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_user_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_user_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "quiz_user_progress_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_questions"
+            referencedColumns: ["question_id"]
           },
         ]
       }
@@ -2057,24 +3015,24 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_recurring_invoices_user_id"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_recurring_invoices_from_account_id"
+            foreignKeyName: "recurring_invoices_from_account_id_fkey"
             columns: ["from_account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_recurring_invoices_to_account_id"
+            foreignKeyName: "recurring_invoices_to_account_id_fkey"
             columns: ["to_account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_invoices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2232,11 +3190,147 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_segments_lesson_id"
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+        ]
+      }
+      starred_items: {
+        Row: {
+          created_at: string
+          id: number
+          item_id: string
+          lesson_id: string | null
+          questionnaire_id: string | null
+          updated_at: string | null
+          "user id": string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          item_id: string
+          lesson_id?: string | null
+          questionnaire_id?: string | null
+          updated_at?: string | null
+          "user id"?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          item_id?: string
+          lesson_id?: string | null
+          questionnaire_id?: string | null
+          updated_at?: string | null
+          "user id"?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "starred_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "starred_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "starred_items_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2300,11 +3394,39 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_sub_segments_seg_id"
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
             columns: ["seg_id"]
             isOneToOne: false
             referencedRelation: "segments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sub_segments_image_fkey"
+            columns: ["image"]
+            isOneToOne: false
+            referencedRelation: "image_assets"
+            referencedColumns: ["url"]
           },
         ]
       }
@@ -2377,11 +3499,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_tag_item_map_tag_id"
+            foreignKeyName: "tag_item_map_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tag_item_map_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
           },
         ]
       }
@@ -2425,7 +3554,7 @@ export type Database = {
           version: string
         }
         Insert: {
-          id: number
+          id?: number
           privacy_content?: string | null
           privacy_last_update?: string
           privacy_title?: string | null
@@ -2502,18 +3631,39 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_track_tag_map_tag_id"
+            foreignKeyName: "track_tag_map_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_track_tag_map_track_id"
+            foreignKeyName: "track_tag_map_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "track_tag_map_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "track_tag_map_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "track_tag_map_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -2521,6 +3671,7 @@ export type Database = {
         Row: {
           co_parenting_status: string[] | null
           created_at: string
+          created_by: string | null
           description: string | null
           financial_status: string[] | null
           id: string
@@ -2537,6 +3688,7 @@ export type Database = {
         Insert: {
           co_parenting_status?: string[] | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           financial_status?: string[] | null
           id?: string
@@ -2553,6 +3705,7 @@ export type Database = {
         Update: {
           co_parenting_status?: string[] | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           financial_status?: string[] | null
           id?: string
@@ -2616,24 +3769,24 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_transactions_user_id"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_transactions_from_account_id"
+            foreignKeyName: "transactions_from_account_id_fkey"
             columns: ["from_account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_transactions_to_account_id"
+            foreignKeyName: "transactions_to_account_id_fkey"
             columns: ["to_account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2719,7 +3872,7 @@ export type Database = {
           likes_push_notifications?: boolean
           mentions_in_app_notifications?: boolean
           mentions_push_notifications?: boolean
-          moosies: number
+          moosies?: number
           name?: string | null
           onboarding_complete?: boolean | null
           parenting_status?: string | null
@@ -2812,11 +3965,99 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_configurations_user_id"
+            foreignKeyName: "user_configurations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_configurations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_configurations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_configurations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      user_demographic_responses: {
+        Row: {
+          answer_id: string
+          answered_at: string
+          id: string
+          question_id: string
+          user_id: string
+        }
+        Insert: {
+          answer_id: string
+          answered_at?: string
+          id?: string
+          question_id: string
+          user_id: string
+        }
+        Update: {
+          answer_id?: string
+          answered_at?: string
+          id?: string
+          question_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_demographic_responses_answer_id_fkey"
+            columns: ["answer_id"]
+            isOneToOne: false
+            referencedRelation: "demographic_answers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_demographic_responses_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "demographic_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_demographic_responses_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_demographic_responses_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_demographic_responses_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_demographic_responses_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2847,20 +4088,183 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_lesson_progress_user_id"
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_lesson_progress_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "user_lesson_progress_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
+      }
+      user_mlp: {
+        Row: {
+          abbreviated_title: string | null
+          created_at: string
+          item_description: string | null
+          item_id: string
+          item_name: string
+          item_priority: number | null
+          item_type: string
+          position: number | null
+          task_image: string | null
+          track_id: string
+          track_name: string | null
+          track_priority: number | null
+          track_weight: number | null
+          updated_at: string | null
+          user_id: string
+          with_quiz: boolean
+        }
+        Insert: {
+          abbreviated_title?: string | null
+          created_at?: string
+          item_description?: string | null
+          item_id: string
+          item_name: string
+          item_priority?: number | null
+          item_type: string
+          position?: number | null
+          task_image?: string | null
+          track_id: string
+          track_name?: string | null
+          track_priority?: number | null
+          track_weight?: number | null
+          updated_at?: string | null
+          user_id: string
+          with_quiz: boolean
+        }
+        Update: {
+          abbreviated_title?: string | null
+          created_at?: string
+          item_description?: string | null
+          item_id?: string
+          item_name?: string
+          item_priority?: number | null
+          item_type?: string
+          position?: number | null
+          task_image?: string | null
+          track_id?: string
+          track_name?: string | null
+          track_priority?: number | null
+          track_weight?: number | null
+          updated_at?: string | null
+          user_id?: string
+          with_quiz?: boolean
+        }
+        Relationships: []
+      }
+      user_mlp_bs_backup: {
+        Row: {
+          abbreviated_title: string | null
+          created_at: string | null
+          item_description: string | null
+          item_id: string | null
+          item_name: string | null
+          item_priority: number | null
+          item_type: string | null
+          position: number | null
+          task_image: string | null
+          track_id: string | null
+          track_name: string | null
+          track_priority: number | null
+          track_weight: number | null
+          updated_at: string | null
+          user_id: string | null
+          with_quiz: boolean | null
+        }
+        Insert: {
+          abbreviated_title?: string | null
+          created_at?: string | null
+          item_description?: string | null
+          item_id?: string | null
+          item_name?: string | null
+          item_priority?: number | null
+          item_type?: string | null
+          position?: number | null
+          task_image?: string | null
+          track_id?: string | null
+          track_name?: string | null
+          track_priority?: number | null
+          track_weight?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          with_quiz?: boolean | null
+        }
+        Update: {
+          abbreviated_title?: string | null
+          created_at?: string | null
+          item_description?: string | null
+          item_id?: string | null
+          item_name?: string | null
+          item_priority?: number | null
+          item_type?: string | null
+          position?: number | null
+          task_image?: string | null
+          track_id?: string | null
+          track_name?: string | null
+          track_priority?: number | null
+          track_weight?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          with_quiz?: boolean | null
+        }
+        Relationships: []
       }
       user_mlp_mods: {
         Row: {
@@ -2892,27 +4296,126 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_mlp_mods_track_id"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_user_mlp_mods_tag_id"
+            foreignKeyName: "user_mlp_mods_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_mlp_mods_user_id"
+            foreignKeyName: "user_mlp_mods_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "user_mlp_mods_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_mlp_mods_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_mlp_mods_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_mlp_mods_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_mlp_mods_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_mlp_mods_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_mlp_mods_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
+          },
         ]
+      }
+      user_mlp_v2: {
+        Row: {
+          abbreviated_title: string | null
+          created_at: string
+          item_description: string | null
+          item_id: string
+          item_name: string
+          item_priority: number | null
+          item_type: string
+          position: number | null
+          task_image: string | null
+          track_id: string
+          track_name: string | null
+          track_priority: number | null
+          track_weight: number | null
+          updated_at: string | null
+          user_id: string
+          with_quiz: boolean
+        }
+        Insert: {
+          abbreviated_title?: string | null
+          created_at?: string
+          item_description?: string | null
+          item_id: string
+          item_name: string
+          item_priority?: number | null
+          item_type: string
+          position?: number | null
+          task_image?: string | null
+          track_id: string
+          track_name?: string | null
+          track_priority?: number | null
+          track_weight?: number | null
+          updated_at?: string | null
+          user_id: string
+          with_quiz: boolean
+        }
+        Update: {
+          abbreviated_title?: string | null
+          created_at?: string
+          item_description?: string | null
+          item_id?: string
+          item_name?: string
+          item_priority?: number | null
+          item_type?: string
+          position?: number | null
+          task_image?: string | null
+          track_id?: string
+          track_name?: string | null
+          track_priority?: number | null
+          track_weight?: number | null
+          updated_at?: string | null
+          user_id?: string
+          with_quiz?: boolean
+        }
+        Relationships: []
       }
       user_month_group: {
         Row: {
@@ -2925,7 +4428,7 @@ export type Database = {
         Insert: {
           created_at?: string
           group_id: string
-          id: number
+          id?: number
           month_index: number
           updated_at?: string | null
         }
@@ -2938,10 +4441,31 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_month_group_group_id"
+            foreignKeyName: "user_month_group_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_month_group_group_id_fkey"
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups_data"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_month_group_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_month_group_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "user_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -2979,10 +4503,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_questionnaire_progress_questionnaire_id"
+            foreignKeyName: "user_questionnaire_progress_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
             referencedRelation: "questionnaire"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_questionnaire_progress_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
             referencedColumns: ["id"]
           },
         ]
@@ -3056,9 +4587,9 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_settings_user_id"
+            foreignKeyName: "user_settings_user_id_fkey"
             columns: ["user_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -3088,18 +4619,46 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_tag_user_id"
+            foreignKeyName: "user_tag_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_tag_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "user_tag_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_tag_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_tag_tag_id"
-            columns: ["tag_id"]
+            foreignKeyName: "user_tag_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "tags"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_tag_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3139,18 +4698,46 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_tag_actions_MM_unused_user_id"
+            foreignKeyName: "user_tag_actions_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_tag_actions_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "user_tag_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_tag_actions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_tag_actions_MM_unused_tag_id"
-            columns: ["tag_id"]
+            foreignKeyName: "user_tag_actions_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "tags"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_tag_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3190,20 +4777,85 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_track_actions_MM_unsed_user_id"
+            foreignKeyName: "user_track_actions_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_track_actions_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_track_actions_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_track_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_track_actions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_track_actions_MM_unsed_track_id"
-            columns: ["track_id"]
+            foreignKeyName: "user_track_actions_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_track_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
+      }
+      user_track_activations: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          id: string
+          source: string
+          source_ref: string | null
+          track_id: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          source: string
+          source_ref?: string | null
+          track_id: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          source?: string
+          source_ref?: string | null
+          track_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_track_weights: {
         Row: {
@@ -3262,17 +4914,129 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_tracks_user_id"
+            foreignKeyName: "user_track_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_track_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_track_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_track_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_track_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_tracks_track_id"
-            columns: ["track_id"]
+            foreignKeyName: "user_track_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "tracks"
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_track_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      user_update_events: {
+        Row: {
+          child_id: string | null
+          correlation_id: string | null
+          created_at: string
+          id: string
+          processing_status: string
+          raw_text: string
+          source: string | null
+          user_id: string | null
+        }
+        Insert: {
+          child_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          processing_status?: string
+          raw_text: string
+          source?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          child_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          processing_status?: string
+          raw_text?: string
+          source?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_update_signals: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          event_id: string
+          evidence_span: string | null
+          id: string
+          matched: boolean
+          matched_track_id: string | null
+          type: string | null
+          value: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          event_id: string
+          evidence_span?: string | null
+          id?: string
+          matched?: boolean
+          matched_track_id?: string | null
+          type?: string | null
+          value?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          event_id?: string
+          evidence_span?: string | null
+          id?: string
+          matched?: boolean
+          matched_track_id?: string | null
+          type?: string | null
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_update_signals_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "user_update_events"
             referencedColumns: ["id"]
           },
         ]
@@ -3301,6 +5065,60 @@ export type Database = {
         }
         Relationships: []
       }
+      voice_lint_rules: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          max: number | null
+          message: string
+          min_words: number | null
+          pattern: string | null
+          requires: string | null
+          rule_key: string
+          scope: string | null
+          severity: string
+          tone: string | null
+          type: string
+          updated_at: string
+          within_chars: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max?: number | null
+          message: string
+          min_words?: number | null
+          pattern?: string | null
+          requires?: string | null
+          rule_key: string
+          scope?: string | null
+          severity: string
+          tone?: string | null
+          type: string
+          updated_at?: string
+          within_chars?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max?: number | null
+          message?: string
+          min_words?: number | null
+          pattern?: string | null
+          requires?: string | null
+          rule_key?: string
+          scope?: string | null
+          severity?: string
+          tone?: string | null
+          type?: string
+          updated_at?: string
+          within_chars?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       completed_items_streak: {
@@ -3312,11 +5130,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_completed_items_streak_user_id"
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3332,11 +5171,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_completed_items_with_tags_user_id"
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3345,6 +5205,16 @@ export type Database = {
           created_at: string | null
           id: string | null
           users_ids: string[] | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          users_ids?: never
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          users_ids?: never
         }
         Relationships: []
       }
@@ -3392,17 +5262,66 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_lesson_questions_segment_id"
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "questions_segment_id_fkey"
             columns: ["segment_id"]
             isOneToOne: false
             referencedRelation: "segments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_lesson_questions_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "questions_segment_id_fkey"
+            columns: ["segment_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "questions_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
             referencedColumns: ["id"]
           },
         ]
@@ -3431,11 +5350,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_lesson_segment_counts_with_track_track_id"
+            foreignKeyName: "lessons_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -3461,11 +5394,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_lessons_with_track_name_track_id"
+            foreignKeyName: "lessons_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -3508,25 +5455,53 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_response_with_track_tag_track_id"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_questionnaire_response_with_track_tag_questionnaire_id"
+            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
             referencedRelation: "questionnaire"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_response_with_track_tag_tag_id"
+            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -3545,32 +5520,81 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_responses_tracks_track_id"
-            columns: ["track_id"]
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "tracks"
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_responses_tracks_questionnaire_id"
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "completed_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
             referencedRelation: "questionnaire"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_responses_tracks_tag_id"
+            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_responses_tracks_user_id"
-            columns: ["user_id"]
+            foreignKeyName: "questionnaire_response_tag_id_fkey"
+            columns: ["tag_id"]
             isOneToOne: false
-            referencedRelation: "user"
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_response_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -3583,18 +5607,46 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_user_score_user_id"
+            foreignKeyName: "questionnaire_user_answers_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_questionnaire_id_fkey"
+            columns: ["questionnaire_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_questionnaire_user_score_questionnaire_id"
-            columns: ["questionnaire_id"]
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "questionnaire"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3612,37 +5664,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_questionnaire_with_track_name_track_id"
+            foreignKeyName: "questionnaire_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      starred_items: {
-        Row: {
-          id: number | null
-          item_id: string
-          lesson_id: string | null
-          questionnaire_id: string | null
-          updated_at: string | null
-          "user id": string | null
-        }
-        Relationships: [
           {
-            foreignKeyName: "fk_starred_items_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "questionnaire_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
-            referencedColumns: ["id"]
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
           },
           {
-            foreignKeyName: "fk_starred_items_questionnaire_id"
-            columns: ["questionnaire_id"]
+            foreignKeyName: "questionnaire_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "questionnaire"
-            referencedColumns: ["id"]
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
           },
         ]
       }
@@ -3661,11 +5701,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_starred_items_with_details_user_id"
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "starred_items_user id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3682,17 +5743,66 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_sub_segment_image_fallback_seg_id"
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
             columns: ["seg_id"]
             isOneToOne: false
             referencedRelation: "segments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_sub_segment_image_fallback_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
             referencedColumns: ["id"]
           },
         ]
@@ -3708,17 +5818,66 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_sub_segments_image_fallback_seg_id"
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
             columns: ["seg_id"]
             isOneToOne: false
             referencedRelation: "segments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_sub_segments_image_fallback_lesson_id"
-            columns: ["lesson_id"]
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
             isOneToOne: false
-            referencedRelation: "lessons"
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "sub_segment_seg_id_fkey"
+            columns: ["seg_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
             referencedColumns: ["id"]
           },
         ]
@@ -3835,34 +5994,34 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_groups_member_user_id"
+            foreignKeyName: "group_member_user_id_fkey"
+            columns: ["member_user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "group_member_user_id_fkey"
             columns: ["member_user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "group_member_user_id_fkey"
+            columns: ["member_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "group_member_user_id_fkey"
+            columns: ["member_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
+          },
         ]
-      }
-      user_mlp: {
-        Row: {
-          abbreviated_title: string | null
-          created_at: string | null
-          item_description: string | null
-          item_id: string | null
-          item_name: string | null
-          item_priority: number | null
-          item_type: string | null
-          position: number | null
-          task_image: string | null
-          track_id: string | null
-          track_name: string | null
-          track_priority: number | null
-          track_weight: number | null
-          updated_at: string | null
-          user_id: string | null
-          with_quiz: boolean | null
-        }
-        Relationships: []
       }
       user_mlp_data: {
         Row: {
@@ -3933,11 +6092,39 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_segment_progress_lesson_id"
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
           },
         ]
       }
@@ -3956,18 +6143,53 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_user_track_details_user_id"
+            foreignKeyName: "user_track_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_track_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_track_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "user_track_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_track_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_user_track_details_track_id"
-            columns: ["track_id"]
+            foreignKeyName: "user_track_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_track_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_track_matches"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -4010,11 +6232,39 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_v_lesson_tag_details_lesson_id"
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
           },
         ]
       }
@@ -4026,12 +6276,11 @@ export type Database = {
           description: string | null
           full_prompt: string | null
           id: string | null
-          Image_url: string | null
           image_prompt: string | null
+          Image_url: string | null
           lesson_description: string | null
           lesson_id: string | null
           lesson_name: string | null
-          max_child_age: number | null
           min_child_age: number | null
           question_id: number | null
           ref_link: string | null
@@ -4045,36 +6294,134 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_v_segment_details_lesson_id"
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
         ]
       }
     }
-    Functions: { [_ in never]: never }
-    Enums: { [_ in never]: never }
-    CompositeTypes: { [_ in never]: never }
+    Functions: {
+      apply_classification: {
+        Args: {
+          p_child_id: string
+          p_event_id: string
+          p_milestones: Json
+          p_proposals: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      approve_content_image:
+        | {
+            Args: { p_approved_by: string; p_id: string; p_public_url: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_approved_by: string
+              p_id: string
+              p_public_url: string
+              p_storage_path: string
+            }
+            Returns: Json
+          }
+      create_lessons_with_segments: {
+        Args: { p_lessons: Json }
+        Returns: {
+          description: string
+          id: string
+          lesson_name: string
+        }[]
+      }
+      is_admin: { Args: never; Returns: boolean }
+      is_super_admin: { Args: never; Returns: boolean }
+      rebuild_user_mlp: {
+        Args: { p_items: Json; p_user_id: string }
+        Returns: number
+      }
+      renumber_track_priorities: {
+        Args: { p_ordered_ids: string[]; p_track_id: string }
+        Returns: undefined
+      }
+      renumber_track_priority_order: {
+        Args: { p_ordered_ids: string[] }
+        Returns: undefined
+      }
+    }
+    Enums: {
+      account_type:
+        | "cash_accounts"
+        | "capital"
+        | "expenses"
+        | "customers"
+        | "suppliers"
+        | "due_invoices"
+      role: "user" | "admin" | "super"
+      subscription_status: "active" | "expired" | "cancelled" | "trial"
+      transaction_type:
+        | "debt_given"
+        | "debt_repayment"
+        | "expense"
+        | "income"
+        | "transfer"
+        | "currency_exchange"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
@@ -4092,14 +6439,16 @@ export type Tables<
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
@@ -4115,14 +6464,16 @@ export type TablesInsert<
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
@@ -4138,14 +6489,16 @@ export type TablesUpdate<
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
@@ -4153,14 +6506,41 @@ export type Enums<
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      account_type: [
+        "cash_accounts",
+        "capital",
+        "expenses",
+        "customers",
+        "suppliers",
+        "due_invoices",
+      ],
+      role: ["user", "admin", "super"],
+      subscription_status: ["active", "expired", "cancelled", "trial"],
+      transaction_type: [
+        "debt_given",
+        "debt_repayment",
+        "expense",
+        "income",
+        "transfer",
+        "currency_exchange",
+      ],
+    },
+  },
+} as const

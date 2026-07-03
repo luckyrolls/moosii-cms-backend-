@@ -5,10 +5,10 @@ import { apiError } from "../lib/errors";
 import { getLLMClient } from "../llm";
 import { logAiCall, formatLlmPrompt } from "../lib/aiLog";
 import { assembleCatalog, renderCatalogForPrompt, type Catalog } from "../lib/classifyCatalog";
+import { loadMilestoneIds, resolveMilestoneFacts } from "../lib/milestones";
+import { rebuildOneUser } from "../jobs/handlers/rebuildMlp";
 
-// new tables + prompt not in database.types.ts. Untyped bridge.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any;
+const db = supabase;
 
 const router = Router();
 
@@ -47,7 +47,12 @@ type LlmSignal   = { type: string; value: string; confidence: number; evidence_s
 type LlmProposal = { track_id: string; confidence: number; source_signal: string };
 type LlmOut      = { relevant: boolean; signals: LlmSignal[]; proposed_enrichments: LlmProposal[] };
 
-export type Enrichment = { action: "activate_track"; track_id: string; track_name: string | null; confidence: number; source_signal: string };
+export type Enrichment = {
+  action: "activate_track"; track_id: string; track_name: string | null;
+  confidence: number; source_signal: string;
+  applied: boolean;        // true when apply=true actually activated it this run
+  reason?: string;         // on skips: 'already_active' | 'manual_override'
+};
 
 // Confidence floor + anti-hallucination gate. Not relevant → clean no-signal.
 // Otherwise drop below-floor signals/proposals, and DROP any proposal whose
@@ -60,7 +65,7 @@ export function applyGate(out: LlmOut, catalog: Catalog, floor = CONFIDENCE_FLOO
   const signals = (out.signals ?? []).filter((s) => typeof s.confidence === "number" && s.confidence >= floor);
   const proposed_enrichments: Enrichment[] = (out.proposed_enrichments ?? [])
     .filter((p) => typeof p.confidence === "number" && p.confidence >= floor && trackNameById.has(p.track_id))
-    .map((p) => ({ action: "activate_track", track_id: p.track_id, track_name: trackNameById.get(p.track_id) ?? null, confidence: p.confidence, source_signal: p.source_signal }));
+    .map((p) => ({ action: "activate_track", track_id: p.track_id, track_name: trackNameById.get(p.track_id) ?? null, confidence: p.confidence, source_signal: p.source_signal, applied: false }));
   return { relevant: signals.length > 0, signals, proposed_enrichments };
 }
 
@@ -113,17 +118,26 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
 
     const { relevant, signals, proposed_enrichments } = applyGate(out, catalog);
 
-    // Persist the raw event + derived signals (separate linked rows), only if asked.
-    if (persist) {
+    // apply=true IMPLIES persist=true: an applied classification is ALWAYS logged,
+    // because provenance (user_track_activations.source_ref / child_milestones.source_ref)
+    // points at a real user_update_events row — no dangling refs allowed. So we upgrade
+    // persist explicitly here rather than leaving the coupling implicit downstream.
+    const willPersist = persist === true || apply === true;
+    let eventId: string | null = null;
+
+    // Persist the raw event + derived signals (separate linked rows).
+    if (willPersist) {
       const { data: ev, error: evErr } = await db
         .from("user_update_events")
         .insert({ user_id, child_id, raw_text, source: "cms_test", processing_status: "classified", correlation_id: correlationId })
         .select("id").single();
       if (evErr) throw new Error(`Failed to write user_update_events: ${evErr.message}`);
-      if (ev?.id && signals.length > 0) {
+      eventId = ev?.id ?? null;
+      if (eventId && signals.length > 0) {
+        const evId = eventId;
         const trackBySignalValue = new Map(proposed_enrichments.map((p) => [p.source_signal, p.track_id]));
         const rows = signals.map((s) => ({
-          event_id:         ev.id,
+          event_id:         evId,
           type:             s.type,
           value:            s.value,
           confidence:       s.confidence,
@@ -136,9 +150,39 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       }
     }
 
-    // apply=true is a NO-OP this slice.
-    // TODO(slice 2 — enrich-apply): when apply, activate proposed_enrichments via the
-    // existing user_active_tracks machinery. Slice 1 never mutates user state.
+    // ENRICH-APPLY (slice 2): atomically add tracks (user_mlp_mods) + provenance +
+    // milestone facts via apply_classification, then recompute AFTER commit.
+    if (apply && eventId) {
+      const nameToId = await loadMilestoneIds();
+      const milestoneFacts = resolveMilestoneFacts(signals, nameToId);
+      const { data: applyRes, error: applyErr } = await db.rpc("apply_classification", {
+        p_user_id:    user_id,
+        p_child_id:   child_id,
+        p_event_id:   eventId,
+        p_proposals:  proposed_enrichments.map((p) => ({ track_id: p.track_id, confidence: p.confidence, source_signal: p.source_signal })),
+        p_milestones: milestoneFacts,
+      });
+      if (applyErr) throw new Error(`apply_classification failed: ${applyErr.message}`);
+
+      // Map per-proposal outcome (applied / skip reason) back onto the enrichments.
+      // rpc returns Json, so narrow it to the fn's documented shape.
+      const res = applyRes as { proposals?: { track_id: string; applied: boolean; reason: string | null }[] } | null;
+      const outcome = new Map<string, { applied: boolean; reason: string | null }>(
+        (res?.proposals ?? []).map((p) => [p.track_id, { applied: p.applied, reason: p.reason }]),
+      );
+      for (const e of proposed_enrichments) {
+        const o = outcome.get(e.track_id);
+        if (o) { e.applied = o.applied; if (!o.applied && o.reason) e.reason = o.reason; }
+      }
+
+      // Recompute AFTER the transaction commits — retryable; a rebuild failure must
+      // NOT roll back the apply (it's already committed), but is logged loudly for retry.
+      try {
+        await rebuildOneUser(user_id);
+      } catch (e) {
+        console.error(`[classify_update] apply committed but MLP rebuild FAILED for user ${user_id} (retryable): ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
 
     const prompt_version = createHash("sha256").update(promptRow.system_message).digest("hex").slice(0, 12);
 

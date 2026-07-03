@@ -697,7 +697,8 @@ Body: {
   child_id: string,
   raw_text: string,
   persist?: boolean,   // default false. true = write event to user_update_events
-  apply?:   boolean    // default false. NO-OP until enrich-apply slice ships.
+  apply?:   boolean    // default false. true = activate proposals (slice 2).
+                       // apply=true IMPLIES persist=true (see invariants).
 }
 → 200 {
   classification: {
@@ -709,12 +710,14 @@ Body: {
         evidence_span: string }   // substring of raw_text that triggered it
     ]
   },
-  proposed_enrichments: [         // tracks that WOULD activate (dry-run: not applied)
+  proposed_enrichments: [         // tracks proposed (and, when apply=true, activated)
     { action: "activate_track",
       track_id: string,           // validated against the real catalog before return
       track_name: string,
       confidence: number,
-      source_signal: string }
+      source_signal: string,
+      applied: boolean,           // apply=false → always false; apply=true → true if activated
+      reason?: string }           // on a skip: 'already_active' | 'manual_override'
   ],
   redundant_questionnaires: [],   // SUPPRESS layer — not built. Always [] for now.
   distress: { detected: false },  // STUBBED false. Real path required before app-facing input.
@@ -734,8 +737,13 @@ Body: {
 - Proposed `track_id`s are always validated against the real catalog before
   returning; unresolved ids are dropped (anti-hallucination gate, same discipline
   as §2e validating `add_threshold` against real answer scores).
-- Nothing mutates user state unless `apply=true` — and `apply` is a no-op until
-  the enrich-apply slice. Classification is pure.
+- Nothing mutates user state unless `apply=true`. With `apply=false` (default),
+  classification is pure. `apply=true` activates the proposed tracks (slice 2 —
+  see below) and each enrichment's `applied` flag reports the outcome.
+- **`apply=true` IMPLIES `persist=true`** — an applied classification is always
+  logged, because provenance (`user_track_activations.source_ref` /
+  `child_milestones.source_ref`) points at a real `user_update_events` row; dangling
+  refs are not allowed. The endpoint upgrades `apply=true, persist=false` explicitly.
 
 **`distress` is stubbed `false` ONLY because this is internal/test-only.** Before
 any parent-facing free-text input ships in the app, a real concern/distress path
@@ -772,9 +780,22 @@ via `assembleCatalog()` and hashed for `catalog_version`; provider via
 no signal survives → `relevant:false`). Proposed `track_id`s validated against the
 catalog; unresolved dropped. `prompt_version` = `sha256(system_message)[:12]`.
 `persist=true` writes `user_update_events` (raw prose) + `user_update_signals`
-(derived, with `matched`/`matched_track_id` for later unmatched-signal queries);
-`apply=true` is a no-op. `distress` stubbed `false` — internal/test-only until the
-slice-4 path exists.
+(derived, with `matched`/`matched_track_id` for later unmatched-signal queries).
+`distress` stubbed `false` — internal/test-only until the slice-4 path exists.
+
+**Slice 2 — DELIVERED** (`apply=true`, migrations 019–020): activates proposed
+tracks as per-user overrides in `user_mlp_mods (action='add')` — the base table the
+`user_active_tracks` view unions — and records milestone facts, atomically via the
+`apply_classification()` fn. Then `rebuildOneUser()` runs AFTER commit (retryable;
+a rebuild failure is logged, not rolled back). Per proposal: skip `already_active`
+if the pair is already in `user_active_tracks`; skip `manual_override` if the latest
+mod is a human `delete` (no backing `user_track_activations` row) — inference never
+overrides an explicit human action. Each activation writes a `user_track_activations`
+row (`source='classify'`, `source_ref` = the mod id, confidence) — classify vs manual
+is always distinguishable by that row. Milestone-type signals resolve (alias-based)
+to `milestones` and write `child_milestones` (first-reach-wins), **independent of
+whether any track activated** (so `sleeping_through_night`, which no track serves,
+still records). `apply=true` implies event persistence (for `source_ref`).
 
 ---
 
