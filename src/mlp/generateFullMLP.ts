@@ -53,6 +53,11 @@ export type GenerateFullMLPInput = {
   completedItems?: CompletedItem[];
   ages?: (number | string)[]; // bracket weighting; v1 passes [youngest_age_in_months]
   youngestAgeMonths?: number | null; // CHANGE 2 pool age filter (v1 = youngest child)
+  // CHANGE 3 (slice 3) — milestone suppression. `item_type:item_id` keys the
+  // handler resolved as redundant (a questionnaire whose mapped milestone is a
+  // recorded fact for this user's child). Excluded exactly like completed items.
+  // Computed per-user, default-to-surface: the handler passes [] on any doubt.
+  suppressedItemKeys?: string[];
 };
 
 export type GenerateFullMLPOutput = {
@@ -72,6 +77,7 @@ export type GenerateFullMLPOutput = {
       totalAgeWeight: number;
     };
     ageFilter: { youngestAgeMonths: number | null; removedByAge: number }; // CHANGE 2
+    milestoneSuppression: { removed: number; keys: string[] }; // CHANGE 3 (slice 3)
   };
 };
 
@@ -127,6 +133,19 @@ export function generateFullMLP(input: GenerateFullMLPInput): GenerateFullMLPOut
     const key = `${item.item_type}:${item.item_id}`;
     return !completedItemSet.has(key);
   });
+
+  // CHANGE 3 (slice 3) — milestone suppression. Drop questionnaires the handler
+  // resolved as redundant (mapped milestone already a fact for this user's child).
+  // Same key shape and mechanism as completed items; kept as a separate step so the
+  // reason a questionnaire left the plan is legible in debug. Empty set = no-op.
+  const suppressedSet = new Set(input.suppressedItemKeys ?? []);
+  const poolBeforeSuppress = filteredPool.length;
+  if (suppressedSet.size > 0) {
+    filteredPool = filteredPool.filter(
+      (item) => !suppressedSet.has(`${item.item_type}:${item.item_id}`)
+    );
+  }
+  const removedBySuppression = poolBeforeSuppress - filteredPool.length;
 
   // CHANGE 2 — age filter (v1: youngest child only). Keep a lesson only if the
   // youngest child's age overlaps [min_child_age, max_child_age]; NULL bounds are
@@ -272,6 +291,7 @@ export function generateFullMLP(input: GenerateFullMLPInput): GenerateFullMLPOut
       weightedSequence,
       ageBracketDebug,
       ageFilter: { youngestAgeMonths, removedByAge },
+      milestoneSuppression: { removed: removedBySuppression, keys: [...suppressedSet] },
     },
   };
 }

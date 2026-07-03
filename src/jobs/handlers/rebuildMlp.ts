@@ -33,6 +33,88 @@ export type RebuildOneUserResult = {
   debug: unknown;
 };
 
+// Slice 3 SUPPRESS — resolve which pooled questionnaires are redundant for this
+// user because their mapped milestone (questionnaire.milestone_id) is already a
+// recorded fact for the user's child. Returns `item_type:item_id` keys to exclude.
+//
+// DEFAULT-TO-SURFACE is structural here: this function NEVER throws — every
+// early-out (no questionnaires, no child, no facts, no mappings) returns []. The
+// caller also wraps it in try/catch. A questionnaire is suppressed ONLY on a
+// positive, resolved (child, milestone) fact match; any doubt surfaces it.
+//
+// Child resolution: MLP is user-scoped but facts are child-scoped, so we resolve
+// the user's YOUNGEST child (children.parent_id) — consistent with the age gate,
+// which also targets the youngest. child_count is ~1 today; revisit if multi-child
+// becomes real.
+export async function computeMilestoneSuppression(
+  userId: string,
+  pool: MlpPoolItem[]
+): Promise<string[]> {
+  const questionnaireIds = pool
+    .filter((i) => i.item_type === "questionnaire")
+    .map((i) => i.item_id);
+  if (questionnaireIds.length === 0) return [];
+
+  // Which of the pooled questionnaires even HAVE a milestone mapping? (Unmapped =
+  // unsuppressible by construction — there is no row to consult.)
+  const { data: mapRows, error: mErr } = await db
+    .from("questionnaire")
+    .select("id, milestone_id")
+    .in("id", questionnaireIds)
+    .not("milestone_id", "is", null);
+  if (mErr) {
+    console.warn(`[rebuild_mlp] questionnaire mapping load failed for ${userId}; surfacing all: ${mErr.message}`);
+    return [];
+  }
+  const mappings = (mapRows ?? []) as Array<{ id: string; milestone_id: string }>;
+  if (mappings.length === 0) return [];
+
+  // Youngest child of this user.
+  const { data: kids, error: kErr } = await db
+    .from("children")
+    .select("id, birth_year, birth_month, created_at")
+    .eq("parent_id", userId)
+    .order("birth_year", { ascending: false })
+    .order("birth_month", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (kErr) {
+    console.warn(`[rebuild_mlp] child resolution failed for ${userId}; surfacing all: ${kErr.message}`);
+    return [];
+  }
+  const childId = (kids ?? [])[0]?.id as string | undefined;
+  if (!childId) return []; // no child → nothing to suppress against
+
+  // The child's recorded milestone facts.
+  const { data: factRows, error: fErr } = await db
+    .from("child_milestones")
+    .select("milestone_id")
+    .eq("child_id", childId);
+  if (fErr) {
+    console.warn(`[rebuild_mlp] child_milestones load failed for ${userId}; surfacing all: ${fErr.message}`);
+    return [];
+  }
+  const facts = new Set(((factRows ?? []) as Array<{ milestone_id: string }>).map((f) => f.milestone_id));
+  if (facts.size === 0) return [];
+
+  // Warn on a DANGLING mapping (points at a milestone id that isn't a real
+  // milestone) — it can never match a fact (facts FK milestones), so it surfaces,
+  // but a mistaken mapping should be visible, not silent. P4.
+  const mappedMilestoneIds = [...new Set(mappings.map((m) => m.milestone_id))];
+  const { data: realMs } = await db.from("milestones").select("id").in("id", mappedMilestoneIds);
+  const realMsSet = new Set(((realMs ?? []) as Array<{ id: string }>).map((r) => r.id));
+  for (const m of mappings) {
+    if (!realMsSet.has(m.milestone_id)) {
+      console.warn(`[rebuild_mlp] questionnaire ${m.id} maps to nonexistent milestone ${m.milestone_id}; surfacing it (dangling mapping)`);
+    }
+  }
+
+  // Suppress a questionnaire ONLY when its mapped milestone is a resolved fact.
+  return mappings
+    .filter((m) => facts.has(m.milestone_id))
+    .map((m) => `questionnaire:${m.id}`);
+}
+
 // Rebuild a single user's MLP into user_mlp_v2 (verification phase).
 export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResult> {
   // 1. Active tracks — the resolved track list (view owns demographics/defaults/
@@ -118,6 +200,19 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
     item_type: c.item_type as string,
   })) as CompletedItem[];
 
+  // 4b. Milestone suppression (slice 3) — DERIVED per-user at build time. Wrapped
+  //     so any failure yields an empty exclusion (default-to-surface): a bug here
+  //     can only over-surface a questionnaire, never silently hide one.
+  let suppressedItemKeys: string[] = [];
+  try {
+    suppressedItemKeys = await computeMilestoneSuppression(userId, pool);
+  } catch (e) {
+    console.warn(
+      `[rebuild_mlp] milestone suppression errored for ${userId}; surfacing all questionnaires: ${e instanceof Error ? e.message : String(e)}`
+    );
+    suppressedItemKeys = [];
+  }
+
   // Run the ported algorithm.
   const { finalMLP, debug } = generateFullMLP({
     pool,
@@ -125,6 +220,7 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
     completedItems,
     ages: youngest !== null ? [youngest] : [], // v1: youngest child only
     youngestAgeMonths: youngest, // CHANGE 2 pool age filter
+    suppressedItemKeys, // CHANGE 3 (slice 3) milestone suppression
   });
 
   // Build the write payload, mirroring the BuildShip updateMLP record shape

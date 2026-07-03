@@ -69,6 +69,36 @@ export function applyGate(out: LlmOut, catalog: Catalog, floor = CONFIDENCE_FLOO
   return { relevant: signals.length > 0, signals, proposed_enrichments };
 }
 
+export type RedundantQuestionnaire = {
+  questionnaire_id: string;
+  questionnaire_name: string | null;
+  milestone_id: string;
+};
+
+// Slice 3 SUPPRESS — questionnaires mapped (questionnaire.milestone_id) to any of
+// the given milestone ids, i.e. made redundant by this update. Read-only and
+// non-throwing: on any error it reports NONE (the report never blocks or breaks a
+// classify).
+export async function findRedundantQuestionnaires(milestoneIds: string[]): Promise<RedundantQuestionnaire[]> {
+  const ids = [...new Set(milestoneIds)].filter(Boolean);
+  if (ids.length === 0) return [];
+  const { data, error } = await db
+    .from("questionnaire")
+    .select("id, questionnaire_name, milestone_id")
+    .in("milestone_id", ids);
+  if (error) {
+    console.warn(`[classify_update] redundant-questionnaire lookup failed: ${error.message}`);
+    return [];
+  }
+  return (data ?? [])
+    .filter((q): q is typeof q & { milestone_id: string } => q.milestone_id !== null)
+    .map((q) => ({
+      questionnaire_id: q.id,
+      questionnaire_name: q.questionnaire_name,
+      milestone_id: q.milestone_id,
+    }));
+}
+
 export type ClassifyInput = { user_id: string; child_id: string; raw_text: string; persist?: boolean; apply?: boolean };
 
 // Core classify logic — SYNCHRONOUS, enrich-only, dry-run (§2j slice 1). Exported
@@ -118,6 +148,12 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
 
     const { relevant, signals, proposed_enrichments } = applyGate(out, catalog);
 
+    // Resolve milestone facts from the gated signals ONCE (the type + polarity
+    // gates live inside resolveMilestoneFacts). Used both by apply (to WRITE
+    // child_milestones) and by the redundant-questionnaire report (slice 3).
+    const milestoneFacts =
+      signals.length > 0 ? resolveMilestoneFacts(signals, await loadMilestoneIds()) : [];
+
     // apply=true IMPLIES persist=true: an applied classification is ALWAYS logged,
     // because provenance (user_track_activations.source_ref / child_milestones.source_ref)
     // points at a real user_update_events row — no dangling refs allowed. So we upgrade
@@ -154,8 +190,6 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     // ENRICH-APPLY (slice 2): atomically add tracks (user_mlp_mods) + provenance +
     // milestone facts via apply_classification, then recompute AFTER commit.
     if (apply && eventId) {
-      const nameToId = await loadMilestoneIds();
-      const milestoneFacts = resolveMilestoneFacts(signals, nameToId);
       const { data: applyRes, error: applyErr } = await db.rpc("apply_classification", {
         p_user_id:    user_id,
         p_child_id:   child_id,
@@ -189,13 +223,22 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       }
     }
 
+    // SUPPRESS (slice 3): questionnaires this update makes redundant — those mapped
+    // (questionnaire.milestone_id) to a milestone the update resolves. With apply=true
+    // those milestones are now recorded facts; with apply=false the report is
+    // PROJECTED from the proposed facts (clearly derived, no writes). Stable shape,
+    // [] when none. Read-only and non-throwing (report none rather than fail).
+    const redundant_questionnaires = await findRedundantQuestionnaires(
+      milestoneFacts.map((f) => f.milestone_id)
+    );
+
     const prompt_version = createHash("sha256").update(promptRow.system_message).digest("hex").slice(0, 12);
 
     return {
       classification: { relevant, signals },
       proposed_enrichments,
       milestones_recorded: milestonesRecorded,  // names of child_milestones written this apply ([] unless apply=true)
-      redundant_questionnaires: [],          // SUPPRESS layer — not built (slice 3).
+      redundant_questionnaires,              // SUPPRESS (slice 3): questionnaires made redundant by this update.
       // STUBBED false. MUST be replaced with a real concern/distress path BEFORE any
       // parent-facing free-text input ships: lower confidence bar, enrich-toward-support
       // only, and a possibly-concerning update must NEVER resolve to a no-op. Safe to

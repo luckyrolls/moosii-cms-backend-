@@ -720,7 +720,11 @@ Body: {
       reason?: string }           // on a skip: 'already_active' | 'manual_override'
   ],
   milestones_recorded: string[],  // milestone names written this apply ([] unless apply=true)
-  redundant_questionnaires: [],   // SUPPRESS layer — not built. Always [] for now.
+  redundant_questionnaires: [     // SUPPRESS (slice 3): questionnaires this update makes redundant.
+    { questionnaire_id: string,   // mapped (questionnaire.milestone_id) to a milestone this update resolves
+      questionnaire_name: string,
+      milestone_id: string }      // the milestone whose fact makes it redundant
+  ],                              // apply=true → the milestone is now a fact; apply=false → PROJECTED (no writes). [] when none.
   distress: { detected: false },  // STUBBED false. Real path required before app-facing input.
   provenance: {
     model: string, prompt_version: string,
@@ -731,8 +735,9 @@ Body: {
 ```
 
 **Invariants that hold as the feature grows (shape never changes):**
-- `redundant_questionnaires` and `distress` are PRESENT-BUT-EMPTY from day one;
-  later slices populate them, the shape doesn't move.
+- `redundant_questionnaires` (slice 3) and `distress` were PRESENT-BUT-EMPTY from
+  day one; `redundant_questionnaires` now populates (slice 3), `distress` still
+  stubbed — the shape never moved.
 - `relevant: false` is a valid, expected, COMMON outcome — not an error. The
   classifier is prompted to prefer it and not stretch for weak matches.
 - Proposed `track_id`s are always validated against the real catalog before
@@ -771,8 +776,9 @@ overwriting the prose.
 section]; (2) enrich-apply — activate proposed tracks via the existing
 `user_active_tracks` machinery when `apply=true`; (3) suppress —
 `redundant_questionnaires` populates, gated to suppressible questionnaires only,
-clinical screens structurally never-suppressible; (4) real distress path +
-app-facing input. Later slices only fill fields; they don't change this shape.
+clinical screens structurally never-suppressible [DELIVERED, below]; (4) real
+distress path + app-facing input. Later slices only fill fields; they don't
+change this shape.
 
 **Slice 1 — DELIVERED** (`POST /classify-update`, JWT, synchronous): prompt in DB
 (`prompt_type='classify_update'`, migration 016); catalog assembled fresh per call
@@ -797,6 +803,39 @@ is always distinguishable by that row. Milestone-type signals resolve (alias-bas
 to `milestones` and write `child_milestones` (first-reach-wins), **independent of
 whether any track activated** (so `sleeping_through_night`, which no track serves,
 still records). `apply=true` implies event persistence (for `source_ref`).
+
+**Slice 3 — DELIVERED** (SUPPRESS, migration 023): a questionnaire whose answer is
+equivalent to a recorded fact stops surfacing for that user. The whole slice rests
+on one **structural** rule (no toggle):
+
+- **Suppressibility = having a milestone mapping.** `questionnaire.milestone_id`
+  (nullable FK) is the ONE canonical questionnaire↔milestone link. MAPPED = the
+  questionnaire is redundant for a user whose child already has that milestone.
+  UNMAPPED (NULL) = **unsuppressible by construction** — there is no mapping row to
+  consult, so no code path can suppress it. Clinical/safety screens map to nothing
+  (no milestone exists for e.g. depression) and stay NULL — they can never be
+  inference-suppressed. This is the roadmap's hard rule made structural.
+- **Derived, not stored.** Milestones are monotonic (a fact never un-happens), so
+  suppression needs no state table, no un-suppress, no contradiction handling. At
+  MLP build time (`rebuildOneUser` → `generateFullMLP`, PER-USER, not the pool view
+  and not the rpc), a questionnaire mapped to milestone X is excluded for a user
+  whose (youngest) child has fact X — computed fresh each rebuild from
+  `child_milestones`, same correctness-by-construction as `user_active_tracks`.
+- **Default-to-surface.** Any doubt — unresolved/dangling mapping, missing child,
+  RLS hiccup, error — logs a warning and yields an EMPTY exclusion: the
+  questionnaire SURFACES. Suppression fires ONLY on a positive, resolved
+  `(child, milestone)` fact match. A bug here can only over-surface, never silently
+  hide a questionnaire.
+- **`redundant_questionnaires` in the response** reports the questionnaires this
+  update makes redundant (mapped to a milestone it resolves). `apply=true` → those
+  milestones are now facts; `apply=false` → PROJECTED from proposed facts, no writes.
+- **DEFERRED (on record, not forgotten):** the WRITE direction — a questionnaire
+  COMPLETION recording its milestone fact (`source='questionnaire'`) — is the
+  answer-level `record_milestone` build. It is NOT in this slice because it is
+  answer-dependent and safety-sensitive (a "no, not yet" answer must not record the
+  milestone), and completion is app-side today (`completed_items`, no backend
+  trigger). When built, it READS `questionnaire.milestone_id` (one link, two
+  directions) — do not add a parallel mapping.
 
 ---
 

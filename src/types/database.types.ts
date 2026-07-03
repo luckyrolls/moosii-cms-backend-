@@ -2227,6 +2227,7 @@ export type Database = {
           id: string
           is_published: boolean | null
           is_score_based: boolean | null
+          milestone_id: string | null
           onboarding_image: string
           onboarding_text: string
           points: number | null
@@ -2245,6 +2246,7 @@ export type Database = {
           id?: string
           is_published?: boolean | null
           is_score_based?: boolean | null
+          milestone_id?: string | null
           onboarding_image?: string
           onboarding_text?: string
           points?: number | null
@@ -2263,6 +2265,7 @@ export type Database = {
           id?: string
           is_published?: boolean | null
           is_score_based?: boolean | null
+          milestone_id?: string | null
           onboarding_image?: string
           onboarding_text?: string
           points?: number | null
@@ -2275,6 +2278,13 @@ export type Database = {
           with_quiz?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "questionnaire_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "milestones"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "questionnaire_topic_id_fkey"
             columns: ["topic_id"]
