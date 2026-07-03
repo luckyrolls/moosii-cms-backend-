@@ -719,7 +719,7 @@ Body: {
       applied: boolean,           // apply=false → always false; apply=true → true if activated
       reason?: string }           // on a skip: 'already_active' | 'manual_override'
   ],
-  milestones_recorded: number,    // child_milestones written this apply (0 unless apply=true)
+  milestones_recorded: string[],  // milestone names written this apply ([] unless apply=true)
   redundant_questionnaires: [],   // SUPPRESS layer — not built. Always [] for now.
   distress: { detected: false },  // STUBBED false. Real path required before app-facing input.
   provenance: {

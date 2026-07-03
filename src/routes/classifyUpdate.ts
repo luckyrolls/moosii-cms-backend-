@@ -124,7 +124,7 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     // persist explicitly here rather than leaving the coupling implicit downstream.
     const willPersist = persist === true || apply === true;
     let eventId: string | null = null;
-    let milestonesRecorded = 0;   // count of child_milestones newly written this apply
+    let milestonesRecorded: string[] = [];   // names of child_milestones newly written this apply
 
     // Persist the raw event + derived signals (separate linked rows).
     if (willPersist) {
@@ -169,9 +169,9 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       // rpc returns Json, so narrow it to the fn's documented shape.
       const res = applyRes as {
         proposals?: { track_id: string; applied: boolean; reason: string | null }[];
-        milestones_recorded?: number;
+        milestones_recorded?: string[];
       } | null;
-      milestonesRecorded = res?.milestones_recorded ?? 0;
+      milestonesRecorded = res?.milestones_recorded ?? [];
       const outcome = new Map<string, { applied: boolean; reason: string | null }>(
         (res?.proposals ?? []).map((p) => [p.track_id, { applied: p.applied, reason: p.reason }]),
       );
@@ -194,7 +194,7 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     return {
       classification: { relevant, signals },
       proposed_enrichments,
-      milestones_recorded: milestonesRecorded,  // child_milestones written this apply (0 unless apply=true)
+      milestones_recorded: milestonesRecorded,  // names of child_milestones written this apply ([] unless apply=true)
       redundant_questionnaires: [],          // SUPPRESS layer — not built (slice 3).
       // STUBBED false. MUST be replaced with a real concern/distress path BEFORE any
       // parent-facing free-text input ships: lower confidence bar, enrich-toward-support
