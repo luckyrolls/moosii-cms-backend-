@@ -732,7 +732,14 @@ Body: {
       questionnaire_name: string,
       milestone_id: string }      // the milestone whose fact makes it redundant
   ],                              // apply=true → the milestone is now a fact; apply=false → PROJECTED (no writes). [] when none.
-  distress: { detected: false },  // STUBBED false. Real path required before app-facing input.
+  distress: {                     // DISTRESS (slice B) — detection LIVE, content PROVISIONAL.
+    detected: boolean,            // tier !== 'none'
+    tier: 'none'|'strain'|'overwhelm'|'safety',
+    evidence_span: string|null,   // verbatim substring that drove the tier; null for none
+    response: { message: string, resources: [ {label,value,kind:'phone'|'text'|'url'} ] } | null,
+    parse_failed: boolean         // true ONLY when the assessment was UNREADABLE after retries
+  },                              //   and defaulted to none (marked + audited, never silent none).
+                                  // response = the distress_responses row for the tier (null for none)
   provenance: {
     model: string, prompt_version: string,
     catalog_version: string, correlation_id: string
@@ -742,9 +749,8 @@ Body: {
 ```
 
 **Invariants that hold as the feature grows (shape never changes):**
-- `redundant_questionnaires` (slice 3) and `distress` were PRESENT-BUT-EMPTY from
-  day one; `redundant_questionnaires` now populates (slice 3), `distress` still
-  stubbed — the shape never moved.
+- `redundant_questionnaires` (slice 3) and `distress` (slice B) were PRESENT-BUT-
+  EMPTY from day one and now both populate — the shape never moved.
 - `relevant: false` is a valid, expected, COMMON outcome — not an error. The
   classifier is prompted to prefer it and not stretch for weak matches.
 - Proposed `track_id`s are always validated against the real catalog before
@@ -758,11 +764,10 @@ Body: {
   `child_milestones.source_ref`) points at a real `user_update_events` row; dangling
   refs are not allowed. The endpoint upgrades `apply=true, persist=false` explicitly.
 
-**`distress` is stubbed `false` ONLY because this is internal/test-only.** Before
-any parent-facing free-text input ships in the app, a real concern/distress path
-is required: lower confidence bar than the milestone path, enriches toward support
-only, and a possibly-concerning update must NEVER resolve to a no-op. This is a
-hard gate on app integration, tracked here so it can't be skipped.
+**App-facing free-text input remains gated:** no REAL PARENTS until the distress
+tiers + response content are clinically confirmed (see
+`docs/provisional-clinical-decisions.md`). Detection and provisional content being
+live does NOT open the gate. The gate MOVED (detection is built), it did not vanish.
 
 **Prompt + catalog:** classifier prompt lives in the DB `prompts` tables
 (`prompt_type='classify_update'`), versioned, per the no-hardcoded-prompts rule.
@@ -783,9 +788,9 @@ overwriting the prose.
 section]; (2) enrich-apply — activate proposed tracks via the existing
 `user_active_tracks` machinery when `apply=true`; (3) suppress —
 `redundant_questionnaires` populates, gated to suppressible questionnaires only,
-clinical screens structurally never-suppressible [DELIVERED, below]; (4) real
-distress path + app-facing input. Later slices only fill fields; they don't
-change this shape.
+clinical screens structurally never-suppressible [DELIVERED, below]; (4) distress
+detection + provisional response [PROVISIONAL DELIVERED, below] then app-facing
+input (still gated). Later slices only fill fields; they don't change this shape.
 
 **Slice 1 — DELIVERED** (`POST /classify-update`, JWT, synchronous): prompt in DB
 (`prompt_type='classify_update'`, migration 016); catalog assembled fresh per call
@@ -795,7 +800,6 @@ no signal survives → `relevant:false`). Proposed `track_id`s validated against
 catalog; unresolved dropped. `prompt_version` = `sha256(system_message)[:12]`.
 `persist=true` writes `user_update_events` (raw prose) + `user_update_signals`
 (derived, with `matched`/`matched_track_id` for later unmatched-signal queries).
-`distress` stubbed `false` — internal/test-only until the slice-4 path exists.
 
 **Slice 2 — DELIVERED** (`apply=true`, migrations 019–020): activates proposed
 tracks as per-user overrides in `user_mlp_mods (action='add')` — the base table the
@@ -843,6 +847,40 @@ on one **structural** rule (no toggle):
   milestone), and completion is app-side today (`completed_items`, no backend
   trigger). When built, it READS `questionnaire.milestone_id` (one link, two
   directions) — do not add a parallel mapping.
+
+**Slice B — PROVISIONAL DELIVERED** (DISTRESS, migrations 024–025): detection is
+LIVE, response content is PROVISIONAL, app delivery is slice 4 (still gated). The
+clinical owner was unavailable (~2 weeks), so this was built to provisional
+clinical calls structured so her review is config/content edits, not rebuilds —
+tier boundaries in the DB prompt, copy in `distress_responses` (`is_provisional`).
+Every clinical judgment is logged in `docs/provisional-clinical-decisions.md` (the
+review agenda; the safety-tier intrusive-thoughts wording is flagged TOP priority).
+
+- **Detection** — the classifier gains a SEPARATE, mandatory distress duty
+  (migration 024): a `distress { tier, evidence_span }` object, `tier ∈
+  none|strain|overwhelm|safety`. It runs OPPOSITE to track matching — LENIENT, NO
+  confidence floor, CONSERVATIVE-UPWARD, safety near-deterministic (any safety
+  language → `safety`, not weighed against upbeat content), and it COEXISTS with
+  signals (a milestone signal AND tier safety at once). Distress NEVER routes
+  through tracks; `proposed_enrichments` is unchanged by tier. False positives are
+  acceptable; a missed distress is the failure.
+- **Response** — the `distress` field carries the `distress_responses` row for the
+  tier (`message` + `resources[]`), `null` for none. `detected = tier !== 'none'`.
+- **Persistence** (`persist=true`, which `apply=true` forces): the tier lands on
+  `user_update_events.distress_tier`; every strain+ detection also writes a
+  `distress_detections` audit row (the item-10 analog log). A `persist=false`
+  preview returns the payload but writes nothing (console test data — decision D10).
+- **Unreadable assessment never silently becomes none** — a garbled distress tier
+  is first NORMALIZED (near-misses like "Safety" coerce), then RE-ASKED (retry up to
+  3×), and only then defaulted to none with `parse_failed=true` in the response AND a
+  `distress_detections(parse_failed=true)` audit row. The audit distinguishes
+  "assessed none" (no row) from "couldn't read it" (parse_failed row) — see decision
+  D11. Defaulting toward none in the wrong direction would violate the slice's core
+  asymmetry; it doesn't.
+- **apply is unchanged by distress** — enrichments, milestone facts, suppression
+  all behave identically regardless of tier.
+- **The gate MOVED, not vanished:** detection + provisional content live ≠ open
+  gate. No real parents until clinically confirmed.
 
 ---
 

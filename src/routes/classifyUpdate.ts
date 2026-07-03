@@ -45,7 +45,86 @@ async function loadClassifyPromptRow(): Promise<ClassifyPromptRow> {
 
 type LlmSignal   = { type: string; value: string; confidence: number; evidence_span: string };
 type LlmProposal = { track_id: string; confidence: number; source_signal: string };
-type LlmOut      = { relevant: boolean; signals: LlmSignal[]; proposed_enrichments: LlmProposal[] };
+type LlmDistress = { tier: string; evidence_span: string };
+type LlmOut      = { relevant: boolean; signals: LlmSignal[]; proposed_enrichments: LlmProposal[]; distress?: LlmDistress };
+
+// Distress (slice B). LENIENT by design — see docs/provisional-clinical-decisions.md.
+export type DistressTier = "none" | "strain" | "overwhelm" | "safety";
+const DISTRESS_TIERS: DistressTier[] = ["none", "strain", "overwhelm", "safety"];
+export type DistressResult = {
+  detected: boolean;                 // tier !== 'none'
+  tier: DistressTier;
+  evidence_span: string | null;
+  response: { message: string; resources: unknown } | null;  // distress_responses row; null for none
+  parse_failed: boolean;             // true ONLY when the assessment was UNREADABLE after
+                                     // retries and defaulted to none — a marked, audited
+                                     // "we couldn't read it", NOT "assessed as none".
+};
+
+// Recover a near-miss tier ("Safety", "SAFETY ", "overwhelm.") to a canonical value.
+// Returns null ONLY when the value is genuinely unreadable — the caller RE-ASKS on
+// null (never silently defaults), because a garbled safety read must not become none.
+function normalizeTier(raw: unknown): DistressTier | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim().toLowerCase().replace(/[^a-z]/g, "");  // case + trailing junk/space/punct
+  return (DISTRESS_TIERS as string[]).includes(t) ? (t as DistressTier) : null;
+}
+
+type GenResult = { text: string; raw: unknown; model: string };
+
+// The normalize → retry → marked-default loop, with the generator INJECTED so it is
+// deterministically testable without a live LLM (P6). A response is "good" only when
+// it parses AND its distress tier is readable (after normalization). An unreadable
+// distress object is a FAILED generation — re-asked up to `attemptsMax` (same
+// discipline as generate_questionnaire) — because defaulting a garbled read to none
+// would violate the slice's core asymmetry (false negatives are the failure mode).
+// Only after exhausting retries do we default to none, and we MARK it (parse_failed).
+export async function resolveClassification(
+  generate: () => Promise<GenResult>,
+  attemptsMax = 3,
+): Promise<{ out: LlmOut; result: GenResult; distressTier: DistressTier; distressParseFailed: boolean; attempts: number }> {
+  let out: LlmOut | null = null;   // latest VALID-JSON parse (usable for signals/proposals)
+  let result!: GenResult;
+  let attempts = 0;
+  for (attempts = 1; attempts <= attemptsMax; attempts++) {
+    result = await generate();
+    let parsed: LlmOut;
+    try {
+      parsed = JSON.parse(result.text) as LlmOut;
+    } catch {
+      console.warn(`[classify_update] attempt ${attempts}: non-JSON response — re-asking`);
+      continue;
+    }
+    out = parsed;  // keep even if distress is unreadable (signals/proposals still usable)
+    const tier = normalizeTier(parsed.distress?.tier);
+    if (tier === null) {
+      console.warn(`[classify_update] attempt ${attempts}: distress tier unreadable (${JSON.stringify(parsed.distress?.tier)}) — re-asking`);
+      continue;
+    }
+    return { out, result, distressTier: tier, distressParseFailed: false, attempts };
+  }
+  // Never got valid JSON at all — a hard failure (as before).
+  if (out === null) {
+    throw new Error(`Classifier returned non-JSON after ${attemptsMax} attempts.\nRaw: ${result.text}`);
+  }
+  // JSON parsed but distress stayed unreadable across all attempts: default to none,
+  // MARKED distinctly so review tells "assessed none" from "couldn't read it".
+  console.error(`[classify_update] distress UNREADABLE after ${attemptsMax} attempts — defaulting tier=none WITH parse_failed marker`);
+  return { out, result, distressTier: "none", distressParseFailed: true, attempts: attemptsMax };
+}
+
+// The provisional response content for a tier (null for none). Non-throwing.
+async function loadDistressResponse(tier: DistressTier): Promise<{ message: string; resources: unknown } | null> {
+  if (tier === "none") return null;
+  const { data, error } = await db
+    .from("distress_responses")
+    .select("message, resources")
+    .eq("tier", tier)
+    .maybeSingle();
+  if (error) { console.warn(`[classify_update] distress_responses load failed (tier=${tier}): ${error.message}`); return null; }
+  if (!data)  { console.warn(`[classify_update] no distress_responses row for tier=${tier}`); return null; }
+  return { message: data.message as string, resources: data.resources };
+}
 
 export type Enrichment = {
   action: "activate_track"; track_id: string; track_name: string | null;
@@ -118,14 +197,18 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     const provider = resolveProvider();
     const client = getLLMClient(provider);
     const llmStart = Date.now();
-    const result = await client.generate({
-      instructions:   promptRow.system_message,
-      userPrompt,
-      responseSchema: promptRow.output_schema,
-      ...(promptRow.model && { model: promptRow.model }),
-      ...(promptRow.temperature != null && { temperature: promptRow.temperature }),
-      ...(promptRow.max_tokens != null && { maxTokens: promptRow.max_tokens }),
-    });
+
+    // Generate + parse with normalize→retry→marked-default (see resolveClassification).
+    const { out, result, distressTier, distressParseFailed, attempts } = await resolveClassification(
+      () => client.generate({
+        instructions:   promptRow.system_message,
+        userPrompt,
+        responseSchema: promptRow.output_schema,
+        ...(promptRow.model && { model: promptRow.model }),
+        ...(promptRow.temperature != null && { temperature: promptRow.temperature }),
+        ...(promptRow.max_tokens != null && { maxTokens: promptRow.max_tokens }),
+      }),
+    );
 
     await logAiCall({
       correlationId,
@@ -136,15 +219,8 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       latencyMs:         Date.now() - llmStart,
       relatedEntityType: null,
       relatedEntityId:   null,
-      notes:             `catalog_version=${catalog.catalog_version}, persist=${persist}, apply=${apply}`,
+      notes:             `catalog_version=${catalog.catalog_version}, persist=${persist}, apply=${apply}, attempts=${attempts}`,
     });
-
-    let out: LlmOut;
-    try {
-      out = JSON.parse(result.text) as LlmOut;
-    } catch {
-      throw new Error(`Classifier returned non-JSON.\nRaw: ${result.text}`);
-    }
 
     const { relevant, signals, proposed_enrichments } = applyGate(out, catalog);
 
@@ -154,6 +230,20 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     const milestoneFacts =
       signals.length > 0 ? resolveMilestoneFacts(signals, await loadMilestoneIds()) : [];
 
+    // DISTRESS (slice B) — a SEPARATE output, computed on every classification and
+    // fully independent of signals/proposals/apply. Tier + parse_failed were resolved
+    // in the retry loop above (LENIENT, no silent-none). evidence is null on a parse
+    // failure (there was no readable assessment to quote).
+    const distressEvidence =
+      !distressParseFailed && out.distress?.evidence_span?.trim() ? out.distress.evidence_span : null;
+    const distress: DistressResult = {
+      detected: distressTier !== "none",
+      tier: distressTier,
+      evidence_span: distressEvidence,
+      response: await loadDistressResponse(distressTier),
+      parse_failed: distressParseFailed,
+    };
+
     // apply=true IMPLIES persist=true: an applied classification is ALWAYS logged,
     // because provenance (user_track_activations.source_ref / child_milestones.source_ref)
     // points at a real user_update_events row — no dangling refs allowed. So we upgrade
@@ -162,11 +252,12 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     let eventId: string | null = null;
     let milestonesRecorded: string[] = [];   // names of child_milestones newly written this apply
 
-    // Persist the raw event + derived signals (separate linked rows).
+    // Persist the raw event + derived signals (separate linked rows). The distress
+    // tier lands on the event; every strain+ detection also writes an audit row.
     if (willPersist) {
       const { data: ev, error: evErr } = await db
         .from("user_update_events")
-        .insert({ user_id, child_id, raw_text, source: "cms_test", processing_status: "classified", correlation_id: correlationId })
+        .insert({ user_id, child_id, raw_text, source: "cms_test", processing_status: "classified", correlation_id: correlationId, distress_tier: distressTier })
         .select("id").single();
       if (evErr) throw new Error(`Failed to write user_update_events: ${evErr.message}`);
       eventId = ev?.id ?? null;
@@ -184,6 +275,19 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
         }));
         const { error: sErr } = await db.from("user_update_signals").insert(rows);
         if (sErr) throw new Error(`Failed to write user_update_signals: ${sErr.message}`);
+      }
+      // Safety audit (item-10 analog): a strain+ detection OR an UNREADABLE assessment
+      // (parse_failed — the distinction a safety audit exists to preserve). Logged
+      // LOUDLY on failure but never throws — the event already carries distress_tier
+      // as a fallback, and a failed audit must not break a response already carrying
+      // the support content.
+      if (eventId && (distressTier !== "none" || distressParseFailed)) {
+        const { error: ddErr } = await db.from("distress_detections").insert({
+          event_id: eventId, user_id, child_id, tier: distressTier,
+          evidence_span: distressEvidence, correlation_id: correlationId,
+          parse_failed: distressParseFailed,
+        });
+        if (ddErr) console.error(`[classify_update] SAFETY AUDIT WRITE FAILED (tier=${distressTier}, parse_failed=${distressParseFailed}, event=${eventId}): ${ddErr.message}`);
       }
     }
 
@@ -239,11 +343,10 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       proposed_enrichments,
       milestones_recorded: milestonesRecorded,  // names of child_milestones written this apply ([] unless apply=true)
       redundant_questionnaires,              // SUPPRESS (slice 3): questionnaires made redundant by this update.
-      // STUBBED false. MUST be replaced with a real concern/distress path BEFORE any
-      // parent-facing free-text input ships: lower confidence bar, enrich-toward-support
-      // only, and a possibly-concerning update must NEVER resolve to a no-op. Safe to
-      // stub now ONLY because this is internal/test-only.
-      distress: { detected: false },
+      // DISTRESS (slice B) — PROVISIONAL: detection live, content provisional, app
+      // delivery is slice 4. detected = tier !== 'none'; response is the
+      // distress_responses row (null for none). See docs/provisional-clinical-decisions.md.
+      distress,
       provenance: {
         model:           result.model,
         prompt_version,

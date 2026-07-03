@@ -970,6 +970,80 @@ export type Database = {
           },
         ]
       }
+      distress_detections: {
+        Row: {
+          child_id: string | null
+          correlation_id: string | null
+          created_at: string
+          event_id: string | null
+          evidence_span: string | null
+          id: string
+          parse_failed: boolean
+          tier: string
+          user_id: string
+        }
+        Insert: {
+          child_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_id?: string | null
+          evidence_span?: string | null
+          id?: string
+          parse_failed?: boolean
+          tier: string
+          user_id: string
+        }
+        Update: {
+          child_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_id?: string | null
+          evidence_span?: string | null
+          id?: string
+          parse_failed?: boolean
+          tier?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distress_detections_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "user_update_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distress_responses: {
+        Row: {
+          created_at: string
+          id: string
+          is_provisional: boolean
+          message: string
+          resources: Json
+          tier: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_provisional?: boolean
+          message: string
+          resources?: Json
+          tier: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_provisional?: boolean
+          message?: string
+          resources?: Json
+          tier?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       faqs: {
         Row: {
           answer: string | null
@@ -4979,6 +5053,7 @@ export type Database = {
           child_id: string | null
           correlation_id: string | null
           created_at: string
+          distress_tier: string | null
           id: string
           processing_status: string
           raw_text: string
@@ -4989,6 +5064,7 @@ export type Database = {
           child_id?: string | null
           correlation_id?: string | null
           created_at?: string
+          distress_tier?: string | null
           id?: string
           processing_status?: string
           raw_text: string
@@ -4999,6 +5075,7 @@ export type Database = {
           child_id?: string | null
           correlation_id?: string | null
           created_at?: string
+          distress_tier?: string | null
           id?: string
           processing_status?: string
           raw_text?: string
