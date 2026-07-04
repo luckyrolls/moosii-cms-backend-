@@ -137,7 +137,12 @@ app showed "no questions").** This bulk approve crosses all three gates together
 `quiz_questions.answer_status → 'approved'`, and approves the **latest candidate**
 image per card (reusing `approve_content_image` → writes `sub_segments.image`). Cards
 with no candidate stay imageless (valid); a segment with no content cards is refused
-(409). `unapprove` is the full reverse (content/quiz → `pending`, approved images →
+(409). **Pre-check:** `sub_segments.image` FKs to `image_assets.url` (populated by the
+out-of-backend storage-upload flow); before approving, each candidate's URL is verified
+present there — if any isn't, approve returns **409 `image_not_linkable`** naming the
+card(s) and approves NOTHING (regenerate the image). This never silently approves a card
+missing an image it was meant to have, and keeps a stray image from failing the atomic
+bundle with an opaque FK error. `unapprove` is the full reverse (content/quiz → `pending`, approved images →
 `candidate`, `sub_segments.image` cleared) — nothing regenerated, fully reversible.
 Per-artifact approval stays available as the lower-level primitives
 (`/segments/:id/approve`, `/content-images/:id/approve`); bulk is the one-click path.

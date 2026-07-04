@@ -82,11 +82,30 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
         latestBySub.set(c.sub_segment_id, { id: c.id, storage_path: c.storage_path as string });
       }
     }
-    const images = [...latestBySub.values()].map((c) => ({
+    const images = [...latestBySub.entries()].map(([subId, c]) => ({
       id: c.id,
+      sub_segment_id: subId,   // for the pre-check error only; the bundle fn ignores it
       public_url: supabase.storage.from(BUCKET).getPublicUrl(c.storage_path).data.publicUrl,
       storage_path: c.storage_path,
     }));
+
+    // PRE-CHECK: sub_segments.image FKs to image_assets.url (populated out-of-backend by
+    // the storage-upload flow). A candidate whose url isn't there would fail the atomic
+    // bundle with a raw FK error and block the WHOLE segment (content + quiz too). Catch
+    // it here and return an actionable 409 naming the card(s); approve NOTHING — do not
+    // silently approve a card missing the image it was meant to have. Fix = regenerate.
+    if (images.length > 0) {
+      const { data: assets } = await supabase
+        .from("image_assets").select("url").in("url", images.map((i) => i.public_url));
+      const present = new Set((assets ?? []).map((a) => a.url));
+      const missing = images.filter((i) => !present.has(i.public_url));
+      if (missing.length > 0) {
+        apiError(res, 409, "image_not_linkable",
+          `Cannot approve: ${missing.length} generated image(s) are not linkable (no image_assets row) ` +
+          `for card(s) ${missing.map((m) => m.sub_segment_id).join(", ")}. Regenerate those images and try again.`);
+        return;
+      }
+    }
 
     const { data: r, error } = await db.rpc("approve_segment_bundle", {
       p_seg_id: seg.id, p_approved_by: approvedBy, p_images: images,
