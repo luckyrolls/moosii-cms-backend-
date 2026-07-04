@@ -13,7 +13,8 @@ type Input = {
   track_id: string;          // required — looked up in tracks for name + description
   min_child_age: number;     // required — developmental window lower bound (months)
   max_child_age: number;     // required — developmental window upper bound (months)
-  max_lessons: number;       // required — CEILING (system_message treats as max, not target)
+  max_lessons: number;       // required — HARD CAP. The model derives the count from
+                             //   coverage (max is a ceiling, not a target); code enforces it.
   additional_info?: string;  // optional — author instructions (authoritative override)
   created_by?: string;       // optional — stamped on inserted rows
 };
@@ -36,6 +37,7 @@ type GeneratedLesson = {
   priority: number;
   band_rationale: string;
   safety_sensitive: boolean;
+  coverage_rationale: string;   // one-sentence existence rationale (migration 028)
 };
 
 const normalizeTopic = (s: string): string => s.trim().toLowerCase();
@@ -57,12 +59,14 @@ async function loadLessonPromptRow(): Promise<LessonPromptRow> {
 
 // Build the runtime user message: bare section headers (code literals) + data.
 // All instructional content lives in system_message (the 0004 prompt row).
+// NOTE: max_lessons is DELIBERATELY not shown to the model. It is coverage-driven
+// and cap-blind — the model enumerates full genuine coverage; the CODE enforces the
+// cap (an anchored "maximum: N" makes the model self-limit no matter the instruction).
 function buildUserMessage(opts: {
   trackName: string;
   trackDescription: string;
   minChildAge: number;
   maxChildAge: number;
-  maxLessons: number;
   topicNames: string[];
   existing: unknown[];
   usedPriorities: number[];
@@ -74,19 +78,19 @@ function buildUserMessage(opts: {
     `TRACK\n` +
     `Name: ${opts.trackName}\n` +
     `Description: ${opts.trackDescription}\n` +
-    `Developmental window: ${opts.minChildAge}–${opts.maxChildAge} months\n` +
-    `Maximum lessons: ${opts.maxLessons}`
+    `Developmental window: ${opts.minChildAge}–${opts.maxChildAge} months`
   );
 
   parts.push(`AVAILABLE TOPICS\n${opts.topicNames.join("\n")}`);
 
   if (opts.existing.length > 0) {
     parts.push(
-      `EXISTING LESSONS IN THIS TRACK\n${JSON.stringify(opts.existing, null, 2)}\n` +
+      `EXISTING LESSONS IN THIS TRACK — ALREADY COVERED; enumerate only missing topics, ` +
+      `do not duplicate or closely overlap these:\n${JSON.stringify(opts.existing, null, 2)}\n` +
       `Priority values already in use: ${opts.usedPriorities.join(", ")}`
     );
   } else {
-    parts.push(`EXISTING LESSONS IN THIS TRACK\nNone yet.`);
+    parts.push(`EXISTING LESSONS IN THIS TRACK\nNone yet — enumerate full coverage for the track.`);
   }
 
   if (opts.additionalInfo && opts.additionalInfo.trim()) {
@@ -148,7 +152,6 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     trackDescription: track.description ?? "",
     minChildAge: min_child_age,
     maxChildAge: max_child_age,
-    maxLessons: max_lessons,
     topicNames: topics.map((t) => t.name ?? "").filter(Boolean),
     existing: existingForPrompt,
     usedPriorities,
@@ -199,6 +202,19 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
   }
   if (classes.length === 0) throw new Error("OpenAI returned no lessons");
 
+  // Step 7b — CAP ENFORCEMENT (code, not prompt-trust). The model derives the count
+  // from coverage; max_lessons is a hard cap. If coverage exceeded the cap, keep the
+  // most-essential (lowest priority values) and SURFACE the rest — the human sees the
+  // track wanted more than the cap allowed (a signal to re-run higher, not a silent trim).
+  let coverage_truncated = false;
+  let topics_dropped: string[] = [];
+  if (classes.length > max_lessons) {
+    coverage_truncated = true;
+    const byEssential = [...classes].sort((a, b) => (a.priority ?? 9999) - (b.priority ?? 9999));
+    topics_dropped = byEssential.slice(max_lessons).map((c) => c.lesson_name);
+    classes = byEssential.slice(0, max_lessons);
+  }
+
   // Step 8 — resolve topic name -> topic_id; FAIL LOUDLY on any miss (no insert)
   const unresolved: { lesson_name: string; topic: string }[] = [];
   const resolved = classes.map((c) => {
@@ -240,11 +256,17 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     lessons_inserted:  createdLessons.length,
     segments_inserted: createdLessons.length,
     lesson_ids:        createdLessons.map((l) => l.id),
+    // Coverage-driven count: true when the model wanted MORE than the cap allowed.
+    // topics_dropped names the dropped (least-essential) lessons — re-run with a
+    // higher cap to include them, not a silent trim.
+    coverage_truncated,
+    topics_dropped,
     lessons:           createdLessons.map((l) => {
       const o = classes.find((c) => c.lesson_name === l.lesson_name);
       return {
         id: l.id, lesson_name: l.lesson_name, priority: o?.priority,
         topic: o?.topic, band_rationale: o?.band_rationale, safety_sensitive: o?.safety_sensitive,
+        coverage_rationale: o?.coverage_rationale,
       };
     }),
     author_instructions_used: usedAuthorInstructions,

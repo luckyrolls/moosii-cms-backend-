@@ -150,7 +150,7 @@ Body: {
     track_id: string,         // required — track name + description read from `tracks`
     min_child_age: number,    // required — developmental window lower bound (months)
     max_child_age: number,    // required — developmental window upper bound (months)
-    max_lessons: number,      // required — CEILING on lessons (max, not target); >= 1
+    max_lessons: number,      // required — HARD CAP, not a target (>= 1). See below.
     additional_info?: string, // optional — author instructions (authoritative override)
     created_by?: string       // optional — user email/id stamped on inserted rows
   }
@@ -160,17 +160,30 @@ Body: {
 System prompt + output schema + model/params are composed from the DB `prompts`
 row (`prompt_type = 'lesson'`, `is_active = true`) — NOT a source file. The
 runtime user message supplies only data under bare section headers: TRACK
-(name/description/developmental window/max lessons), AVAILABLE TOPICS (the
-`topics.name` set, injected verbatim), EXISTING LESSONS IN THIS TRACK (for dedup),
-and AUTHOR INSTRUCTIONS (only when `additional_info` is non-empty).
+(name/description/developmental window), AVAILABLE TOPICS (the `topics.name` set,
+injected verbatim), EXISTING LESSONS IN THIS TRACK (framed as "already covered —
+enumerate only missing topics"), and AUTHOR INSTRUCTIONS (only when `additional_info`
+is non-empty). **`max_lessons` is deliberately NOT shown to the model** — it is
+coverage-driven and cap-blind (an anchored "maximum: N" makes a model self-limit no
+matter the instruction); the cap is enforced only in code.
 
-Produces up to `max_lessons` lesson **stubs**, each with the full eight-field
-contract: name, description, topic, min/max child age, priority, priority-band
-rationale, and `safety_sensitive`. The model returns a `topic` NAME per lesson,
-resolved to `topic_id` via a normalized (case-insensitive, trimmed) lookup against
-`topics.name`. **Any unresolved topic fails the whole job before insert** (no
-partial write) — surfaced as an error naming the offending lesson(s) and topic
-string(s).
+**Coverage-driven count (migration 028): `max_lessons` is a CAP, not a target.**
+The model enumerates the DISTINCT topics the track needs (each with a one-sentence
+`coverage_rationale` — existence justification, same discipline as `band_rationale`)
+and emits one lesson per topic; the count EMERGES from coverage — it does not pad
+toward the cap (a narrow track yields few lessons, by design). GAP-FILL: existing
+lessons are treated as already covered, so a re-run enumerates only the missing
+topics (empty track → full coverage; half-filled → the gaps; nothing missing →
+empty set). The **cap is enforced in code, not prompt-trust**: if the model returns
+more than `max_lessons`, the least-essential (highest priority values) are dropped
+and surfaced (`coverage_truncated` / `topics_dropped`) so the human knows the track
+wanted more than the cap allowed — a signal to re-run with a higher cap, not a
+silent trim. Each lesson still carries the eight-field contract (name, description,
+topic, min/max child age, priority, `band_rationale`, `safety_sensitive`). The model
+returns a `topic` NAME per lesson, resolved to `topic_id` via a normalized
+(case-insensitive, trimmed) lookup against `topics.name`. **Any unresolved topic
+fails the whole job before insert** (no partial write) — surfaced as an error naming
+the offending lesson(s) and topic string(s).
 
 **Writes directly to `lessons`** (not returned for the frontend to commit), via
 the `create_lessons_with_segments` transaction: all lessons + their segments
@@ -180,13 +193,16 @@ commit atomically, or none do. Also creates one `segments` row per lesson
 `jobs.result` on success:
 ```json
 {
-  "lessons_inserted": 8,
-  "segments_inserted": 8,
+  "lessons_inserted": 5,
+  "segments_inserted": 5,
   "lesson_ids": ["uuid", ...],
+  "coverage_truncated": false,   // true = the model wanted MORE than max_lessons
+  "topics_dropped": [],          // when truncated: names of the dropped (least-essential) lessons
   "lessons": [
     {
       "id": "uuid", "lesson_name": "...", "priority": 110,
-      "topic": "feeding", "band_rationale": "...", "safety_sensitive": true
+      "topic": "feeding", "band_rationale": "...", "safety_sensitive": true,
+      "coverage_rationale": "why this topic belongs, distinct from the others"
     }
   ],
   "author_instructions_used": false,
