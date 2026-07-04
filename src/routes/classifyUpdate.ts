@@ -255,39 +255,47 @@ export type CallerScope = { user_id: string; child_id: string; raw_text: string;
 type ScopeResult = { ok: true; value: CallerScope } | { ok: false; status: number; code: string; message: string };
 
 // Two caller modes for POST /classify-update (exported for the security proofs):
-//  - ADMIN (console): trusts body.user_id / child_id and body persist/apply (dry-run OK).
-//  - APP (any other authenticated user — a mobile parent): SELF-SCOPED. user_id is the
-//    JWT's auth uid (a mismatched body.user_id is REJECTED, not silently ignored),
-//    child_id must belong to that user (children.parent_id), and app semantics are
-//    forced server-side: persist=true, apply=true, source='app'.
+// The mode switch is body.user_id PRESENCE, not caller role — collapsing mode and
+// privilege into one signal with no ambiguous flag states:
+//  - CONSOLE (a target user_id is NAMED): admin-gated. Trusts body.user_id / child_id
+//    and body persist/apply (dry-run OK). A non-admin naming a target → 403.
+//  - APP (NO user_id named): SELF-SCOPED to the caller's auth uid — ANY authenticated
+//    caller, INCLUDING an admin testing "as a parent". child_id must belong to that
+//    uid (children.parent_id) — this ownership check applies to ADMINS IDENTICALLY, no
+//    role bypass. App semantics forced server-side: persist=true, apply=true. Source is
+//    'app' for a real parent, 'app_internal' when the app-mode caller is an admin (so
+//    internal test traffic is filterable everywhere — see decisions log D13).
 export async function resolveCallerScope(caller: AnyUser, body: Record<string, unknown>): Promise<ScopeResult> {
   const raw_text = body.raw_text;
   if (!(typeof raw_text === "string" && raw_text.trim())) {
     return { ok: false, status: 400, code: "invalid_request", message: "raw_text is required" };
   }
   const childId = typeof body.child_id === "string" ? body.child_id : undefined;
+  const targetUserId = typeof body.user_id === "string" ? body.user_id : undefined;
 
-  if (isAdminRole(caller.role)) {
-    const userId = typeof body.user_id === "string" ? body.user_id : undefined;
-    if (!userId || !childId) {
-      return { ok: false, status: 400, code: "invalid_request", message: "user_id and child_id are required" };
+  // CONSOLE mode — naming a target user_id. Admin-gated.
+  if (targetUserId) {
+    if (!isAdminRole(caller.role)) {
+      return { ok: false, status: 403, code: "forbidden", message: "naming a target user_id requires admin" };
     }
-    return { ok: true, value: { user_id: userId, child_id: childId, raw_text, persist: body.persist === true, apply: body.apply === true, source: "cms_test" } };
+    if (!childId) {
+      return { ok: false, status: 400, code: "invalid_request", message: "child_id is required" };
+    }
+    return { ok: true, value: { user_id: targetUserId, child_id: childId, raw_text, persist: body.persist === true, apply: body.apply === true, source: "cms_test" } };
   }
 
-  // APP mode — self-scope to the authenticated user.
+  // APP mode — no target named; self-scope to the authenticated caller (parent OR admin).
   const userId = caller.id;
-  if (typeof body.user_id === "string" && body.user_id !== userId) {
-    return { ok: false, status: 403, code: "forbidden", message: "user_id does not match the authenticated user" };
-  }
   if (!childId) {
     return { ok: false, status: 400, code: "invalid_request", message: "child_id is required" };
   }
   const { data: child } = await db.from("children").select("id").eq("id", childId).eq("parent_id", userId).maybeSingle();
   if (!child) {
+    // Ownership applies to admins identically — no role bypass.
     return { ok: false, status: 403, code: "forbidden", message: "child does not belong to the authenticated user" };
   }
-  return { ok: true, value: { user_id: userId, child_id: childId, raw_text, persist: true, apply: true, source: "app" } };
+  const source = isAdminRole(caller.role) ? "app_internal" : "app";
+  return { ok: true, value: { user_id: userId, child_id: childId, raw_text, persist: true, apply: true, source } };
 }
 
 // Core classify logic — SYNCHRONOUS, enrich-only, dry-run (§2j slice 1). Exported

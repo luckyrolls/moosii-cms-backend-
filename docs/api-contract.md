@@ -694,28 +694,32 @@ don't read as mistakes:**
    `classify_update` job type; this one isn't.
 
 Auth: **JWT** — the endpoint verifies ANY signed-in Supabase user itself (mounted
-without the admin-only middleware) and has TWO CALLER MODES:
-- **Admin console** (caller role `admin`/`super_admin`): trusts body `user_id` /
-  `child_id` and body `persist`/`apply` (dry-run allowed) — unchanged behavior.
-- **App parent** (any other authenticated user): **SELF-SCOPED** (security). `user_id`
-  is derived from the token's auth uid — a mismatched body `user_id` is **rejected
-  403**, not silently ignored — and `child_id` must belong to that user
-  (`children.parent_id`) or **403**. App semantics are forced server-side, not trusted
-  from the client: `persist=true`, `apply=true`, `source='app'`.
+without the admin-only middleware). The mode switch is **body `user_id` PRESENCE**,
+not caller role — one signal that collapses mode and privilege:
+- **Console mode** (a target `user_id` is NAMED): **admin-gated**. Trusts body
+  `user_id` / `child_id` and body `persist`/`apply` (dry-run allowed). A non-admin
+  naming a target → **403**.
+- **App mode** (NO `user_id` named): **SELF-SCOPED** to the caller's auth uid — ANY
+  authenticated caller, **including an admin testing "as a parent"**. `child_id` must
+  belong to that uid (`children.parent_id`) or **403** — this ownership check applies
+  to **admins identically, no role bypass**. App semantics forced server-side:
+  `persist=true`, `apply=true`. Source is `'app'` for a real parent, `'app_internal'`
+  when the app-mode caller is an admin (internal test traffic, filterable everywhere —
+  see `provisional-clinical-decisions.md` D13).
 
-Note `children.parent_id` lives in the auth-uid space; the `user` table (consulted
-only for the admin role) covers it only partially, so an app parent may have no
-`user` row — that just means "not admin", a valid self-scoped caller.
+`children.parent_id` lives in the auth-uid space; the `user` table (consulted only for
+the admin role) covers it only partially, so an app-mode caller may have no `user` row
+— that just means "not admin", a valid self-scoped caller.
 
 ```
 POST /classify-update
 Authorization: Bearer <jwt>
 Body: {
-  user_id: string,     // ADMIN only; APP callers: derived from token (mismatch → 403)
-  child_id: string,    // APP callers: must be children.parent_id === caller (else 403)
+  user_id?: string,    // PRESENCE = console mode (admin-gated). Omit = app mode (self-scoped).
+  child_id: string,    // app mode: must be children.parent_id === caller uid (else 403)
   raw_text: string,
-  persist?: boolean,   // default false (ADMIN). APP: always true (forced)
-  apply?:   boolean    // default false (ADMIN). APP: always true (forced).
+  persist?: boolean,   // console: as given (default false). app: always true (forced)
+  apply?:   boolean    // console: as given (default false). app: always true (forced).
                        // apply=true IMPLIES persist=true (see invariants).
 }
 → 200 {

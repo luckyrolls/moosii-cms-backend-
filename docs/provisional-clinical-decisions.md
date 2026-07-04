@@ -155,6 +155,19 @@ so every REAL detection is always audited. **Status:** AWAITING CLINICAL REVIEW
 
 ## Product / voice decisions
 
+### D13 — Internal test traffic is tagged and excluded from clinical review/metrics
+**Decision (2026-07-04):** when an ADMIN uses `/classify-update` in app mode (no
+`user_id` named — "testing as a parent"), the event is stamped
+`user_update_events.source='app_internal'` (vs `'app'` for a real parent, `'cms_test'`
+for console mode). Any clinical-review or metrics query — over `user_update_events`,
+or over `distress_detections` joined to it by `event_id` — MUST exclude
+`source='app_internal'` (and `'cms_test'`) so internal-authored events never count as
+real parent signal. **Rationale:** admins now share the app code path (the self-scoped
+posture is the point of testing as a parent), so internal and real traffic are
+distinguishable only by `source`; tagging at write time keeps the safety log clean by
+construction. **Status:** AWAITING CLINICAL REVIEW (informational; the filter is a
+query convention the review/metrics layer must honor).
+
 ### D12 — No first-person "I" companion voice (deferred product decision)
 **Decision (2026-07-03):** parent-facing copy uses a NEUTRAL app voice, not a
 first-person "I" companion persona. The `response_templates` acks (migration 026)
