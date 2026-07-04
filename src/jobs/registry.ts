@@ -5,6 +5,7 @@ import { generateSegmentContentHandler } from "./handlers/generateSegmentContent
 import { regenSegmentContentHandler } from "./handlers/regenSegmentContent";
 import { generateQuizHandler } from "./handlers/generateQuiz";
 import { generateTrackContentHandler } from "./handlers/generateTrackContent";
+import { generateTrackImagesHandler } from "./handlers/generateTrackImages";
 import { rebuildMlpHandler } from "./handlers/rebuildMlp";
 import { generateQuestionnaireHandler } from "./handlers/generateQuestionnaire";
 
@@ -30,6 +31,7 @@ const registry: Record<string, JobHandler> = {
   regen_segment_content:    regenSegmentContentHandler,
   generate_quiz:            generateQuizHandler,
   generate_track_content:   generateTrackContentHandler,
+  generate_track_images:    generateTrackImagesHandler,
   rebuild_mlp:              rebuildMlpHandler,
   generate_questionnaire:   generateQuestionnaireHandler,
 };

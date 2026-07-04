@@ -108,17 +108,27 @@ function parseLLMResponse(raw: string): { prompt: string; name?: string; tags?: 
 // Handler
 // ---------------------------------------------------------------------------
 
+// Thin job wrapper. Core is generateSubSegmentImage (below), exported so the track
+// image batch can drive it with the BATCH's correlationId + job.id (one provenance
+// thread, and content_images.job_id points at the batch for the CMS join).
 export async function generateSubSegmentImageHandler(job: Job): Promise<unknown> {
+  return generateSubSegmentImage(job.input as Input, { correlationId: randomUUID(), jobId: job.id });
+}
+
+export async function generateSubSegmentImage(
+  input: Input,
+  ctx: { correlationId: string; jobId: string }
+): Promise<unknown> {
   const {
     sub_segment_id,
     auto_approve = false,
     prompt_override,
     instructions_override,
-  } = job.input as Input;
+  } = input;
 
   if (!sub_segment_id) throw new Error("input.sub_segment_id is required");
 
-  const correlationId = randomUUID();
+  const correlationId = ctx.correlationId;
 
   // Step 1 — load context
   const { subSeg, lesson, track, topicName } = await loadContext(sub_segment_id);
@@ -197,7 +207,7 @@ export async function generateSubSegmentImageHandler(job: Job): Promise<unknown>
       instruction_version_base: instructionVersionBase,
       instruction_version_overlay: instructionVersionOverlay,
       topic_name: topicName === "_generic" ? null : topicName,
-      job_id: job.id,
+      job_id: ctx.jobId,
       status: "candidate",
       storage_path: "pending",
     })

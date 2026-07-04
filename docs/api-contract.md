@@ -134,7 +134,8 @@ type JobType =
   | 'regen_segment_content'       // §2c
   | 'generate_quiz'               // §2d
   | 'generate_questionnaire'      // §2e
-  | 'generate_track_content';     // §2f
+  | 'generate_track_content'      // §2f
+  | 'generate_track_images';      // §2g
 ```
 
 ---
@@ -977,6 +978,47 @@ mixed-vintage output). Excludes images (own flow) and lesson-stub creation
 
 ---
 
+## 2g. Generate track images (batch orchestrator) — DELIVERED
+
+`POST /jobs { type:'generate_track_images', input:{ track_id } } → 202 { job_id }`.
+Sibling of §2f — fans out the EXISTING single-unit image job across a track's
+sub_segments. **FILL-MISSING ONLY, no replace** (image regeneration stays per-image via
+the rejection/regen flow); this batch only creates images that don't exist.
+
+**Enumeration** (`tracks ← lessons ← segments ← sub_segments`). A slot = a sub_segment.
+Per slot: `has_image` = a `content_images` row with `status IN ('candidate','approved')`
+(the existing `gaps` definition — ANY present image → skip; rejected/superseded are gaps
+to fill); `has_content` = the parent SEGMENT has ≥1 non-empty sub_segment (content
+present, approval NOT required — same predicate as §2f, images generate against pending
+content). **Plan = slots with no image AND content present.** Slots with no image and NO
+content are NOT planned and counted `skipped_no_content` — the first-class "run/fix
+content generation first" signal (run §2f, then re-fire this).
+
+**Execution:** same as §2f — parent job, live progress in `jobs.result`, units via the
+`generate_sub_segment_image` core with `correlationId = parent job.id` (whole run = one
+`ai_generation_log` query; `content_images.job_id` = the batch too). Concurrency
+`BATCH_CONCURRENCY` (default 2) — images are the most expensive unit; the posture is kept.
+One unit failing → recorded, continue; `result.status='completed_with_errors'`.
+
+**result shape:**
+```
+jobs.result = {
+  status: 'running' | 'succeeded' | 'completed_with_errors',
+  total, done, failed,
+  skipped_no_content,        // slots not planned because their segment has no content
+  current_unit: string | null,   // "image:<sub_segment_id>"
+  errors: [ { unit, message } ]
+}
+```
+
+**Survival:** fill-missing is fully derivable (image-exists is the state) — a killed
+batch is finished by re-firing; the re-plan skips created images. Unlike §2f there is NO
+replace hole. NOT chained from the content batch (deliberate — content output is pending
+review; images fire on a human decision, not automatically). Excludes image
+replace/regeneration (per-image flow).
+
+---
+
 ## 3. MLP recompute — DELIVERED
 
 The recompute logic lives here (`rebuildOneUser()` + the atomic `rebuild_user_mlp`
@@ -1039,7 +1081,8 @@ type JobType =
   | 'regen_segment_content'
   | 'generate_quiz'
   | 'generate_questionnaire'    // §2e
-  | 'generate_track_content';   // §2f
+  | 'generate_track_content'    // §2f
+  | 'generate_track_images';    // §2g
 ```
 
 ---
