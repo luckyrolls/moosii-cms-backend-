@@ -882,6 +882,18 @@ review agenda; the safety-tier intrusive-thoughts wording is flagged TOP priorit
 - **The gate MOVED, not vanished:** detection + provisional content live ≠ open
   gate. No real parents until clinically confirmed.
 
+**Parent-facing acknowledgments (slice 4 — table seeded, assembly NOT built).**
+`response_templates` (migration 026) holds AUTHORED ack copy — never generated —
+with MULTIPLE VARIANTS per `key` (`key` is not unique): `track_added`,
+`track_added_plural`, `milestone_recorded`, `milestone_only`, `nothing_matched`.
+Each row's `template` carries `{placeholders}`; `description` documents purpose +
+allowed placeholders for the CMS (identical across a key's variants). At response
+assembly (slice 4, BACKEND-side, not app-side) the backend maps the outcome to a
+key and picks ONE active variant AT RANDOM so acks don't repeat — and **excludes
+the user's last-served variant from the draw** (track last-served per user/key).
+CMS editors manage the copy via the `is_admin()`-gated write policy (same gate now
+on `distress_responses`).
+
 ---
 
 ## 3. MLP recompute — DELIVERED

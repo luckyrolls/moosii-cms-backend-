@@ -152,3 +152,16 @@ console preview input is TEST data; auditing test detections would pollute the
 safety log. Slice-4 app submissions always persist (`apply=true` forces persist),
 so every REAL detection is always audited. **Status:** AWAITING CLINICAL REVIEW
 (informational; revisit if the app ever previews real parent input un-persisted).
+
+## Product / voice decisions
+
+### D12 — No first-person "I" companion voice (deferred product decision)
+**Decision (2026-07-03):** parent-facing copy uses a NEUTRAL app voice, not a
+first-person "I" companion persona. The `response_templates` acks (migration 026)
+were authored/seeded this way, and the distress copy (`distress_responses`)
+deliberately avoids first-person too. **Rationale:** whether Moosii speaks as an
+"I" companion is an unmade product decision with real trust implications; adopting
+it silently through seed copy would be deciding it by default. Recorded here (not
+clinical, but logged alongside the distress voice choice for continuity) so the
+decision is made deliberately, not by omission. **Status:** DEFERRED — product
+decision, not yet made.

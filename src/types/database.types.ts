@@ -3193,6 +3193,36 @@ export type Database = {
         }
         Relationships: []
       }
+      response_templates: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          key: string
+          template: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key: string
+          template: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key?: string
+          template?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       segments: {
         Row: {
           anchor_text: string | null
