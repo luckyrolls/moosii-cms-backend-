@@ -4855,6 +4855,27 @@ export type Database = {
           },
         ]
       }
+      user_template_history: {
+        Row: {
+          key: string
+          last_variant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          key: string
+          last_variant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          key?: string
+          last_variant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_track_actions_MM_unsed: {
         Row: {
           action_type: string

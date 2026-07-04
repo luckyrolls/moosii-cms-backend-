@@ -44,10 +44,12 @@ app.use("/size-profiles", jwtAuthMiddleware, sizeProfilesRouter);
 app.use("/structure-blocks", jwtAuthMiddleware, structureBlocksRouter);
 app.use("/questionnaires", jwtAuthMiddleware, questionnairesRouter);
 app.use("/questionnaire-prompt", jwtAuthMiddleware, questionnairePromptRouter);
-app.use("/classify-update", jwtAuthMiddleware, classifyUpdateRouter);
 
-// App-facing (mobile): verifies the end-user's Supabase JWT itself (NOT the admin
-// gate). Mounted without jwtAuthMiddleware.
+// App-facing (mobile) AND admin console: /classify-update and /mlp verify the
+// end-user's Supabase JWT themselves (NOT the admin-only gate). classify-update has
+// two caller modes — admin console (arbitrary user_id) vs app parent (self-scoped);
+// see resolveCallerScope. Mounted WITHOUT jwtAuthMiddleware.
+app.use("/classify-update", classifyUpdateRouter);
 app.use("/mlp", mlpRouter);
 
 // Job creation — accepts the internal shared secret (server-to-server) OR a

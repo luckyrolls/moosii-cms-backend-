@@ -692,19 +692,29 @@ don't read as mistakes:**
    If/when the app feeds updates for async processing, THAT path may become a
    `classify_update` job type; this one isn't.
 
-Auth: **JWT** (browser SPA → backend), like every other CMS-facing route. Not
-`INTERNAL_API_KEY` — the harness is a browser client, and INTERNAL_API_KEY is
-reserved for server-to-server/cron (§Conventions).
+Auth: **JWT** — the endpoint verifies ANY signed-in Supabase user itself (mounted
+without the admin-only middleware) and has TWO CALLER MODES:
+- **Admin console** (caller role `admin`/`super_admin`): trusts body `user_id` /
+  `child_id` and body `persist`/`apply` (dry-run allowed) — unchanged behavior.
+- **App parent** (any other authenticated user): **SELF-SCOPED** (security). `user_id`
+  is derived from the token's auth uid — a mismatched body `user_id` is **rejected
+  403**, not silently ignored — and `child_id` must belong to that user
+  (`children.parent_id`) or **403**. App semantics are forced server-side, not trusted
+  from the client: `persist=true`, `apply=true`, `source='app'`.
+
+Note `children.parent_id` lives in the auth-uid space; the `user` table (consulted
+only for the admin role) covers it only partially, so an app parent may have no
+`user` row — that just means "not admin", a valid self-scoped caller.
 
 ```
 POST /classify-update
 Authorization: Bearer <jwt>
 Body: {
-  user_id: string,
-  child_id: string,
+  user_id: string,     // ADMIN only; APP callers: derived from token (mismatch → 403)
+  child_id: string,    // APP callers: must be children.parent_id === caller (else 403)
   raw_text: string,
-  persist?: boolean,   // default false. true = write event to user_update_events
-  apply?:   boolean    // default false. true = activate proposals (slice 2).
+  persist?: boolean,   // default false (ADMIN). APP: always true (forced)
+  apply?:   boolean    // default false (ADMIN). APP: always true (forced).
                        // apply=true IMPLIES persist=true (see invariants).
 }
 → 200 {
@@ -727,6 +737,10 @@ Body: {
       reason?: string }           // on a skip: 'already_active' | 'manual_override'
   ],
   milestones_recorded: string[],  // milestone names written this apply ([] unless apply=true)
+  ack_message: string | null,     // parent-facing acknowledgment (slice 4). Outcome → template
+                                  //   key → one random ACTIVE response_templates variant (excludes
+                                  //   the user's last-served for that key). null when distress is
+                                  //   present (strain+) — the distress response leads — or no template.
   redundant_questionnaires: [     // SUPPRESS (slice 3): questionnaires this update makes redundant.
     { questionnaire_id: string,   // mapped (questionnaire.milestone_id) to a milestone this update resolves
       questionnaire_name: string,
@@ -882,17 +896,19 @@ review agenda; the safety-tier intrusive-thoughts wording is flagged TOP priorit
 - **The gate MOVED, not vanished:** detection + provisional content live ≠ open
   gate. No real parents until clinically confirmed.
 
-**Parent-facing acknowledgments (slice 4 — table seeded, assembly NOT built).**
-`response_templates` (migration 026) holds AUTHORED ack copy — never generated —
-with MULTIPLE VARIANTS per `key` (`key` is not unique): `track_added`,
-`track_added_plural`, `milestone_recorded`, `milestone_only`, `nothing_matched`.
-Each row's `template` carries `{placeholders}`; `description` documents purpose +
-allowed placeholders for the CMS (identical across a key's variants). At response
-assembly (slice 4, BACKEND-side, not app-side) the backend maps the outcome to a
-key and picks ONE active variant AT RANDOM so acks don't repeat — and **excludes
-the user's last-served variant from the draw** (track last-served per user/key).
-CMS editors manage the copy via the `is_admin()`-gated write policy (same gate now
-on `distress_responses`).
+**Parent-facing acknowledgments — DELIVERED (`ack_message`).** `response_templates`
+(migration 026) holds AUTHORED ack copy — never generated — with MULTIPLE VARIANTS
+per `key`. At response assembly (BACKEND-side, not app-side) the outcome maps to a
+key and one ACTIVE variant is drawn at random, **excluding the user's last-served
+variant** for that key (`user_template_history`, migration 027, upserted per
+user/key). Precedence — ONE rule at the top: **distress (strain+) leads → no ack,
+`ack_message: null`** (the distress response carries the moment). Otherwise:
+applied track(s) + milestone → `milestone_recorded`; tracks only →
+`track_added` / `track_added_plural`; milestone only → `milestone_only`; else →
+`nothing_matched`. `{milestone_name}` renders `milestones.label` (never the taxonomy
+name). History I/O is non-fatal — a best-effort ack never breaks a classification.
+CMS editors manage the copy via the `is_admin()`-gated write policy (same gate on
+`distress_responses`).
 
 ---
 

@@ -7,6 +7,7 @@ import { logAiCall, formatLlmPrompt } from "../lib/aiLog";
 import { assembleCatalog, renderCatalogForPrompt, type Catalog } from "../lib/classifyCatalog";
 import { loadMilestoneIds, resolveMilestoneFacts } from "../lib/milestones";
 import { rebuildOneUser } from "../jobs/handlers/rebuildMlp";
+import { verifyAnyUser, isAdminRole, type AnyUser } from "../middleware/jwtAuth";
 
 const db = supabase;
 
@@ -178,12 +179,121 @@ export async function findRedundantQuestionnaires(milestoneIds: string[]): Promi
     }));
 }
 
-export type ClassifyInput = { user_id: string; child_id: string; raw_text: string; persist?: boolean; apply?: boolean };
+export type ClassifyInput = {
+  user_id: string; child_id: string; raw_text: string;
+  persist?: boolean; apply?: boolean;
+  source?: string;   // user_update_events.source — 'app' for mobile, 'cms_test' for console
+};
+
+// Pick one ACTIVE variant for a template key, excluding the user's last-served
+// variant for that key so acks don't repeat. Records the pick (upsert) when the
+// interaction is persisted. All history I/O is non-fatal — the ack is best-effort
+// and must never break a classification. Returns null if the key has no active rows.
+async function selectVariant(userId: string, key: string, persist: boolean): Promise<{ id: string; template: string } | null> {
+  const { data: variants, error } = await db
+    .from("response_templates")
+    .select("id, template")
+    .eq("key", key)
+    .eq("is_active", true);
+  if (error || !variants || variants.length === 0) return null;
+
+  const { data: hist } = await db
+    .from("user_template_history")
+    .select("last_variant_id")
+    .eq("user_id", userId)
+    .eq("key", key)
+    .maybeSingle();
+  const lastId = hist?.last_variant_id ?? undefined;
+
+  let pool = variants.filter((v) => v.id !== lastId);
+  if (pool.length === 0) pool = variants;   // single variant (or all excluded) → allow repeat
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+
+  if (persist) {
+    await db
+      .from("user_template_history")
+      .upsert({ user_id: userId, key, last_variant_id: picked.id, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+  }
+  return { id: picked.id, template: picked.template };
+}
+
+// Map the classification OUTCOME to a template key, pick + render a variant. Ack
+// precedence (one rule at the top): distress (strain+) leads — NO ack, the distress
+// response carries the moment. Otherwise key by what was APPLIED this call.
+// {milestone_name} renders milestones.LABEL, never the taxonomy name.
+async function assembleAck(opts: {
+  userId: string; distressTier: DistressTier;
+  appliedTrackNames: string[]; recordedMilestoneNames: string[]; persist: boolean;
+}): Promise<string | null> {
+  if (opts.distressTier !== "none") return null;   // distress > acks, one rule
+  const tracks = opts.appliedTrackNames;
+  const ms = opts.recordedMilestoneNames;
+
+  let key: string;
+  if (tracks.length > 0 && ms.length > 0) key = "milestone_recorded";
+  else if (tracks.length >= 2)            key = "track_added_plural";
+  else if (tracks.length === 1)           key = "track_added";
+  else if (ms.length > 0)                 key = "milestone_only";
+  else                                    key = "nothing_matched";
+
+  const variant = await selectVariant(opts.userId, key, opts.persist);
+  if (!variant) return null;
+
+  let milestoneLabel = "";
+  if (ms.length > 0) {
+    const { data: rows } = await db.from("milestones").select("name, label").in("name", ms);
+    const byName = new Map((rows ?? []).map((r) => [r.name, r.label ?? r.name]));
+    milestoneLabel = byName.get(ms[0]) ?? ms[0];
+  }
+  return variant.template
+    .replace(/\{track_name\}/g, tracks[0] ?? "")
+    .replace(/\{track_names\}/g, tracks.join(", "))
+    .replace(/\{milestone_name\}/g, milestoneLabel);
+}
+
+export type CallerScope = { user_id: string; child_id: string; raw_text: string; persist: boolean; apply: boolean; source: string };
+type ScopeResult = { ok: true; value: CallerScope } | { ok: false; status: number; code: string; message: string };
+
+// Two caller modes for POST /classify-update (exported for the security proofs):
+//  - ADMIN (console): trusts body.user_id / child_id and body persist/apply (dry-run OK).
+//  - APP (any other authenticated user — a mobile parent): SELF-SCOPED. user_id is the
+//    JWT's auth uid (a mismatched body.user_id is REJECTED, not silently ignored),
+//    child_id must belong to that user (children.parent_id), and app semantics are
+//    forced server-side: persist=true, apply=true, source='app'.
+export async function resolveCallerScope(caller: AnyUser, body: Record<string, unknown>): Promise<ScopeResult> {
+  const raw_text = body.raw_text;
+  if (!(typeof raw_text === "string" && raw_text.trim())) {
+    return { ok: false, status: 400, code: "invalid_request", message: "raw_text is required" };
+  }
+  const childId = typeof body.child_id === "string" ? body.child_id : undefined;
+
+  if (isAdminRole(caller.role)) {
+    const userId = typeof body.user_id === "string" ? body.user_id : undefined;
+    if (!userId || !childId) {
+      return { ok: false, status: 400, code: "invalid_request", message: "user_id and child_id are required" };
+    }
+    return { ok: true, value: { user_id: userId, child_id: childId, raw_text, persist: body.persist === true, apply: body.apply === true, source: "cms_test" } };
+  }
+
+  // APP mode — self-scope to the authenticated user.
+  const userId = caller.id;
+  if (typeof body.user_id === "string" && body.user_id !== userId) {
+    return { ok: false, status: 403, code: "forbidden", message: "user_id does not match the authenticated user" };
+  }
+  if (!childId) {
+    return { ok: false, status: 400, code: "invalid_request", message: "child_id is required" };
+  }
+  const { data: child } = await db.from("children").select("id").eq("id", childId).eq("parent_id", userId).maybeSingle();
+  if (!child) {
+    return { ok: false, status: 403, code: "forbidden", message: "child does not belong to the authenticated user" };
+  }
+  return { ok: true, value: { user_id: userId, child_id: childId, raw_text, persist: true, apply: true, source: "app" } };
+}
 
 // Core classify logic — SYNCHRONOUS, enrich-only, dry-run (§2j slice 1). Exported
 // so the DoD proofs can drive it directly (the route just adds HTTP/validation).
 export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
-  const { user_id, child_id, raw_text, persist = false, apply = false } = input;
+  const { user_id, child_id, raw_text, persist = false, apply = false, source = "cms_test" } = input;
   const correlationId = randomUUID();
 
   {
@@ -257,7 +367,7 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     if (willPersist) {
       const { data: ev, error: evErr } = await db
         .from("user_update_events")
-        .insert({ user_id, child_id, raw_text, source: "cms_test", processing_status: "classified", correlation_id: correlationId, distress_tier: distressTier })
+        .insert({ user_id, child_id, raw_text, source, processing_status: "classified", correlation_id: correlationId, distress_tier: distressTier })
         .select("id").single();
       if (evErr) throw new Error(`Failed to write user_update_events: ${evErr.message}`);
       eventId = ev?.id ?? null;
@@ -336,12 +446,24 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       milestoneFacts.map((f) => f.milestone_id)
     );
 
+    // ACK ASSEMBLY (slice 4) — a parent-facing acknowledgment. Distress leads (strain+
+    // → null); otherwise keyed by what was applied, one random active variant excluding
+    // the user's last-served for that key. Additive field; null when distress or no template.
+    const ack_message = await assembleAck({
+      userId: user_id,
+      distressTier,
+      appliedTrackNames: proposed_enrichments.filter((e) => e.applied).map((e) => e.track_name ?? ""),
+      recordedMilestoneNames: milestonesRecorded,
+      persist: willPersist,
+    });
+
     const prompt_version = createHash("sha256").update(promptRow.system_message).digest("hex").slice(0, 12);
 
     return {
       classification: { relevant, signals },
       proposed_enrichments,
       milestones_recorded: milestonesRecorded,  // names of child_milestones written this apply ([] unless apply=true)
+      ack_message,                           // parent-facing ack (slice 4); null under distress or no template
       redundant_questionnaires,              // SUPPRESS (slice 3): questionnaires made redundant by this update.
       // DISTRESS (slice B) — PROVISIONAL: detection live, content provisional, app
       // delivery is slice 4. detected = tier !== 'none'; response is the
@@ -357,18 +479,31 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
   }
 }
 
-// POST /classify-update — thin HTTP wrapper: validate, call the core, map errors.
+// POST /classify-update — app-facing OR admin console. Verifies ANY signed-in
+// Supabase user itself (NOT the admin-only middleware — mounted bare in index.ts),
+// then self-scopes non-admin callers (resolveCallerScope). Two modes:
+//  - admin  → console behavior (arbitrary user_id, dry-run allowed)
+//  - app    → user_id from the token, child ownership enforced, persist+apply forced
 router.post("/", async (req: Request, res: Response): Promise<void> => {
-  const { user_id, child_id, raw_text, persist, apply } =
-    (req.body ?? {}) as { user_id?: string; child_id?: string; raw_text?: string; persist?: boolean; apply?: boolean };
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    apiError(res, 401, "unauthorized", "Missing or malformed Authorization header");
+    return;
+  }
+  const auth = await verifyAnyUser(header.slice(7));
+  if (!auth.ok) {
+    apiError(res, auth.status, auth.code, auth.message);
+    return;
+  }
 
-  if (!user_id || !child_id || !(typeof raw_text === "string" && raw_text.trim())) {
-    apiError(res, 400, "invalid_request", "user_id, child_id, and raw_text are required");
+  const scope = await resolveCallerScope(auth.user, (req.body ?? {}) as Record<string, unknown>);
+  if (!scope.ok) {
+    apiError(res, scope.status, scope.code, scope.message);
     return;
   }
 
   try {
-    const out = await classifyUpdate({ user_id, child_id, raw_text, persist, apply });
+    const out = await classifyUpdate(scope.value);
     res.json(out);
   } catch (e) {
     apiError(res, 500, "classify_failed", e instanceof Error ? e.message : String(e));
