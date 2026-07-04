@@ -962,8 +962,13 @@ catastrophic failure (track/enumeration) → `jobs.status='failed'`.
 
 **Survival.** NO per-unit state table — the content tables ARE the resume checkpoint.
 A killed batch (reaper → `failed` after 10 min, last `result` snapshot kept) is
-completed by re-running `fill_missing`, which re-derives remaining work from what
-content now exists. Excludes images (own flow) and lesson-stub creation
+completed by re-running the same mode. `fill_missing` resumes trivially (already-present
+content is skipped). `replace` resumes **derivably too**: its planner skips units whose
+content/quiz was (re)generated at-or-after the current failed/running batch lineage's
+start (the earliest non-succeeded prior batch for this track, from the jobs table) —
+`created_at` is the regen time because the write path delete+inserts, so a re-fired
+`replace` skips the dead run's completed units for free (no duplicate spend, no
+mixed-vintage output). Excludes images (own flow) and lesson-stub creation
 (`generate_lessons`); never auto-approves.
 
 ---

@@ -49,9 +49,9 @@ const CONCURRENCY = parseInt(process.env.BATCH_CONCURRENCY ?? "2", 10);
 // (the resume story) is inspectable.
 export async function planTrackContent(
   track_id: string,
-  opts: { mode: Mode; quizzes: boolean; include_approved: boolean }
+  opts: { mode: Mode; quizzes: boolean; include_approved: boolean; batchCreatedAt: string }
 ): Promise<{ plan: Unit[]; skipped_approved: number }> {
-  const { mode, quizzes, include_approved } = opts;
+  const { mode, quizzes, include_approved, batchCreatedAt } = opts;
 
   // tracks ← lessons ← segments
   const { data: lessons, error: lErr } = await supabase
@@ -68,23 +68,44 @@ export async function planTrackContent(
   }
   const segIds = segments.map((s) => s.id);
 
-  // Current content + quiz state per segment.
+  // Current content + quiz state per segment. contentLatest/quizLatest hold the MAX
+  // created_at — which IS the (re)generation time, because the write path delete+inserts
+  // (no updated_at needed; verified). Used for replace-mode resume below.
   const hasContent = new Set<string>();       // segment has ≥1 non-empty card
+  const contentLatest = new Map<string, string>();
   const quizCount = new Map<string, number>();
   const quizHasUnapproved = new Set<string>();
+  const quizLatest = new Map<string, string>();
   if (segIds.length > 0) {
-    const { data: subs } = await supabase.from("sub_segments").select("seg_id, content").in("seg_id", segIds);
-    for (const r of subs ?? []) if (r.seg_id && r.content && r.content.trim()) hasContent.add(r.seg_id);
-
+    const { data: subs } = await supabase.from("sub_segments").select("seg_id, content, created_at").in("seg_id", segIds);
+    for (const r of subs ?? []) {
+      if (!r.seg_id || !r.content || !r.content.trim()) continue;
+      hasContent.add(r.seg_id);
+      const prev = contentLatest.get(r.seg_id);
+      if (!prev || r.created_at > prev) contentLatest.set(r.seg_id, r.created_at);
+    }
     if (quizzes) {
-      const { data: qs } = await supabase.from("quiz_questions").select("segment_id, answer_status").in("segment_id", segIds);
+      const { data: qs } = await supabase.from("quiz_questions").select("segment_id, answer_status, created_at").in("segment_id", segIds);
       for (const q of qs ?? []) {
         if (!q.segment_id) continue;
         quizCount.set(q.segment_id, (quizCount.get(q.segment_id) ?? 0) + 1);
         if (q.answer_status !== "approved") quizHasUnapproved.add(q.segment_id);
+        const prev = quizLatest.get(q.segment_id);
+        if (!prev || q.created_at > prev) quizLatest.set(q.segment_id, q.created_at);
       }
     }
   }
+
+  // REPLACE-MODE RESUME (derived, no new state): a replace killed mid-run must not
+  // redo units the dead run already regenerated (duplicate spend + mixed vintage). The
+  // cutoff is the start of the current failed/running batch lineage for this track
+  // (since the last success) — units whose content/quiz was (re)generated at-or-after
+  // the cutoff are skipped as already-done. Fresh replace → cutoff = now, skips nothing.
+  const cutoff = mode === "replace" ? await resumeCutoff(track_id, batchCreatedAt) : null;
+  const regeneratedSince = (m: Map<string, string>, segId: string) => {
+    const t = m.get(segId);
+    return !!cutoff && !!t && t >= cutoff;
+  };
 
   // Build the plan. skipped_approved accrues only in replace (approved units the sweep
   // leaves alone); fill_missing skips present content because it's present, not approved.
@@ -98,6 +119,7 @@ export async function planTrackContent(
       if (!hasContent.has(seg.id)) plan.push({ type: "content", seg_id: seg.id, ref: `content:${seg.id}` });
     } else {
       if (contentApproved && !include_approved) skipped_approved++;
+      else if (regeneratedSince(contentLatest, seg.id)) { /* resume-skip: dead run already did it */ }
       else plan.push({ type: "content", seg_id: seg.id, ref: `content:${seg.id}` });
     }
 
@@ -108,11 +130,32 @@ export async function planTrackContent(
         if (count === 0) plan.push({ type: "quiz", seg_id: seg.id, ref: `quiz:${seg.id}` });
       } else {
         if (quizApproved && !include_approved) skipped_approved++;
+        else if (regeneratedSince(quizLatest, seg.id)) { /* resume-skip */ }
         else plan.push({ type: "quiz", seg_id: seg.id, ref: `quiz:${seg.id}` });
       }
     }
   }
   return { plan, skipped_approved };
+}
+
+// The resume cutoff for a replace re-fire: the created_at of the EARLIEST failed/running
+// generate_track_content batch for this track since the last succeeded one (the start of
+// the current resume lineage). Derived from the jobs table — no new state. If there is no
+// such prior run, the cutoff is this batch's own created_at (a fresh replace skips nothing).
+async function resumeCutoff(track_id: string, batchCreatedAt: string): Promise<string> {
+  const { data: priors } = await supabase
+    .from("jobs")
+    .select("created_at, status, input")
+    .eq("type", "generate_track_content")
+    .lt("created_at", batchCreatedAt)
+    .order("created_at", { ascending: false });
+  let cutoff = batchCreatedAt;
+  for (const r of priors ?? []) {
+    if ((r.input as { track_id?: string } | null)?.track_id !== track_id) continue;
+    if (r.status === "succeeded") break;   // everything before the last success is a done lineage
+    cutoff = r.created_at;                  // failed/running → push the cutoff earlier
+  }
+  return cutoff;
 }
 
 // One unit's work. tone_id feeds content units; quiz units use the single active quiz
@@ -181,6 +224,6 @@ export async function generateTrackContentHandler(job: Job): Promise<unknown> {
   if (mode !== "fill_missing" && mode !== "replace") {
     throw new Error(`input.mode must be 'fill_missing' | 'replace' (got "${mode}")`);
   }
-  const { plan, skipped_approved } = await planTrackContent(track_id, { mode, quizzes, include_approved });
+  const { plan, skipped_approved } = await planTrackContent(track_id, { mode, quizzes, include_approved, batchCreatedAt: job.created_at });
   return executeTrackContent(job.id, plan, skipped_approved, tone_id);
 }
