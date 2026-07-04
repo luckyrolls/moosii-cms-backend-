@@ -242,12 +242,21 @@ type Input = {
   generate_quiz?: boolean; // if true, generate quiz after cards using the same correlationId
 };
 
+// Thin job wrapper. Core logic is generateSegmentContent (below), exported so the
+// batch orchestrator can drive it directly with the BATCH's correlationId.
 export async function generateSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone_id, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
+  return generateSegmentContent(job.input as Input);
+}
+
+// Core: generate + replace a segment's cards (whole-unit). correlationId defaults to
+// a fresh uuid (standalone job); the batch passes its own so a whole run is one
+// provenance thread. Throws on any failure (the batch records + continues).
+export async function generateSegmentContent(input: Input & { correlationId?: string }) {
+  const { seg_id, tone_id, generate_quiz: alsoGenerateQuiz = false } = input;
   if (!seg_id)  throw new Error("input.seg_id is required");
   if (!tone_id) throw new Error("input.tone_id is required");
 
-  const correlationId = randomUUID();
+  const correlationId = input.correlationId ?? randomUUID();
 
   // Step 1 — load segment + lesson context
   const { data: segment, error: segErr } = await supabase

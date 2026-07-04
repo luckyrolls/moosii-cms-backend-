@@ -133,7 +133,8 @@ type JobType =
   | 'generate_segment_content'    // §2b
   | 'regen_segment_content'       // §2c
   | 'generate_quiz'               // §2d
-  | 'generate_questionnaire';     // §2e
+  | 'generate_questionnaire'      // §2e
+  | 'generate_track_content';     // §2f
 ```
 
 ---
@@ -912,6 +913,61 @@ CMS editors manage the copy via the `is_admin()`-gated write policy (same gate o
 
 ---
 
+## 2f. Generate track content (batch orchestrator) — DELIVERED
+
+`POST /jobs { type:'generate_track_content', input:{...} } → 202 { job_id }`.
+Fans out over the EXISTING per-unit generators (`generate_segment_content` + optional
+`generate_quiz`) across ALL of a track's lessons/segments. No new generation logic —
+orchestration + progress only.
+
+```
+input: {
+  track_id: string,           // required
+  tone_id: string,            // required — prompts.id of the segment tone (per-unit content)
+  mode?: 'fill_missing' | 'replace',  // default 'fill_missing'
+  quizzes?: boolean,          // default false — also generate/replace quizzes
+  include_approved?: boolean  // default false — replace-only, destructive override
+}
+```
+
+**Modes.** `fill_missing` (default, IDEMPOTENT — and the resume mechanism): generate
+only for segments with NO content; quizzes only where absent (`quizzes=true`).
+Re-running is always safe and completes a killed batch. `replace`: regenerate
+PENDING/unapproved content (+ quizzes); APPROVED is skipped unless
+`include_approved=true`. Never destroys approved work. (Approved = segment
+`seg_status='complete'`; quiz = all `quiz_questions.answer_status='approved'`.)
+
+**Units.** A unit = a segment; content and quiz are INDEPENDENT units, each
+success/failure recorded separately. One unit failing NEVER fails the batch. Content
+lands PENDING exactly as single-unit generation (`seg_status → 'pending'`); quiz rows
+insert `answer_status='pending'`. Bounded concurrency (`BATCH_CONCURRENCY`, default 2).
+Provenance: every unit logs to `ai_generation_log` with `correlation_id = the batch
+job.id` — the whole run is one query.
+
+**Progress / result (CMS polls the jobs row, same as everything else):**
+```
+jobs.result = {
+  status: 'running' | 'succeeded' | 'completed_with_errors',
+  total: number,             // planned units
+  done: number,              // succeeded
+  failed: number,            // failed (never fails the batch)
+  skipped_approved: number,  // approved units left alone (replace, !include_approved)
+  current_unit: string | null,   // e.g. "content:<seg_id>" | "quiz:<seg_id>"
+  errors: [ { unit: string, message: string } ]
+}
+```
+Written incrementally as units complete. `jobs.status` stays `succeeded`/`failed` (the
+CHECK constraint); `completed_with_errors` (⇔ `failed>0`) lives in `result.status`. A
+catastrophic failure (track/enumeration) → `jobs.status='failed'`.
+
+**Survival.** NO per-unit state table — the content tables ARE the resume checkpoint.
+A killed batch (reaper → `failed` after 10 min, last `result` snapshot kept) is
+completed by re-running `fill_missing`, which re-derives remaining work from what
+content now exists. Excludes images (own flow) and lesson-stub creation
+(`generate_lessons`); never auto-approves.
+
+---
+
 ## 3. MLP recompute — DELIVERED
 
 The recompute logic lives here (`rebuildOneUser()` + the atomic `rebuild_user_mlp`
@@ -973,7 +1029,8 @@ type JobType =
   | 'generate_segment_content'
   | 'regen_segment_content'
   | 'generate_quiz'
-  | 'generate_questionnaire';   // §2e
+  | 'generate_questionnaire'    // §2e
+  | 'generate_track_content';   // §2f
 ```
 
 ---
