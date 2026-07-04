@@ -117,6 +117,31 @@ rejecting an already-approved row.
 Retry = re-fire generation (1a for one card, 1b `gaps` for a batch's stragglers).
 The frontend's "regenerate" buttons call 1a/1b again.
 
+### 1f. Approve a whole lesson (content + images + quiz) — DELIVERED
+```
+POST /lessons/:id/approve
+Authorization: Bearer <jwt>
+Body: { approved_by?: string }   // defaults to the authenticated user's id
+→ 200 { ok: true, lesson_id, segments: [ { segment_id, quiz_approved, images_approved } ] }
+
+POST /lessons/:id/unapprove
+→ 200 { ok: true, lesson_id, segments: [ { segment_id, quiz_reverted, images_reverted } ] }
+```
+The app renders a lesson's three artifacts only when each is separately approved:
+content cards on `segments.seg_status='complete'`, images on `sub_segments.image`,
+quiz on `quiz_questions.answer_status='approved'`. Content + image approve existed;
+**quiz had NO approve path (the bug — generated quizzes were stuck `pending`, so the
+app showed "no questions").** This bulk approve crosses all three gates together, so
+`approve` fans out to the lesson's segment(s) and per segment (atomically, via
+`approve_segment_bundle`, migration 029): sets `seg_status='complete'`, flips every
+`quiz_questions.answer_status → 'approved'`, and approves the **latest candidate**
+image per card (reusing `approve_content_image` → writes `sub_segments.image`). Cards
+with no candidate stay imageless (valid); a segment with no content cards is refused
+(409). `unapprove` is the full reverse (content/quiz → `pending`, approved images →
+`candidate`, `sub_segments.image` cleared) — nothing regenerated, fully reversible.
+Per-artifact approval stays available as the lower-level primitives
+(`/segments/:id/approve`, `/content-images/:id/approve`); bulk is the one-click path.
+
 ---
 
 ## 2. Content / lesson / quiz endpoints — DELIVERED
