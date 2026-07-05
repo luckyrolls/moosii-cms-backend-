@@ -350,6 +350,13 @@ may be stale relative to the new cards). Pass `generate_quiz: true` to also
 regenerate it — which **replaces** the segment's existing questions (never appends),
 sharing the job's `correlationId`; the result appears in `jobs.result.quiz`.
 
+**Images on regen:** regenerated cards' images no longer fit the new text, so they are
+PURGED — the `content_images` rows, the storage files, and their `image_assets` rows
+(whole-segment purges all cards; single-card purges just that card; the segment's other
+cards keep theirs). Regenerate images afterward (per-card, or `generate_track_images`
+fill_missing). No orphaned storage bloat. (Published lessons block content regen
+entirely — unpublish first.)
+
 **Per-run prompt overrides:** `overrides` lets a reviewer tune the prompt for a
 single regeneration when the default output wasn't right. Each present, non-empty
 layer replaces that layer's text for this run only; empty/whitespace or absent

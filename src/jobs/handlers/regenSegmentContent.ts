@@ -8,6 +8,7 @@ import {
   callAndParseCards,
 } from "./generateSegmentContent";
 import { generateQuiz } from "./generateQuiz";
+import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { SizeNumbers } from "../../lib/sizeProfile";
 import type { Job } from "../registry";
@@ -177,6 +178,9 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   // -------------------------------------------------------------------------
 
   if (scope === "whole_segment") {
+    // Purge the old cards' images (storage + image_assets + content_images) before the
+    // cascade drops the rows — otherwise the files orphan as bloat.
+    await purgeImagesForSubSegments(existingCards.map((c) => c.id));
     // Delete all sub_segments for this segment
     const { error: deleteErr } = await supabase
       .from("sub_segments")
@@ -230,14 +234,10 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   // Replace the target card in-place; sequence and all other cards untouched.
   const newCard = cards[0];
 
-  // Cascade only fires on DELETE, not UPDATE — explicitly remove this card's images.
-  const { error: imgDeleteErr } = await supabase
-    .from("content_images")
-    .delete()
-    .eq("sub_segment_id", card_id!);
-  if (imgDeleteErr) {
-    throw new Error(`Failed to delete images for card ${card_id}: ${imgDeleteErr.message}`);
-  }
+  // Cascade only fires on DELETE, not UPDATE — this card is UPDATED in place, so purge
+  // its images explicitly (storage + image_assets + content_images + clears the live
+  // pointer). The card's new content won't match the old image.
+  await purgeImagesForSubSegments([card_id!]);
 
   const { error: updateErr } = await supabase
     .from("sub_segments")

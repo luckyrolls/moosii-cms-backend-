@@ -5,6 +5,7 @@ import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import { lintSegmentCards, loadPromptBanInstruction, type LintHit } from "../../lib/voiceLint";
 import { loadSizeProfileById, renderLengthInstruction, type SizeNumbers } from "../../lib/sizeProfile";
 import { generateQuiz } from "./generateQuiz";
+import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import type { Job } from "../registry";
 
 // database.types.ts predates migration 0001_prompts_refactor (new prompts columns +
@@ -315,7 +316,11 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
   });
 
   // Step 5 — replace sub_segments (whole-unit: delete then insert).
-  // content_images.sub_segment_id is ON DELETE CASCADE, so images are also removed.
+  // content_images.sub_segment_id is ON DELETE CASCADE, so the image rows die with the
+  // cards — but purge the underlying storage files + image_assets rows first, or they
+  // orphan as bloat. (No-op on a first-time/empty segment.)
+  const { data: prevCards } = await supabase.from("sub_segments").select("id").eq("seg_id", seg_id);
+  await purgeImagesForSubSegments((prevCards ?? []).map((c) => c.id));
   const { error: deleteErr } = await supabase
     .from("sub_segments")
     .delete()
