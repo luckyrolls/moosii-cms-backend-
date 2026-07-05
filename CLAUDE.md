@@ -268,12 +268,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–027 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–029 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 027).
+      (high-water: 029).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
@@ -296,7 +296,9 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [x] `POST /sub-segments/:id/generate-image` — dedicated single-image route.
 - [x] `generate_lessons` — DB-composed prompt, eight-field stub contract
       (topic/band_rationale/safety_sensitive), atomic lessons+segments insert
-      (`create_lessons_with_segments`).
+      (`create_lessons_with_segments`). Count is COVERAGE-DRIVEN (model derives it,
+      cap-blind); `max_lessons` is a code-enforced hard cap with
+      `coverage_truncated`/`topics_dropped` surfaced (migration 028).
 - [x] Sub-segment CONTENT + QUIZ generation/regeneration — per-tone DB composition,
       quiz always-replace, per-run regen overrides (prose / block / size).
 - [x] Tone management — voice/structure/size per tone, selected by stable id; admin
@@ -305,13 +307,34 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       `jobs.result.lint` (segment content/regen).
 - [x] JWT auth middleware + INTERNAL_API_KEY split (SPA vs server-to-server).
 - [x] Standardized error envelope `{ error: { code, message } }`.
-- [~] `database.types.ts` — generated, but STALE (predates 0001/006–015); content
-      handlers/routes use `(supabase as any)` bridges. Regenerate to drop them.
+- [x] `POST /lessons/:id/approve` / `/unapprove` — BULK approve a lesson (content +
+      images + quiz) atomically so all three cross the app's gate together; adds the
+      previously-missing quiz approval (`quiz_questions.answer_status → 'approved'`) and
+      an image-linkable pre-check (409, not silent) — `approve_segment_bundle` (migration
+      029). Per-artifact primitives (`/segments/:id/approve`, `/content-images/:id/approve`)
+      unchanged. §1f.
+- [x] `generate_track_content` / `generate_track_images` — batch orchestrators over the
+      per-unit generators (content: fill_missing + replace with derivable resume; images:
+      fill_missing). Progress in `jobs.result`, content tables are the resume checkpoint,
+      bounded concurrency (`BATCH_CONCURRENCY`). §2f / §2g.
+- [x] `POST /classify-update` — parent-update classifier (JWT). Slices: enrich/propose
+      (1); apply → tracks (`user_mlp_mods`) + milestone facts (2, migrations 019–022);
+      SUPPRESS redundant questionnaires via `questionnaire.milestone_id` (3, migration
+      023). Mode switches on `user_id` PRESENCE (admin console vs self-scoped app parent;
+      `source` = `cms_test`/`app`/`app_internal`); `ack_message` from `response_templates`
+      (026) + `user_template_history` (027). §2j.
+- [x] Provisional DISTRESS — classifier distress tier (`none|strain|overwhelm|safety`),
+      `distress_responses` content + `distress_detections` audit (migrations 024–025).
+      Detection LIVE, content PROVISIONAL (clinical review pending —
+      `docs/provisional-clinical-decisions.md`); app-facing free-text input still gated.
+- [~] `database.types.ts` — regenerated as schema migrations land (current through 027;
+      028 is prompt-only, 029 adds functions). A few files keep scoped `(supabase as any)`
+      bridges for still-untyped MLP views / new rpcs.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
-      `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. Still needed:
-      an app-facing `POST /mlp/recompute` (end-user JWT, user-scoped) for the mobile trigger.
-- [ ] Lesson/segment-level images.
+      `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing
+      `POST /mlp/recompute` (end-user JWT, user-scoped) DELIVERED (`src/routes/mlp.ts`).
+- [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).
 
 Update this status section as steps complete.
