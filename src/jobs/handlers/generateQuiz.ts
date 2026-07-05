@@ -69,11 +69,12 @@ async function loadQuizPromptRow(): Promise<QuizPromptRow> {
 // scope → ## Tone (if block set) → ## Content (card text) → question count
 // ---------------------------------------------------------------------------
 
-function composeQuizUserMessage(opts: {
+export function composeQuizUserMessage(opts: {
   scope: string | null;
   toneContent: string;
   questionCount: number;
   cards: { title: string | null; content: string | null; sequence: number | null }[];
+  guidance?: string;   // author feedback from a rejection — steers this regen
 }): string {
   const parts: string[] = [];
   if (opts.scope)       parts.push(opts.scope);
@@ -83,6 +84,9 @@ function composeQuizUserMessage(opts: {
     .map((c) => `**Card ${c.sequence ?? "?"}: ${c.title ?? ""}**\n${c.content ?? ""}`)
     .join("\n\n");
   parts.push(`## Content\n\n${cardText}`);
+  if (opts.guidance && opts.guidance.trim()) {
+    parts.push(`## Author Feedback (a prior version was REJECTED — apply this)\n\n${opts.guidance.trim()}`);
+  }
   parts.push(`Generate exactly ${opts.questionCount} question${opts.questionCount === 1 ? "" : "s"}.`);
 
   return parts.join("\n\n");
@@ -136,8 +140,9 @@ export async function generateQuiz(opts: {
   seg_id: string;
   correlationId: string;
   isRegen?: boolean;
+  guidance?: string;   // author feedback (e.g. from a rejection) — steers this regen
 }): Promise<GenerateQuizResult> {
-  const { seg_id, correlationId, isRegen = false } = opts;
+  const { seg_id, correlationId, isRegen = false, guidance } = opts;
 
   // Step 1 — load segment cards (the source material)
   const { data: cards, error: cardsErr } = await supabase
@@ -167,6 +172,7 @@ export async function generateQuiz(opts: {
     toneContent,
     questionCount: promptRow.question_count,
     cards,
+    guidance,
   });
 
   // Step 5 — call OpenAI (withRetry lives inside the provider)
@@ -310,10 +316,11 @@ export async function generateQuiz(opts: {
 
 type Input = {
   seg_id: string;
+  guidance?: string;   // author feedback (e.g. from a rejection) — steers the regen
 };
 
 export async function generateQuizHandler(job: Job): Promise<unknown> {
-  const { seg_id } = job.input as Input;
+  const { seg_id, guidance } = job.input as Input;
   if (!seg_id) throw new Error("input.seg_id is required");
 
   const correlationId = randomUUID();
@@ -322,6 +329,7 @@ export async function generateQuizHandler(job: Job): Promise<unknown> {
     seg_id,
     correlationId,
     isRegen: true,
+    guidance,
   });
 
   return {

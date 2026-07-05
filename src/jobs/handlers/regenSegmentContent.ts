@@ -20,6 +20,8 @@ type Input = {
   scope: Scope;
   card_id?: string; // required when scope = "single_card"
   generate_quiz?: boolean; // if true, also regenerate the quiz (replaces existing)
+  guidance?: string; // author feedback (e.g. from a rejection) — injected into the
+                     // prompt to STEER this regen (content, and the quiz if regenerated)
   // Per-run prompt overrides (this regeneration only — the prompts row and
   // prompt_blocks are NEVER written). Each layer falls back to the DB default
   // when absent or empty/whitespace. system_message is intentionally NOT
@@ -47,7 +49,7 @@ type SubSegmentRow = {
 // ---------------------------------------------------------------------------
 
 export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone_id, scope, card_id, overrides, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
+  const { seg_id, tone_id, scope, card_id, overrides, guidance, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
   if (!seg_id)  throw new Error("input.seg_id is required");
   if (!tone_id) throw new Error("input.tone_id is required");
   if (!scope)   throw new Error("input.scope is required (whole_segment | single_card)");
@@ -136,6 +138,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     segmentName:        segment.segment_name ?? "",
     segmentDescription: segment.description ?? null,
     avoid:              await loadPromptBanInstruction(),
+    guidance,
     regenTarget: scope === "single_card" && targetCard ? {
       sequence:   targetCard.sequence,
       totalCards: existingCards.length,
@@ -206,7 +209,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
 
     // Optional: regenerate the quiz (replaces existing), sharing the correlationId.
     const quizResult = alsoGenerateQuiz
-      ? await generateQuiz({ seg_id, correlationId, isRegen: true })
+      ? await generateQuiz({ seg_id, correlationId, isRegen: true, guidance })
       : null;
 
     return {
@@ -252,7 +255,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
 
   // Optional: regenerate the quiz (replaces existing), sharing the correlationId.
   const quizResult = alsoGenerateQuiz
-    ? await generateQuiz({ seg_id, correlationId, isRegen: true })
+    ? await generateQuiz({ seg_id, correlationId, isRegen: true, guidance })
     : null;
 
   return {

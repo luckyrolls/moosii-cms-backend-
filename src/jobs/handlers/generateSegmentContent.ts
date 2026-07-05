@@ -115,6 +115,7 @@ export function composeUserMessage(opts: {
   segmentName: string;
   segmentDescription: string | null;
   avoid?: string;            // error-severity voice-lint bans (prevention layer)
+  guidance?: string;         // author feedback from a rejection — steers this regen
   regenTarget?: RegenTarget;
 }): string {
   const parts: string[] = [];
@@ -123,6 +124,11 @@ export function composeUserMessage(opts: {
   if (opts.structureContent) parts.push(`## Structure\n\n${opts.structureContent}`);
   if (opts.lengthContent)    parts.push(`## Length\n\n${opts.lengthContent}`);
   if (opts.avoid)            parts.push(`## Avoid\n\n${opts.avoid}`);
+  // Author feedback is authoritative — a human rejected the prior version. Placed
+  // high and stated as a directive so the model prioritizes it.
+  if (opts.guidance && opts.guidance.trim()) {
+    parts.push(`## Author Feedback (a prior version was REJECTED — apply this)\n\n${opts.guidance.trim()}`);
+  }
 
   const ctx = [`Lesson title: ${opts.lessonTitle}`, `Segment: ${opts.segmentName}`];
   if (opts.segmentDescription) ctx.push(`Description: ${opts.segmentDescription}`);

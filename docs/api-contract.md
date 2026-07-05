@@ -323,6 +323,11 @@ Body: {
     scope: "whole_segment" | "single_card",
     card_id?: string,   // required when scope = "single_card"
     generate_quiz?: boolean,  // if true, also regenerate the quiz (replaces existing)
+    guidance?: string,  // author feedback (e.g. a rejection note) — injected into the
+                        // prompt as an "Author Feedback" section that STEERS this regen
+                        // (content, and the quiz too when generate_quiz=true). Distinct
+                        // from overrides: overrides REPLACE a prompt layer; guidance is
+                        // additive steering. Absent = unchanged behavior.
     overrides?: {       // per-run prompt overrides — THIS regeneration only
       scope?: string,
       tone?: string,
@@ -438,7 +443,9 @@ Authorization: Bearer <jwt>
 Body: {
   type: "generate_quiz",
   input: {
-    seg_id: string
+    seg_id: string,
+    guidance?: string   // author feedback (e.g. a rejection note) — injected into the
+                        // quiz prompt as an "Author Feedback" section to STEER the regen
   }
 }
 → 202 { job_id: string }
@@ -446,6 +453,17 @@ Body: {
 Reads the segment's **current** `sub_segments` as source material, so it is
 correct both when called after fresh generation and when called after a reviewer
 has edited cards. Loads the `quiz` prompt row from the DB (`prompt_type='quiz'`).
+
+**Quiz approval (separate from generation):** the app renders a quiz only when
+`quiz_questions.answer_status='approved'`. Bulk approve happens with the lesson
+(§1f). For a standalone per-segment flip there is a dedicated backend route (a direct
+browser UPDATE would hit the same RLS wall as content):
+```
+POST /quiz/:segment_id/approve    → 200 { ok, segment_id, status: "approved", questions_updated }
+POST /quiz/:segment_id/unapprove  → 200 { ok, segment_id, status: "pending",  questions_updated }
+```
+Service-role (bypasses RLS), admin JWT. `questions_updated: 0` (with a `note`) when the
+segment has no quiz — not an error.
 
 **`question_count`** is a column on the `prompts` row (currently 1, adjustable by
 the co-founder in the DB without a code change). Output is always an array — 1→N
