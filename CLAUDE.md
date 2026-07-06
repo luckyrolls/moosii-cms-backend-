@@ -110,6 +110,17 @@ diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
   `sub_segments.image`. Canonical source is `content_images.storage_path`; this
   column exists for easy access in the Supabase UI during build and is safe to
   remove later.
+- `sub_segments.tone_id` (migration 030): the tone (`prompts.id`) each card was last
+  written in — PER CARD (single-card regen can retone one card without relabeling its
+  siblings). Nullable = not recorded; NEVER backfilled. Stamped by generate/regen and
+  the batch. The CMS reads it for the per-card tone badge.
+- IMAGE STORAGE / regen purge (non-obvious): `sub_segments.image` is an FK to
+  `image_assets.url`, and `image_assets` is populated by an OUT-OF-BACKEND storage
+  trigger (no `src` code writes it — auto-INSERT on upload, auto-DELETE on remove).
+  Content regen PURGES the regenerated cards' images (content_images rows + storage
+  files + image_assets rows) via `src/storage/purgeImages.ts`, so no orphaned-file
+  bloat. Order matters: remove the storage object BEFORE deleting image_assets, or the
+  storage-delete trigger raises P0001.
 - (Content phase) A `content_drafts` table — to be designed — mirrors content_images
   (candidate/approved/superseded, prompts + model provenance, approval metadata) and
   holds the draft content BUNDLE until a human approves it.
@@ -313,6 +324,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       an image-linkable pre-check (409, not silent) — `approve_segment_bundle` (migration
       029). Per-artifact primitives (`/segments/:id/approve`, `/content-images/:id/approve`)
       unchanged. §1f.
+- [x] Content-regen refinements: `regen_segment_content` / `generate_quiz` accept a
+      `guidance` field (author/rejection feedback injected into the prompt to steer the
+      regen; §2c/§2d); standalone `POST /quiz/:segment_id/approve` / `/unapprove`
+      (service-role, bypasses the `quiz_questions` RLS wall — per-artifact counterpart to
+      the bulk approve); content regen PURGES the old cards' images (no storage bloat, see
+      Data model). Per-card tone persisted (`sub_segments.tone_id`, migration 030).
 - [x] `generate_track_content` / `generate_track_images` — batch orchestrators over the
       per-unit generators (content: fill_missing + replace with derivable resume; images:
       fill_missing). Progress in `jobs.result`, content tables are the resume checkpoint,
