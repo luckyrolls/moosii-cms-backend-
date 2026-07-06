@@ -334,6 +334,8 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     title:    card.title,
     content:  card.content,
     sequence: i + 1,
+    tone_id,               // per-card tone (migration 030) — this is the CORE path the
+                           // batch (generate_track_content) also hits.
   }));
 
   const { data: inserted, error: insertErr } = await supabase

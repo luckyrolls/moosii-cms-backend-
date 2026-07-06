@@ -195,6 +195,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       title:    card.title,
       content:  card.content,
       sequence: i + 1,
+      tone_id,               // per-card tone (migration 030)
     }));
 
     const { data: inserted, error: insertErr } = await supabase
@@ -239,9 +240,11 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   // pointer). The card's new content won't match the old image.
   await purgeImagesForSubSegments([card_id!]);
 
+  // tone_id stamps the retoned card — this is what makes mixed-tone segments
+  // representable (siblings keep their own tone_id).
   const { error: updateErr } = await supabase
     .from("sub_segments")
-    .update({ title: newCard.title, content: newCard.content })
+    .update({ title: newCard.title, content: newCard.content, tone_id })
     .eq("id", card_id!);
   if (updateErr) {
     throw new Error(`Failed to update sub_segment ${card_id}: ${updateErr.message}`);

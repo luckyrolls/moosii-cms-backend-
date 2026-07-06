@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      _segment_dedupe_backup: {
+        Row: {
+          cards: number | null
+          detached_at: string
+          old_lesson_id: string
+          seg_status: string | null
+          segment_id: string
+        }
+        Insert: {
+          cards?: number | null
+          detached_at?: string
+          old_lesson_id: string
+          seg_status?: string | null
+          segment_id: string
+        }
+        Update: {
+          cards?: number | null
+          detached_at?: string
+          old_lesson_id?: string
+          seg_status?: string | null
+          segment_id?: string
+        }
+        Relationships: []
+      }
       account_types: {
         Row: {
           created_at: string | null
@@ -3481,6 +3505,7 @@ export type Database = {
           seg_id: string | null
           sequence: number | null
           title: string | null
+          tone_id: string | null
         }
         Insert: {
           content?: string | null
@@ -3493,6 +3518,7 @@ export type Database = {
           seg_id?: string | null
           sequence?: number | null
           title?: string | null
+          tone_id?: string | null
         }
         Update: {
           content?: string | null
@@ -3505,6 +3531,7 @@ export type Database = {
           seg_id?: string | null
           sequence?: number | null
           title?: string | null
+          tone_id?: string | null
         }
         Relationships: [
           {
@@ -3541,6 +3568,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "image_assets"
             referencedColumns: ["url"]
+          },
+          {
+            foreignKeyName: "sub_segments_tone_id_fkey"
+            columns: ["tone_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -6494,6 +6528,10 @@ export type Database = {
             }
             Returns: Json
           }
+      approve_segment_bundle: {
+        Args: { p_approved_by: string; p_images: Json; p_seg_id: string }
+        Returns: Json
+      }
       create_lessons_with_segments: {
         Args: { p_lessons: Json }
         Returns: {
@@ -6516,6 +6554,7 @@ export type Database = {
         Args: { p_ordered_ids: string[] }
         Returns: undefined
       }
+      unapprove_segment_bundle: { Args: { p_seg_id: string }; Returns: Json }
     }
     Enums: {
       account_type:

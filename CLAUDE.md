@@ -268,12 +268,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–029 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–030 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 029).
+      (high-water: 030).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,

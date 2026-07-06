@@ -264,9 +264,16 @@ uses `output_schema` from the row as `response_format`. No prompt text in the
 request — the backend owns prompt composition.
 
 Generates a **cards arc** (typically 5–9 cards; count is model-determined).
-Writes one `sub_segments` row per card (`title`, `content`, `sequence` 1…N),
-replacing any existing sub_segments for the segment. The final card is the
-takeaway — no special field, just the last card in order.
+Writes one `sub_segments` row per card (`title`, `content`, `sequence` 1…N,
+`tone_id` = the run's tone), replacing any existing sub_segments for the segment.
+The final card is the takeaway — no special field, just the last card in order.
+
+**Tone is persisted PER CARD** (`sub_segments.tone_id`, migration 030) — the CMS can
+show the tone each card was written in. Card-level because single-card regen (§2c) can
+retone one card without relabeling its siblings (mixed-tone segments are representable).
+Stamped on every card write here, in regen (both scopes), and by the batch
+(`generate_track_content`). `null` = not recorded (pre-migration / never stamped); never
+backfilled from the generation log.
 
 When `generate_quiz: true`, quiz generation runs after cards complete, sharing
 the same `correlationId` so both `ai_generation_log` entries are linked. The
