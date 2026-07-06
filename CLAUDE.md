@@ -114,6 +114,15 @@ diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
   written in — PER CARD (single-card regen can retone one card without relabeling its
   siblings). Nullable = not recorded; NEVER backfilled. Stamped by generate/regen and
   the batch. The CMS reads it for the per-card tone badge.
+- `content_images.scene` (migration 031): the SCENE each image depicts (WHAT, not the
+  STYLE) — the `userPrompt` sent to the prompt-writer LLM. Image gen is ONE fused LLM
+  call: STYLE (base+overlay) is the model's instructions, the scene is its userPrompt. A
+  human may OPTIONALLY supply the scene on generate/regen (image regen = re-fire
+  `generate_sub_segment_image`); non-empty → used verbatim, skips deriving from card
+  content; empty/absent → derived exactly as before. Stamped on every new row via the
+  shared core (single + `generate_track_images` batch). NULL = whole prompt hand-supplied
+  (`prompt_override`, LLM skipped) or pre-migration; NEVER backfilled. `image_prompt`
+  stays the full rendered prompt. Pass 1: no scene REUSE on regen (empty always re-derives).
 - IMAGE STORAGE / regen purge (non-obvious): `sub_segments.image` is an FK to
   `image_assets.url`, and `image_assets` is populated by an OUT-OF-BACKEND storage
   trigger (no `src` code writes it — auto-INSERT on upload, auto-DELETE on remove).
@@ -279,12 +288,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–030 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–031 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 030).
+      (high-water: 031).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,

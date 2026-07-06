@@ -12,6 +12,10 @@ type Input = {
   auto_approve?: boolean;
   prompt_override?: string;
   instructions_override?: string;
+  // Optional hand-written SCENE (what THIS image depicts). Non-empty → used as the
+  // scene, skipping derivation from card content; empty/absent → derived as before.
+  // Same field on generate and (image-)regen; batch never sets it (always derives).
+  scene?: string;
 };
 
 type LLMProvider = "gemini" | "openai" | "anthropic";
@@ -124,9 +128,15 @@ export async function generateSubSegmentImage(
     auto_approve = false,
     prompt_override,
     instructions_override,
+    scene,
   } = input;
 
   if (!sub_segment_id) throw new Error("input.sub_segment_id is required");
+
+  // Normalize the optional scene: a non-empty string overrides derivation; blank/
+  // whitespace/absent → undefined (derive as today).
+  const sceneOverride =
+    typeof scene === "string" && scene.trim() ? scene.trim() : undefined;
 
   const correlationId = ctx.correlationId;
 
@@ -142,7 +152,16 @@ export async function generateSubSegmentImage(
     subSegmentHeading: subSeg.title ?? "",
     content: subSeg.content ?? "",
   };
-  const assembled = await assembleImagePrompt(topicName, metadata, instructions_override);
+  const assembled = await assembleImagePrompt(
+    topicName,
+    metadata,
+    instructions_override,
+    sceneOverride
+  );
+
+  // The scene actually used for this image (given or derived) = the userPrompt sent
+  // to the LLM. prompt_override skips the LLM entirely, so no scene is "used" → null.
+  const sceneUsed = prompt_override ? null : assembled.userPrompt;
 
   // Step 3 — get the image prompt (LLM or override)
   let imagePrompt: string;
@@ -198,6 +217,7 @@ export async function generateSubSegmentImage(
       sub_segment_id,
       image_prompt: imagePrompt,
       final_prompt: imagePrompt,
+      scene: sceneUsed,
       name: imageName,
       tags: imageTags,
       prompt_writer_name: promptWriterName,

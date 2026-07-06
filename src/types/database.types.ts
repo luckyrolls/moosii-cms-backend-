@@ -654,6 +654,7 @@ export type Database = {
           name: string | null
           prompt_writer_name: string | null
           prompt_writer_version: string | null
+          scene: string | null
           segment_id: string | null
           status: string
           storage_path: string
@@ -677,6 +678,7 @@ export type Database = {
           name?: string | null
           prompt_writer_name?: string | null
           prompt_writer_version?: string | null
+          scene?: string | null
           segment_id?: string | null
           status?: string
           storage_path: string
@@ -700,6 +702,7 @@ export type Database = {
           name?: string | null
           prompt_writer_name?: string | null
           prompt_writer_version?: string | null
+          scene?: string | null
           segment_id?: string | null
           status?: string
           storage_path?: string

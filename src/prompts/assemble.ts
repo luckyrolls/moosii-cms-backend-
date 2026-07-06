@@ -72,9 +72,13 @@ function buildUserPrompt(metadata: ImagePromptMetadata): string {
 export async function assembleImagePrompt(
   topicName: string,
   metadata: ImagePromptMetadata,
-  instructionsOverride?: string
+  instructionsOverride?: string,
+  sceneOverride?: string
 ): Promise<AssembledPrompt> {
-  const userPrompt = buildUserPrompt(metadata);
+  // sceneOverride replaces the derived card-content scene (the userPrompt). It is
+  // the SCENE layer; instructionsOverride is the STYLE layer — orthogonal, both may
+  // be set. Caller passes a trimmed non-empty string or undefined.
+  const userPrompt = sceneOverride ?? buildUserPrompt(metadata);
 
   if (instructionsOverride !== undefined) {
     return {

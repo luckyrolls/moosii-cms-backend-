@@ -68,13 +68,21 @@ frontend client against these.
 POST /sub-segments/:id/generate-image
 Authorization: Bearer <jwt>
 Body: {
-  instructions_override?: string,   // edits the image_prompt (LLM-written) path
+  scene?: string,                   // hand-written SCENE (what THIS image depicts);
+                                     //   non-empty → used verbatim, skips deriving the
+                                     //   scene from card content; STYLE unchanged. Empty/
+                                     //   absent → derived as before. Same field on regen
+                                     //   (regen = re-fire this endpoint).
+  instructions_override?: string,   // edits the STYLE (image_prompt) instructions path
   prompt_override?: string          // skip the LLM, use this as the final prompt
 }
 → 202 { job_id: string }
 ```
 Single `generate_sub_segment_image` job → new `content_images` candidate row
 carrying this `job_id`. Backs "redo this one" + the prompt-tweak/compare loop.
+The scene actually used (given or derived) is recorded on the row as
+`content_images.scene`; `image_prompt` stays the full rendered prompt.
+`prompt_override` skips the LLM entirely, so `scene` is left null on that row.
 
 ### 1b. Batch generate for a segment
 ```
@@ -1188,6 +1196,10 @@ backend must preserve and the frontend leans on:
   ```
 - **Prompts:** `image_prompt` = editable LLM-written prompt (the override path);
   `final_prompt` = resolved base+overlay sent to the model (provenance, NOT NULL).
+  `scene` (text, nullable, migration 031) = the SCENE used for this image — the
+  human-supplied scene when given, else the derived card-content scene; null when
+  `prompt_override` was used or for pre-migration rows (never backfilled). It is
+  provenance alongside `image_prompt`, which stays the full rendered prompt.
 - **Live image pointer:** `sub_segments.image` (URL). `sub_segments.image_path`
   is a redundant mirror — written in the same approve transaction, otherwise
   ignored.

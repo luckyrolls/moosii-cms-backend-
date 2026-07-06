@@ -9,9 +9,10 @@ const router = Router();
 // Backs "redo this one" and the prompt-tweak/compare loop.
 router.post("/:id/generate-image", async (req: Request, res: Response): Promise<void> => {
   const subSegmentId = req.params.id;
-  const { instructions_override, prompt_override } = req.body as {
+  const { instructions_override, prompt_override, scene } = req.body as {
     instructions_override?: string;
     prompt_override?: string;
+    scene?: string;
   };
 
   try {
@@ -20,6 +21,7 @@ router.post("/:id/generate-image", async (req: Request, res: Response): Promise<
       auto_approve: false,
       ...(instructions_override && { instructions_override }),
       ...(prompt_override && { prompt_override }),
+      ...(scene && { scene }),
     });
     res.status(202).json({ job_id: jobId });
   } catch (err) {
