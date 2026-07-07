@@ -299,49 +299,96 @@ export async function loadUserMlpInputs(userId: string): Promise<UserMlpInputs> 
   return { tracks, pool, youngestAgeMonths };
 }
 
-// Rebuild a single user's MLP into user_mlp_v2 (verification phase).
-export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResult> {
+// The MLP row shape written to user_mlp_v2 (also the preview payload). Mirrors the
+// BuildShip updateMLP record so stored output matches for diffing.
+export type MlpItemRow = {
+  item_id: string;
+  item_type: string;
+  track_id: string;
+  track_name: string;
+  position: number;
+  item_name: string;
+  item_description: string;
+  with_quiz: boolean;
+  item_priority: number | null;
+  track_weight: number | null;
+  track_priority: number | null;
+};
+
+// Overrides for the shared compute core. Both default to "as the rebuild does it":
+//   ageMonthsOverride — replaces the youngest-child age (feeds BOTH the pool age gate
+//     AND age-bracket weighting, exactly as the real age does — same semantics, a
+//     different value). Undefined → the child's real age. Preview only.
+//   includeCompleted — true → NOTHING is excluded as completed (view the full path).
+//     False/undefined → the rebuild's normal completed set (with due-again re-inclusion).
+//     This bypasses ONLY the completed-exclusion; milestone suppression + the age gate
+//     still apply.
+export type MlpComputeOverrides = { ageMonthsOverride?: number; includeCompleted?: boolean };
+
+export type MlpComputeResult = {
+  items: MlpItemRow[];
+  childAgeMonths: number | null;   // the real youngest-child age (for the CMS default)
+  ageMonthsUsed: number | null;    // ageMonthsOverride ?? childAgeMonths
+  activeTrackCount: number;
+  debug: ReturnType<typeof generateFullMLP>["debug"];
+};
+
+// SHARED COMPUTE CORE — everything the rebuild does EXCEPT persistence. Pure reads +
+// the pure generateFullMLP algorithm; NO writes, NO side effects. rebuildOneUser wraps
+// this with the atomic rpc; the CMS preview endpoint calls it with overrides and never
+// persists. Single source of the due/suppression/age math — no duplication.
+export async function computeUserMlp(
+  userId: string,
+  overrides: MlpComputeOverrides = {}
+): Promise<MlpComputeResult> {
   // 1-3. Active tracks, track_type enrichment, demographics, candidate pool.
-  const { tracks, pool, youngestAgeMonths: youngest } = await loadUserMlpInputs(userId);
+  const { tracks, pool, youngestAgeMonths: childAgeMonths } = await loadUserMlpInputs(userId);
 
-  // 4. Completed items — excluded from the pool. Keys are `item_type:item_id`.
-  //    score + created_at are pulled for recurrence (migration 033); they're ignored
-  //    for non-questionnaire items and when no band has a repeat interval.
-  const { data: completedRaw, error: cErr } = await db
-    .from("completed_items")
-    .select("item_id, item_type, score, created_at")
-    .eq("user_id", userId);
-  if (cErr) throw new Error(`completed_items query failed: ${cErr.message}`);
-  const completedRows = ((completedRaw ?? []) as Array<Record<string, unknown>>).map((c) => ({
-    item_id: c.item_id as string,
-    item_type: c.item_type as string,
-    score: num(c.score),
-    created_at: (c.created_at as string | null) ?? "",
-  })) as CompletedRow[];
+  // Age actually used: the override when given (0 is valid), else the real child age.
+  const ageMonthsUsed = overrides.ageMonthsOverride ?? childAgeMonths;
 
-  // 4a. Recurrence (slice: score-band intervals) — DERIVED per-user at build time.
-  //     Wrapped so any failure yields "nothing due" (default-to-exclude = today's
-  //     one-shot behavior); a bug here can only fail to re-surface, never wrongly hide.
-  let dueQuestionnaires: Set<string> = new Set();
-  try {
-    dueQuestionnaires = await computeDueQuestionnaires(completedRows);
-  } catch (e) {
-    console.warn(
-      `[rebuild_mlp] recurrence check errored for ${userId}; treating all questionnaires as one-shot: ${e instanceof Error ? e.message : String(e)}`
-    );
-    dueQuestionnaires = new Set();
+  // 4. Completed exclusion. include_completed → exclude NOTHING (skip the query + due
+  //    computation entirely). Otherwise the normal set with due-again re-inclusion.
+  let completedItems: CompletedItem[] = [];
+  if (!overrides.includeCompleted) {
+    //    score + created_at are pulled for recurrence (migration 033); they're ignored
+    //    for non-questionnaire items and when no band has a repeat interval.
+    const { data: completedRaw, error: cErr } = await db
+      .from("completed_items")
+      .select("item_id, item_type, score, created_at")
+      .eq("user_id", userId);
+    if (cErr) throw new Error(`completed_items query failed: ${cErr.message}`);
+    const completedRows = ((completedRaw ?? []) as Array<Record<string, unknown>>).map((c) => ({
+      item_id: c.item_id as string,
+      item_type: c.item_type as string,
+      score: num(c.score),
+      created_at: (c.created_at as string | null) ?? "",
+    })) as CompletedRow[];
+
+    // 4a. Recurrence (slice: score-band intervals) — DERIVED per-user at build time.
+    //     Wrapped so any failure yields "nothing due" (default-to-exclude = today's
+    //     one-shot behavior); a bug here can only fail to re-surface, never wrongly hide.
+    let dueQuestionnaires: Set<string> = new Set();
+    try {
+      dueQuestionnaires = await computeDueQuestionnaires(completedRows);
+    } catch (e) {
+      console.warn(
+        `[rebuild_mlp] recurrence check errored for ${userId}; treating all questionnaires as one-shot: ${e instanceof Error ? e.message : String(e)}`
+      );
+      dueQuestionnaires = new Set();
+    }
+
+    // Due-again questionnaires drop OUT of the exclusion set so the pool re-includes
+    // them; everything else (all lessons, not-yet-due and one-shot questionnaires)
+    // excludes exactly as before.
+    completedItems = completedRows
+      .filter((c) => !(c.item_type === "questionnaire" && dueQuestionnaires.has(c.item_id)))
+      .map((c) => ({ item_id: c.item_id, item_type: c.item_type })) as CompletedItem[];
   }
 
-  // Due-again questionnaires drop OUT of the exclusion set so the pool re-includes
-  // them; everything else (all lessons, not-yet-due and one-shot questionnaires)
-  // excludes exactly as before.
-  const completedItems = completedRows
-    .filter((c) => !(c.item_type === "questionnaire" && dueQuestionnaires.has(c.item_id)))
-    .map((c) => ({ item_id: c.item_id, item_type: c.item_type })) as CompletedItem[];
-
-  // 4b. Milestone suppression (slice 3) — DERIVED per-user at build time. Wrapped
-  //     so any failure yields an empty exclusion (default-to-surface): a bug here
-  //     can only over-surface a questionnaire, never silently hide one.
+  // 4b. Milestone suppression (slice 3) — DERIVED per-user at build time. ALWAYS applied
+  //     (include_completed does not bypass it). Wrapped so any failure yields an empty
+  //     exclusion (default-to-surface): a bug here can only over-surface, never hide.
   let suppressedItemKeys: string[] = [];
   try {
     suppressedItemKeys = await computeMilestoneSuppression(userId, pool);
@@ -352,19 +399,18 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
     suppressedItemKeys = [];
   }
 
-  // Run the ported algorithm.
+  // Run the ported algorithm. The age value feeds both the bracket weighting (ages)
+  // and the pool age gate (youngestAgeMonths), exactly as the rebuild does.
   const { finalMLP, debug } = generateFullMLP({
     pool,
     tracks,
     completedItems,
-    ages: youngest !== null ? [youngest] : [], // v1: youngest child only
-    youngestAgeMonths: youngest, // CHANGE 2 pool age filter
+    ages: ageMonthsUsed !== null ? [ageMonthsUsed] : [], // v1: youngest child only
+    youngestAgeMonths: ageMonthsUsed, // CHANGE 2 pool age filter
     suppressedItemKeys, // CHANGE 3 (slice 3) milestone suppression
   });
 
-  // Build the write payload, mirroring the BuildShip updateMLP record shape
-  // (coerce with_quiz ?? false etc.) so stored output matches for diffing.
-  const items = finalMLP.map((i) => ({
+  const items: MlpItemRow[] = finalMLP.map((i) => ({
     item_id: i.item_id,
     item_type: i.item_type,
     track_id: i.track_id,
@@ -378,20 +424,28 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
     track_priority: i.track_priority ?? null,
   }));
 
+  return { items, childAgeMonths, ageMonthsUsed, activeTrackCount: tracks.length, debug };
+}
+
+// Rebuild a single user's MLP into user_mlp_v2 (verification phase). Persist wrapper
+// around computeUserMlp (real age, normal completed set) — output byte-identical.
+export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResult> {
+  const compute = await computeUserMlp(userId);
+
   // Atomic delete + insert into user_mlp_v2 (no stale rows, no position clashes).
   const { data: insertedCount, error: rpcErr } = await db.rpc("rebuild_user_mlp", {
     p_user_id: userId,
-    p_items: items,
+    p_items: compute.items,
   });
   if (rpcErr) throw new Error(`rebuild_user_mlp rpc failed: ${rpcErr.message}`);
 
   return {
     user_id: userId,
-    items_written: typeof insertedCount === "number" ? insertedCount : items.length,
-    pool_size: debug.poolSize,
-    filtered_pool_size: debug.filteredPoolSize,
-    active_track_count: tracks.length,
-    debug,
+    items_written: typeof insertedCount === "number" ? insertedCount : compute.items.length,
+    pool_size: compute.debug.poolSize,
+    filtered_pool_size: compute.debug.filteredPoolSize,
+    active_track_count: compute.activeTrackCount,
+    debug: compute.debug,
   };
 }
 

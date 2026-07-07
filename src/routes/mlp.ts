@@ -4,8 +4,33 @@ import { apiError } from "../lib/errors";
 import { rebuildOneUser } from "../jobs/handlers/rebuildMlp";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import { assembleQuestionnaireStatus } from "../mlp/questionnaireStatus";
+import { assembleMlpPreview, parseAgeMonthsParam } from "../mlp/mlpPreview";
 
 const router = Router();
+
+// GET /mlp/:user_id/preview?age_months=<int?>&include_completed=<bool?> — ADMIN
+// (CMS user-MLP inspector). Recomputes the path with overridden inputs WITHOUT
+// persisting: age_months → view the path at a chosen age; include_completed=true →
+// view the full path including completed items. Reuses the rebuild's compute core
+// (computeUserMlp); read-only, no writes, no user_mlp side effects. include_completed
+// bypasses ONLY the completed-exclusion — the age gate + milestone suppression still
+// apply. Absent age → the child's real age (returned as child_age_months).
+router.get("/:user_id/preview", jwtAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.params.user_id;
+  if (!userId) { apiError(res, 400, "bad_request", "user_id is required"); return; }
+
+  const parsedAge = parseAgeMonthsParam(req.query.age_months);
+  if (!parsedAge.ok) { apiError(res, 400, "bad_request", parsedAge.message); return; }
+  const ageMonthsOverride = parsedAge.ageMonths;
+  const includeCompleted = req.query.include_completed === "true";
+
+  try {
+    const preview = await assembleMlpPreview(userId, { ageMonthsOverride, includeCompleted });
+    res.json(preview);
+  } catch (e) {
+    apiError(res, 500, "mlp_preview_failed", e instanceof Error ? e.message : String(e));
+  }
+});
 
 // GET /mlp/:user_id/questionnaire-status — ADMIN (CMS user-MLP inspector). Unlike the
 // app-facing /recompute below (self-scoped end-user JWT), this reads an ARBITRARY

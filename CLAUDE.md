@@ -373,6 +373,14 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing
       `POST /mlp/recompute` (end-user JWT, user-scoped) DELIVERED (`src/routes/mlp.ts`).
+- [x] MLP preview inspector — `GET /mlp/:user_id/preview?age_months&include_completed`
+      (ADMIN JWT). Recomputes the path with overridden inputs (a chosen age; including
+      completed items) WITHOUT persisting — read-only, no `user_mlp` writes. REUSES the
+      rebuild's compute core: `rebuildOneUser` and the preview both call the shared
+      `computeUserMlp(userId, overrides)` (extraction is byte-identical for the real-age /
+      normal case — proven). `include_completed` bypasses ONLY the completed-exclusion; age
+      gate + suppression still apply. Age override feeds both the pool age gate and bracket
+      weighting (`src/mlp/mlpPreview.ts`, §3b).
 - [x] Questionnaire status inspector — `GET /mlp/:user_id/questionnaire-status` (ADMIN
       JWT). Per-user questionnaire lifecycle for the CMS user-MLP inspector: status
       (never_answered/answered_one_shot/answered_awaiting/due_now/suppressed) + latest

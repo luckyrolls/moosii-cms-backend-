@@ -1201,6 +1201,45 @@ suppression trumps due-ness** — a due-again-but-suppressed questionnaire repor
 context. `matched_band` is the shortest-interval band containing the latest score;
 `due_at = latest_answer_at + repeat_after_days`.
 
+### 3b. MLP preview (CMS user-MLP inspector) — DELIVERED
+```
+GET /mlp/:user_id/preview?age_months=<int?>&include_completed=<bool?>
+Authorization: Bearer <admin Supabase JWT>   // admin gate (arbitrary user_id)
+→ 200 {
+  user_id: string,
+  child_age_months: number | null,   // the real youngest-child age (CMS defaults the input to this)
+  age_months: number | null,         // age actually used (override, else child_age_months)
+  include_completed: boolean,
+  items: Array<{
+    position: number, item_id: string, item_type: string, item_name: string,
+    track_id: string, track_name: string,
+    track_weight: number | null, track_priority: number | null,
+    item_priority: number | null, with_quiz: boolean
+  }>
+}
+→ 400 bad_request (age_months not a non-negative integer) · 401 · 403 · 500 mlp_preview_failed
+```
+Recomputes the MLP with overridden inputs **without persisting** — the inspector's
+"what would the path look like at age N / including completed items" view.
+**Read-only: no writes, no `user_mlp` side effects.** Reuses the rebuild's own compute
+core (`computeUserMlp`) — the persisted rebuild and this preview run the SAME
+due/suppression/age code, so the preview can't diverge from what a recompute would
+produce. `items` mirror `user_mlp` rows (position-ordered) so the CMS renders them with
+its existing table.
+
+Overrides:
+- `age_months` (optional, ≥ 0) → used as the youngest-child age; **absent → the child's
+  real age** (returned as `child_age_months`). The age drives BOTH the pool age gate and
+  age-bracket weighting, exactly as the real age does in the rebuild (same semantics, a
+  different value).
+- `include_completed=true` → nothing is excluded as completed (view the full path).
+  Default/false → the rebuild's normal completed set (with due-again re-inclusion).
+  **This bypasses ONLY the completed-exclusion.** The age gate and milestone suppression
+  still apply — "include completed" is specifically about completions. (If suppression
+  should ever be viewable too, that's a separate flag, not an overload of this one.)
+
+Unknown user → `200` with `items: []` (empty tracks/pool, no crash).
+
 ---
 
 ## 4. Job polling (frontend → Supabase, not the backend)
