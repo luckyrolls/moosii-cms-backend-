@@ -1,15 +1,73 @@
-import { ApiError } from "@google/genai";
+import { ApiError as GeminiApiError } from "@google/genai";
+import OpenAI from "openai";
 
-// Only retry on transient conditions. Fail fast on deterministic errors
-// (bad request, auth, safety refusals, unknown job type, etc.).
-const TRANSIENT_STATUSES = new Set([429, 500, 503]);
+// HTTP statuses worth retrying — shared across providers. Everything else
+// (400/401/403/404/422 → client/validation/permanent) fails fast.
+const TRANSIENT_STATUSES = new Set([408, 409, 429, 500, 503]);
 
-function isTransient(err: unknown): boolean {
-  // HTTP-level transient errors from the Gemini SDK
-  if (err instanceof ApiError) return TRANSIENT_STATUSES.has(err.status);
-  // Network-level errors (connection reset, DNS failure, etc.) are also transient
-  if (err instanceof TypeError && /fetch failed|network/i.test(err.message)) return true;
+// ---------------------------------------------------------------------------
+// Provider-agnostic transient classification.
+//
+// Each provider contributes exactly ONE classifier. A classifier answers only for
+// errors it recognizes:
+//     true  → transient (retry)
+//     false → recognized-but-permanent (fail fast)
+//     null  → "not my error type" (defer to the next classifier)
+//
+// TO ADD A PROVIDER (e.g. Anthropic): add its SDK's classifier to `classifiers`
+// below — nowhere else. This is the single extension point on purpose. If you skip
+// it, that provider's transient errors fall through to the unrecognized path
+// (non-transient + a logged warning), so the gap is VISIBLE in logs, not silent.
+// That silent gap is the exact bug this fixes: OpenAI errors were never classified,
+// so `withRetry` re-threw them on the first attempt and only the SDK's 2 internal
+// retries ever fired.
+// ---------------------------------------------------------------------------
+type TransientVerdict = boolean | null;
+type TransientClassifier = (err: unknown) => TransientVerdict;
+
+const classifiers: TransientClassifier[] = [
+  // Gemini (@google/genai): HTTP-status-based.
+  (err) => (err instanceof GeminiApiError ? TRANSIENT_STATUSES.has(err.status) : null),
+
+  // OpenAI (openai): connection/timeout errors carry NO status → transient by type
+  // (APIConnectionTimeoutError extends APIConnectionError); every other APIError
+  // classifies by its HTTP status.
+  (err) => {
+    if (err instanceof OpenAI.APIConnectionError) return true;
+    if (err instanceof OpenAI.APIError) return err.status !== undefined && TRANSIENT_STATUSES.has(err.status);
+    return null;
+  },
+
+  // Provider-agnostic transport layer (fetch/undici): connection reset, DNS, etc.
+  (err) => (err instanceof TypeError && /fetch failed|network/i.test(err.message) ? true : null),
+];
+
+function hasNumericStatus(err: unknown): err is { status: number } {
+  return typeof err === "object" && err !== null && typeof (err as { status?: unknown }).status === "number";
+}
+
+export function isTransient(err: unknown): boolean {
+  for (const classify of classifiers) {
+    const verdict = classify(err);
+    if (verdict !== null) return verdict; // a classifier recognized this error
+  }
+  // No classifier recognized it. Don't retry unknown errors — but if it LOOKS like an
+  // unclassified HTTP/SDK error (has a numeric status), warn: that's the signature of a
+  // new provider whose transient errors would otherwise silently never retry.
+  if (hasNumericStatus(err)) {
+    console.warn(
+      `[retry] unrecognized SDK-style error (status ${err.status}) treated as non-transient — ` +
+      `add a provider classifier in retry.ts if its transient errors should retry`
+    );
+  }
   return false;
+}
+
+// Short label for the retry log line — HTTP status when present, else the error name.
+function describeError(err: unknown): string {
+  if (hasNumericStatus(err)) return `HTTP ${err.status}`;
+  if (err instanceof Error) return err.name || "error";
+  return "error";
 }
 
 export interface RetryOptions {
@@ -34,14 +92,12 @@ export async function withRetry<T>(
       if (!isTransient(err) || isLastAttempt) throw err;
 
       // Exponential backoff: ~2s, ~4s, ~8s, ~16s, ~32s (capped at 45s) + ±25% jitter
-      // Total span ≈ 62s — enough for a Gemini overload window to clear.
+      // Total span ≈ 62s — enough for a provider overload window to clear.
       const base = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
       const jitter = base * 0.25 * (Math.random() * 2 - 1);
       const waitMs = Math.round(base + jitter);
-      const label =
-        err instanceof ApiError ? `HTTP ${err.status}` : "network error";
       console.warn(
-        `[retry] Attempt ${attempt}/${maxAttempts} failed (${label}): ${(err as Error).message}. Retrying in ${waitMs}ms...`
+        `[retry] Attempt ${attempt}/${maxAttempts} failed (${describeError(err)}): ${(err as Error).message}. Retrying in ${waitMs}ms...`
       );
       await new Promise((r) => setTimeout(r, waitMs));
     }
