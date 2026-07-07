@@ -115,6 +115,84 @@ export async function computeMilestoneSuppression(
     .map((m) => `questionnaire:${m.id}`);
 }
 
+// Recurrence (migration 033) — resolve which ALREADY-COMPLETED questionnaires are
+// DUE AGAIN and must NOT be excluded from the pool. Per (user, questionnaire): take
+// the LATEST completed_items row (created_at DESC); find the score-band rule(s) on
+// that questionnaire whose [score_min_range, score_max_range] contains that row's
+// score AND have a non-null repeat_after_days (shortest interval wins — most
+// attentive follow-up); the questionnaire is due once now - created_at >= interval.
+//
+// DEFAULT-TO-EXCLUDE is structural: this never throws, and every doubt (no bands,
+// null score, band query error) yields "not due" = today's one-shot behavior. So
+// with repeat_after_days NULL everywhere (no recurring bands) it returns an empty
+// set and the rebuild is byte-identical to before. Suppression stays a separate
+// sibling filter — a due-again questionnaire whose milestone fact exists is still
+// independently excluded; recurrence and suppression do not couple.
+type CompletedRow = { item_id: string; item_type: string; score: number | null; created_at: string };
+type Band = { min: number | null; max: number | null; days: number };
+
+// Pure decision: given the latest answer (score + when) and the questionnaire's
+// recurring bands, is it due again NOW? Extracted so the recurrence math is unit-
+// testable without the DB. Rules: null score → one-shot (false); a band matches when
+// its range contains the score (null bound = open-ended on that side); shortest
+// matching interval wins; due once elapsed >= that interval.
+export function isQuestionnaireDue(
+  latestScore: number | null,
+  latestCreatedAtMs: number,
+  bands: Band[],
+  nowMs: number
+): boolean {
+  if (latestScore === null || latestScore === undefined) return false; // no guessing
+  const matched = bands
+    .filter((bd) => (bd.min === null || latestScore >= bd.min) && (bd.max === null || latestScore <= bd.max))
+    .map((bd) => bd.days);
+  if (matched.length === 0) return false; // score matched no recurring band → one-shot
+  const interval = Math.min(...matched); // shortest interval wins — most attentive follow-up
+  const elapsedDays = (nowMs - latestCreatedAtMs) / 86_400_000;
+  return elapsedDays >= interval;
+}
+
+export async function computeDueQuestionnaires(completed: CompletedRow[]): Promise<Set<string>> {
+  // Latest completed row per questionnaire (by created_at).
+  const latestByQ = new Map<string, { score: number | null; createdAt: number }>();
+  for (const r of completed) {
+    if (r.item_type !== "questionnaire" || !r.item_id) continue;
+    const t = new Date(r.created_at).getTime();
+    const prev = latestByQ.get(r.item_id);
+    if (!prev || t > prev.createdAt) latestByQ.set(r.item_id, { score: r.score, createdAt: t });
+  }
+  if (latestByQ.size === 0) return new Set();
+
+  // Recurring bands for those questionnaires (repeat_after_days NOT NULL).
+  const { data: bandRows, error } = await db
+    .from("questionnaire_response")
+    .select("questionnaire_id, score_min_range, score_max_range, repeat_after_days")
+    .in("questionnaire_id", [...latestByQ.keys()])
+    .not("repeat_after_days", "is", null);
+  if (error) {
+    console.warn(`[rebuild_mlp] recurring-band load failed; treating all as one-shot: ${error.message}`);
+    return new Set();
+  }
+  const bandsByQ = new Map<string, Band[]>();
+  for (const b of (bandRows ?? []) as Array<Record<string, unknown>>) {
+    const qid = b.questionnaire_id as string | null;
+    const days = num(b.repeat_after_days);
+    if (!qid || days === null) continue;
+    const list = bandsByQ.get(qid) ?? [];
+    list.push({ min: num(b.score_min_range), max: num(b.score_max_range), days });
+    bandsByQ.set(qid, list);
+  }
+
+  const now = Date.now();
+  const due = new Set<string>();
+  for (const [qid, latest] of latestByQ) {
+    if (isQuestionnaireDue(latest.score, latest.createdAt, bandsByQ.get(qid) ?? [], now)) {
+      due.add(qid); // answered AND past due → re-surface
+    }
+  }
+  return due;
+}
+
 // Rebuild a single user's MLP into user_mlp_v2 (verification phase).
 export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResult> {
   // 1. Active tracks — the resolved track list (view owns demographics/defaults/
@@ -190,15 +268,39 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
   }
 
   // 4. Completed items — excluded from the pool. Keys are `item_type:item_id`.
+  //    score + created_at are pulled for recurrence (migration 033); they're ignored
+  //    for non-questionnaire items and when no band has a repeat interval.
   const { data: completedRaw, error: cErr } = await db
     .from("completed_items")
-    .select("item_id, item_type")
+    .select("item_id, item_type, score, created_at")
     .eq("user_id", userId);
   if (cErr) throw new Error(`completed_items query failed: ${cErr.message}`);
-  const completedItems = ((completedRaw ?? []) as Array<Record<string, unknown>>).map((c) => ({
+  const completedRows = ((completedRaw ?? []) as Array<Record<string, unknown>>).map((c) => ({
     item_id: c.item_id as string,
     item_type: c.item_type as string,
-  })) as CompletedItem[];
+    score: num(c.score),
+    created_at: (c.created_at as string | null) ?? "",
+  })) as CompletedRow[];
+
+  // 4a. Recurrence (slice: score-band intervals) — DERIVED per-user at build time.
+  //     Wrapped so any failure yields "nothing due" (default-to-exclude = today's
+  //     one-shot behavior); a bug here can only fail to re-surface, never wrongly hide.
+  let dueQuestionnaires: Set<string> = new Set();
+  try {
+    dueQuestionnaires = await computeDueQuestionnaires(completedRows);
+  } catch (e) {
+    console.warn(
+      `[rebuild_mlp] recurrence check errored for ${userId}; treating all questionnaires as one-shot: ${e instanceof Error ? e.message : String(e)}`
+    );
+    dueQuestionnaires = new Set();
+  }
+
+  // Due-again questionnaires drop OUT of the exclusion set so the pool re-includes
+  // them; everything else (all lessons, not-yet-due and one-shot questionnaires)
+  // excludes exactly as before.
+  const completedItems = completedRows
+    .filter((c) => !(c.item_type === "questionnaire" && dueQuestionnaires.has(c.item_id)))
+    .map((c) => ({ item_id: c.item_id, item_type: c.item_type })) as CompletedItem[];
 
   // 4b. Milestone suppression (slice 3) — DERIVED per-user at build time. Wrapped
   //     so any failure yields an empty exclusion (default-to-surface): a bug here

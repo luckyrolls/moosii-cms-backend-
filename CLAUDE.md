@@ -123,6 +123,19 @@ diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
   shared core (single + `generate_track_images` batch). NULL = whole prompt hand-supplied
   (`prompt_override`, LLM skipped) or pre-migration; NEVER backfilled. `image_prompt`
   stays the full rendered prompt. Pass 1: no scene REUSE on regen (empty always re-derives).
+- `questionnaire_response.repeat_after_days` (migration 033): PER SCORE-BAND recurrence
+  interval (days). Questionnaires are normally one-shot (any `completed_items` row
+  excludes them from the MLP forever). When a band has a non-null interval, the rebuild
+  (`rebuildOneUser`) turns that exclusion into a "not yet DUE" check: it takes the LATEST
+  `completed_items` row per (user, questionnaire), finds the band(s) whose score range
+  contains that row's `score` with a non-null interval (SHORTEST wins), and RE-INCLUDES
+  the questionnaire once `now - created_at >= interval`. Null score / no matching band /
+  NULL interval → one-shot (byte-identical to pre-033). Independent of `add`. Suppression
+  stays a separate sibling filter (a due-again questionnaire whose milestone fact exists is
+  still excluded — no coupling). Derived fresh each rebuild, no state table; re-surfaces
+  only when a recompute runs. Per-user routing itself is DERIVED too:
+  `questionnaire_responses_tracks` is a VIEW (`completed_items ⨝ questionnaire_response`,
+  score-in-band) — nothing external writes routing; writing the ANSWER is what routes.
 - IMAGE STORAGE / regen purge (non-obvious): `sub_segments.image` is an FK to
   `image_assets.url`, and `image_assets` is populated by an OUT-OF-BACKEND storage
   trigger (no `src` code writes it — auto-INSERT on upload, auto-DELETE on remove).
@@ -288,12 +301,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–031 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–033 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 031).
+      (high-water: 033).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,

@@ -1122,9 +1122,37 @@ Body: {}                                         // user_id is derived from the 
 ```
 Verifies **any** signed-in Supabase user (not the admin gate), recomputes only
 **that** user's MLP, synchronously (one fast rpc — no job/poll; the app can't read
-the `jobs` table under its RLS anyway). Dependency: whatever applies a
-questionnaire's routing → `user_active_tracks` must run **before** this, or the
-recompute won't reflect the new answers.
+the `jobs` table under its RLS anyway).
+
+**Dependency (corrected):** questionnaire routing is **DERIVED, not externally
+written.** `questionnaire_responses_tracks` is a VIEW — `completed_items ⨝
+questionnaire_response ON questionnaire_id`, filtered to bands where the answer
+`score BETWEEN score_min_range AND score_max_range` — and `user_active_tracks`'s
+questionnaire arm is `DISTINCT ON (user_id, track_id) ORDER BY action_at DESC` over
+it (latest answer wins per track). So nothing "applies the routing result": writing
+the **answer** (`completed_items` row, app-side) is what makes routing appear, and a
+repeat answer landing in a different band flips the track automatically through the
+view chain. The only ordering requirement is therefore: **the answer's
+`completed_items` row must be written before `/mlp/recompute`**, or the recompute
+won't see the new answer. (Earlier notes described an external routing writer; there
+is none — this supersedes them.)
+
+**Recurrence — score-band intervals (migration 033).** A questionnaire is normally
+one-shot: any `completed_items` row for it excludes it from the pool. With
+`questionnaire_response.repeat_after_days` set on a band, that exclusion becomes a
+**"not yet due"** check. Per (user, questionnaire), the rebuild takes the LATEST
+`completed_items` row (`created_at DESC`), finds the band(s) whose
+`[score_min_range, score_max_range]` contains that row's `score` and whose
+`repeat_after_days IS NOT NULL` (shortest interval wins), and RE-INCLUDES the
+questionnaire once `now() - created_at >= repeat_after_days`. Edge rules: latest
+`score` NULL → one-shot (no guessing); no matching recurring band → one-shot;
+`repeat_after_days` NULL everywhere → byte-identical to pre-033. Suppression stays a
+**separate sibling filter** — a due-again questionnaire whose milestone fact exists
+is still independently excluded (no coupling). Band matching is independent of `add`
+(a band may define cadence without routing a track). Computed fresh each rebuild, no
+state table — so a recurring questionnaire only re-surfaces when a recompute runs
+(today's onboarding/answer triggers; a due-moment trigger like on-open recompute is
+app-side, out of scope here).
 
 **Admin/server — `POST /jobs { type:"rebuild_mlp" }`** — `input:{ user_id }` for one
 user, or `input:{ scope:"all" }` for a full rebuild. Async (202 + job). Admin JWT
@@ -1218,7 +1246,8 @@ backend must preserve and the frontend leans on:
   `intro_text`), `questionnaire_questions` (`answer_status` `pending`/`approved`),
   `questionnaire_answers` (each carries a `score`), and `questionnaire_response`
   (the routing rule — `score_min_range`, `score_max_range`, `track_id` = TARGET
-  track, `add`, `tag_id`). Two distinct track refs: host on `questionnaire`,
+  track, `add`, `tag_id`, `repeat_after_days` [migration 033 — score-band recurrence
+  interval; NULL = one-shot; see §3]). Two distinct track refs: host on `questionnaire`,
   target on `questionnaire_response`. Routing is read via the
   `questionnaire_response_with_track_tag` view (§7). The atom is created as a
   draft (`is_published=false`); publish is the human approve step (§2e).
@@ -1262,5 +1291,8 @@ live or write to:
   `min_questionnaire_score_range`, `max_questionnaire_score_range` (routing now
   lives in `questionnaire_response`).
 - Routing rules live in `questionnaire_response` (the actions table — score range
-  → add/remove track-or-tag), read via `questionnaire_response_with_track_tag`.
-  Don't confuse with `questionnaire_user_answers` (real user answers).
+  → add/remove track-or-tag; also `repeat_after_days` for recurrence, §3), read via
+  `questionnaire_response_with_track_tag`. Per-user routing is DERIVED, not stored:
+  `questionnaire_responses_tracks` is a VIEW joining `completed_items` to these rules
+  on `questionnaire_id` where the answer score is in band (§3). Don't confuse with
+  `questionnaire_user_answers` (real user answers).

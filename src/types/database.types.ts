@@ -191,13 +191,6 @@ export type Database = {
             foreignKeyName: "age_track_weights_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "age_track_weights_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -592,13 +585,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       consts: {
@@ -985,13 +971,6 @@ export type Database = {
             foreignKeyName: "demographic_track_rules_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "demographic_track_rules_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -1170,13 +1149,6 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
           {
-            foreignKeyName: "friends_user_a_fkey"
-            columns: ["user_a"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
-          {
             foreignKeyName: "friends_user_b_fkey"
             columns: ["user_b"]
             isOneToOne: false
@@ -1195,13 +1167,6 @@ export type Database = {
             columns: ["user_b"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "friends_user_b_fkey"
-            columns: ["user_b"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -1336,13 +1301,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "group_member_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -1731,13 +1689,6 @@ export type Database = {
             foreignKeyName: "lessons_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "lessons_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -1836,13 +1787,6 @@ export type Database = {
             foreignKeyName: "new_user_tracks_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "new_user_tracks_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -1901,13 +1845,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "notification_log_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       notifications: {
@@ -1961,13 +1898,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "Notifications_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -2104,13 +2034,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "posts_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -2404,13 +2327,6 @@ export type Database = {
             foreignKeyName: "questionnaire_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "questionnaire_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -2508,6 +2424,7 @@ export type Database = {
           created_at: string
           id: string
           questionnaire_id: string | null
+          repeat_after_days: number | null
           response: string | null
           score_max_range: number | null
           score_min_range: number | null
@@ -2520,6 +2437,7 @@ export type Database = {
           created_at?: string
           id?: string
           questionnaire_id?: string | null
+          repeat_after_days?: number | null
           response?: string | null
           score_max_range?: number | null
           score_min_range?: number | null
@@ -2532,6 +2450,7 @@ export type Database = {
           created_at?: string
           id?: string
           questionnaire_id?: string | null
+          repeat_after_days?: number | null
           response?: string | null
           score_max_range?: number | null
           score_min_range?: number | null
@@ -2574,13 +2493,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
           },
           {
             foreignKeyName: "questionnaire_response_track_id_fkey"
@@ -2677,13 +2589,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -2979,13 +2884,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quiz_response_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
           },
           {
             foreignKeyName: "quiz_response_track_id_fkey"
@@ -3466,13 +3364,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "starred_items_user id_fkey"
-            columns: ["user id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       start_streak: {
@@ -3806,13 +3697,6 @@ export type Database = {
             foreignKeyName: "track_tag_map_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "track_tag_map_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -3820,54 +3704,42 @@ export type Database = {
       }
       tracks: {
         Row: {
-          co_parenting_status: string[] | null
           created_at: string
           created_by: string | null
           description: string | null
-          financial_status: string[] | null
           id: string
           last_updated: string | null
           order: number | null
           priority: number | null
-          promote_higher: boolean
           track_name: string | null
           track_type: string | null
           updated_at: string | null
-          user_gender: string[] | null
           weight: number | null
         }
         Insert: {
-          co_parenting_status?: string[] | null
           created_at?: string
           created_by?: string | null
           description?: string | null
-          financial_status?: string[] | null
           id?: string
           last_updated?: string | null
           order?: number | null
           priority?: number | null
-          promote_higher?: boolean
           track_name?: string | null
           track_type?: string | null
           updated_at?: string | null
-          user_gender?: string[] | null
           weight?: number | null
         }
         Update: {
-          co_parenting_status?: string[] | null
           created_at?: string
           created_by?: string | null
           description?: string | null
-          financial_status?: string[] | null
           id?: string
           last_updated?: string | null
           order?: number | null
           priority?: number | null
-          promote_higher?: boolean
           track_name?: string | null
           track_type?: string | null
           updated_at?: string | null
-          user_gender?: string[] | null
           weight?: number | null
         }
         Relationships: []
@@ -4136,13 +4008,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "user_configurations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       user_demographic_responses: {
@@ -4201,13 +4066,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "user_demographic_responses_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -4292,13 +4150,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "user_lesson_progress_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -4471,13 +4322,6 @@ export type Database = {
             foreignKeyName: "user_mlp_mods_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "user_mlp_mods_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -4500,13 +4344,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "user_mlp_mods_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -4804,13 +4641,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "user_tag_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       user_tag_actions_MM_unused: {
@@ -4883,13 +4713,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "user_tag_actions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       user_template_history: {
@@ -4959,13 +4782,6 @@ export type Database = {
             foreignKeyName: "user_track_actions_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "user_track_actions_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -4988,13 +4804,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "user_track_actions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -5096,13 +4905,6 @@ export type Database = {
             foreignKeyName: "user_track_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "user_track_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -5125,13 +4927,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "user_track_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -5325,13 +5120,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       completed_items_with_tags: {
@@ -5364,13 +5152,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -5535,13 +5316,6 @@ export type Database = {
             foreignKeyName: "lessons_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "lessons_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -5574,13 +5348,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lessons_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
           },
           {
             foreignKeyName: "lessons_track_id_fkey"
@@ -5668,13 +5435,6 @@ export type Database = {
             foreignKeyName: "questionnaire_response_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -5716,13 +5476,6 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
           {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
-          {
             foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
             isOneToOne: false
@@ -5756,13 +5509,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
           },
           {
             foreignKeyName: "questionnaire_response_track_id_fkey"
@@ -5816,13 +5562,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "questionnaire_user_answers_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       questionnaire_with_track_name: {
@@ -5844,13 +5583,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tracks"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
           },
           {
             foreignKeyName: "questionnaire_track_id_fkey"
@@ -5894,13 +5626,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "starred_items_user id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
             referencedColumns: ["user_id"]
           },
         ]
@@ -6189,13 +5914,6 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "group_member_user_id_fkey"
-            columns: ["member_user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       user_mlp_data: {
@@ -6328,13 +6046,6 @@ export type Database = {
             foreignKeyName: "user_track_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["track_id"]
-          },
-          {
-            foreignKeyName: "user_track_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["track_id"]
           },
@@ -6359,26 +6070,7 @@ export type Database = {
             referencedRelation: "user_mlp_data"
             referencedColumns: ["user_id"]
           },
-          {
-            foreignKeyName: "user_track_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_track_matches"
-            referencedColumns: ["user_id"]
-          },
         ]
-      }
-      user_track_matches: {
-        Row: {
-          description: string | null
-          priority: number | null
-          promote_higher: boolean | null
-          track_id: string | null
-          track_name: string | null
-          track_type: string | null
-          user_id: string | null
-        }
-        Relationships: []
       }
       v_lesson_details: {
         Row: {
