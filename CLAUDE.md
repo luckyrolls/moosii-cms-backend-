@@ -301,12 +301,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–033 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–034 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 033).
+      (high-water: 034).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
@@ -389,6 +389,13 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       (`matchRecurringBand`/`isQuestionnaireDue`), and suppression
       (`computeMilestoneSuppressionDetail`) — same universe + verdicts as the MLP, no
       parallel logic (`src/mlp/questionnaireStatus.ts`, §3a). Suppression trumps due.
+- [x] Questionnaire priority default + backfill — `generate_questionnaire` stamps
+      `questionnaire.priority` from the TARGET track's priority (COPIED value; NULL target
+      → constant `500`, NEVER NULL). NULL was the MLP pool item priority → sorted every
+      recruiter to the bottom of its host track. Migration 034 backfills the 11 existing
+      rows (inherit via add-rule target, `500` fallback). Editing priority = separate CMS
+      slice. Scale note: track priorities (~10–850) and lesson item priorities (~100–220)
+      share scale/direction, so inheriting a track priority into the item slot is sound.
 - [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).
 

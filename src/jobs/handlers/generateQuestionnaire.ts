@@ -79,6 +79,15 @@ const MAX_GEN_ATTEMPTS = 3;
 const DEFAULT_ONBOARDING_IMAGE =
   "https://szhihepbqzbbmxybluql.supabase.co/storage/v1/object/public/questionnaire_and_quiz/questionnaire.jpg";
 
+// Priority is stamped at generation from the TARGET track's priority (a COPIED value —
+// later track edits must not reshuffle existing questionnaires). It becomes the pool
+// item priority: the MLP orders items within a host track by priority ASCENDING
+// (lower = sooner; NULL → 9999 = bottom). Track priorities span ~10–850 and lesson item
+// priorities cluster ~100–220 on the same scale/direction, so a track priority sits
+// sensibly among lessons. Fallback for a target track with NULL priority: a neutral
+// mid-scale constant — NEVER write NULL (that's the deprioritization bug this fixes).
+const QUESTIONNAIRE_DEFAULT_PRIORITY = 500;
+
 function resolveProvider(): "openai" | "gemini" {
   const p = (process.env.QUESTIONNAIRE_WRITER || "openai").toLowerCase();
   if (p !== "openai" && p !== "gemini") {
@@ -222,10 +231,11 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
   const correlationId = randomUUID();
   const provider = resolveProvider();
 
-  // 1. Resolve the TARGET track — its description is the spec for the whole atom.
+  // 1. Resolve the TARGET track — its description is the spec for the whole atom, and
+  //    its priority is COPIED onto the questionnaire (see QUESTIONNAIRE_DEFAULT_PRIORITY).
   const { data: target, error: tErr } = await db
     .from("tracks")
-    .select("id, track_name, description")
+    .select("id, track_name, description, priority")
     .eq("id", target_track_id)
     .single();
   if (tErr || !target) {
@@ -277,6 +287,7 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
       questionnaire_name: atom.questionnaire_name,
       description:        atom.intro_text,
       track_id:          host_track_id,   // HOST track — placement/visibility
+      priority:          target.priority ?? QUESTIONNAIRE_DEFAULT_PRIORITY, // COPIED from TARGET track; never NULL
       topic_id:          topic_id ?? null,
       is_score_based:    true,            // required: routing only computes a score when true
       is_published:      false,           // draft; publishing is the human approve
@@ -357,6 +368,7 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
     is_published:      false,
     host_track_id,
     target_track_id,
+    priority:          target.priority ?? QUESTIONNAIRE_DEFAULT_PRIORITY,
     age_months,
     milestone_id:      milestone_id ?? null,
     questions_written: questionsWritten,

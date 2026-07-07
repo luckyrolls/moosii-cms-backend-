@@ -582,6 +582,15 @@ its `questionnaire_questions` (status `pending`) + `questionnaire_answers`, and 
 ADD `target_track_id`. (Scores below the threshold add nothing; no remove rule is
 fabricated.)
 
+**Priority (default at generation):** `questionnaire.priority` is stamped from the
+**TARGET track's** priority — a COPIED value (later track edits do NOT reshuffle
+existing questionnaires; editing it is a separate CMS field). It becomes the MLP pool
+item priority (`mlp_item_pool` reads `questionnaire.priority`; ranking orders items
+within a host track by priority ASCENDING, lower = sooner, NULL → bottom). If the
+target track's priority is NULL (or, at backfill, there's no add-rule target), a
+neutral mid-scale constant `500` is used — **never NULL** (NULL is the bug that buried
+recruiters at the bottom of every MLP; fixed for existing rows by migration 034).
+
 `jobs.result` on success:
 ```json
 {
