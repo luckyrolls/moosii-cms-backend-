@@ -2,8 +2,26 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { apiError } from "../lib/errors";
 import { rebuildOneUser } from "../jobs/handlers/rebuildMlp";
+import { jwtAuthMiddleware } from "../middleware/jwtAuth";
+import { assembleQuestionnaireStatus } from "../mlp/questionnaireStatus";
 
 const router = Router();
+
+// GET /mlp/:user_id/questionnaire-status — ADMIN (CMS user-MLP inspector). Unlike the
+// app-facing /recompute below (self-scoped end-user JWT), this reads an ARBITRARY
+// user's questionnaire lifecycle, so it takes the admin gate explicitly (this router
+// is mounted without a global middleware). Read-only: runs the real recurrence +
+// suppression logic over real rows, no writes, no MLP side effects.
+router.get("/:user_id/questionnaire-status", jwtAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.params.user_id;
+  if (!userId) { apiError(res, 400, "bad_request", "user_id is required"); return; }
+  try {
+    const questionnaires = await assembleQuestionnaireStatus(userId);
+    res.json({ user_id: userId, questionnaires });
+  } catch (e) {
+    apiError(res, 500, "questionnaire_status_failed", e instanceof Error ? e.message : String(e));
+  }
+});
 
 // POST /mlp/recompute — APP-FACING. Unlike /jobs (admin/internal auth) and the SPA
 // routes (admin role), this verifies ANY signed-in Supabase user and recomputes

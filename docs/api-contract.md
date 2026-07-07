@@ -1162,6 +1162,45 @@ Ordering inputs: item `priority`, track `priority`/`order`/`weight`,
 `age_track_weights`, global `consts`. `user_mlp_mods` (per-user manual overrides)
 — **not yet applied by the recompute** (BuildShip did; port pending).
 
+### 3a. Questionnaire status (CMS user-MLP inspector) — DELIVERED
+```
+GET /mlp/:user_id/questionnaire-status
+Authorization: Bearer <admin Supabase JWT>   // admin gate (arbitrary user_id)
+→ 200 {
+  user_id: string,
+  questionnaires: Array<{
+    questionnaire_id: string,
+    questionnaire_name: string | null,
+    published: true,                          // pool is published-only
+    status: "never_answered" | "answered_one_shot" | "answered_awaiting" | "due_now" | "suppressed",
+    latest_answer_at: string | null,          // ISO; latest completed_items.created_at
+    latest_score:     number | null,
+    matched_band: { score_min_range: number | null, score_max_range: number | null, repeat_after_days: number } | null,
+    due_at:       string | null,              // ISO; latest_answer_at + repeat_after_days
+    suppressed_by: { milestone_id: string, milestone_name: string | null } | null
+  }>
+}
+→ 401 unauthorized · 403 forbidden (non-admin) · 500 questionnaire_status_failed
+```
+Read-only lifecycle view for the CMS inspector — one entry per questionnaire in the
+user's MLP **universe** (published `mlp_item_pool` items whose host track is in the
+user's `user_active_tracks`; questionnaires carry open age bounds so the age filter
+never drops them). Runs the SAME logic the rebuild does — no reimplementation: the
+pool comes from the rebuild's `loadUserMlpInputs`; due-ness from the exported pure
+`matchRecurringBand` + `isQuestionnaireDue`; suppression from the rebuild's
+`computeMilestoneSuppressionDetail`. So the inspector can never show a different
+universe or due-verdict than the MLP computes.
+
+Status semantics (per questionnaire, based on the LATEST answer — same as the
+rebuild): `never_answered` (no completion); `answered_one_shot` (answered, latest
+score matches no recurring band → won't recur); `answered_awaiting` (recurring, not
+yet due); `due_now` (recurring, past due — the rebuild re-includes it); `suppressed`
+(mapped milestone is a recorded child fact). **Precedence matches the rebuild:
+suppression trumps due-ness** — a due-again-but-suppressed questionnaire reports
+`suppressed`, with `matched_band`/`due_at`/`latest_*` still populated as secondary
+context. `matched_band` is the shortest-interval band containing the latest score;
+`due_at = latest_answer_at + repeat_after_days`.
+
 ---
 
 ## 4. Job polling (frontend → Supabase, not the backend)

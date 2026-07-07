@@ -46,10 +46,17 @@ export type RebuildOneUserResult = {
 // the user's YOUNGEST child (children.parent_id) — consistent with the age gate,
 // which also targets the youngest. child_count is ~1 today; revisit if multi-child
 // becomes real.
-export async function computeMilestoneSuppression(
+// A suppressed questionnaire + the milestone fact that caused it. The rebuild only
+// needs the ids (→ exclusion keys); the questionnaire-status inspector also needs the
+// milestone name to show WHY it's suppressed.
+export type SuppressionHit = { questionnaireId: string; milestoneId: string; milestoneName: string | null };
+
+// Detail variant — same resolution the rebuild uses, returning the (questionnaire,
+// milestone) hits. computeMilestoneSuppression below maps this to exclusion keys.
+export async function computeMilestoneSuppressionDetail(
   userId: string,
   pool: MlpPoolItem[]
-): Promise<string[]> {
+): Promise<SuppressionHit[]> {
   const questionnaireIds = pool
     .filter((i) => i.item_type === "questionnaire")
     .map((i) => i.item_id);
@@ -97,14 +104,14 @@ export async function computeMilestoneSuppression(
   const facts = new Set(((factRows ?? []) as Array<{ milestone_id: string }>).map((f) => f.milestone_id));
   if (facts.size === 0) return [];
 
-  // Warn on a DANGLING mapping (points at a milestone id that isn't a real
-  // milestone) — it can never match a fact (facts FK milestones), so it surfaces,
-  // but a mistaken mapping should be visible, not silent. P4.
+  // Resolve milestone names (also catches DANGLING mappings: an id that isn't a real
+  // milestone can never match a fact — facts FK milestones — so it surfaces, but a
+  // mistaken mapping should be visible, not silent. P4).
   const mappedMilestoneIds = [...new Set(mappings.map((m) => m.milestone_id))];
-  const { data: realMs } = await db.from("milestones").select("id").in("id", mappedMilestoneIds);
-  const realMsSet = new Set(((realMs ?? []) as Array<{ id: string }>).map((r) => r.id));
+  const { data: realMs } = await db.from("milestones").select("id, name").in("id", mappedMilestoneIds);
+  const nameById = new Map(((realMs ?? []) as Array<{ id: string; name: string }>).map((r) => [r.id, r.name]));
   for (const m of mappings) {
-    if (!realMsSet.has(m.milestone_id)) {
+    if (!nameById.has(m.milestone_id)) {
       console.warn(`[rebuild_mlp] questionnaire ${m.id} maps to nonexistent milestone ${m.milestone_id}; surfacing it (dangling mapping)`);
     }
   }
@@ -112,7 +119,16 @@ export async function computeMilestoneSuppression(
   // Suppress a questionnaire ONLY when its mapped milestone is a resolved fact.
   return mappings
     .filter((m) => facts.has(m.milestone_id))
-    .map((m) => `questionnaire:${m.id}`);
+    .map((m) => ({ questionnaireId: m.id, milestoneId: m.milestone_id, milestoneName: nameById.get(m.milestone_id) ?? null }));
+}
+
+// Exclusion-key variant — what the rebuild consumes (unchanged behavior). Returns
+// `item_type:item_id` keys for suppressed questionnaires.
+export async function computeMilestoneSuppression(
+  userId: string,
+  pool: MlpPoolItem[]
+): Promise<string[]> {
+  return (await computeMilestoneSuppressionDetail(userId, pool)).map((h) => `questionnaire:${h.questionnaireId}`);
 }
 
 // Recurrence (migration 033) — resolve which ALREADY-COMPLETED questionnaires are
@@ -128,28 +144,36 @@ export async function computeMilestoneSuppression(
 // set and the rebuild is byte-identical to before. Suppression stays a separate
 // sibling filter — a due-again questionnaire whose milestone fact exists is still
 // independently excluded; recurrence and suppression do not couple.
-type CompletedRow = { item_id: string; item_type: string; score: number | null; created_at: string };
-type Band = { min: number | null; max: number | null; days: number };
+export type CompletedRow = { item_id: string; item_type: string; score: number | null; created_at: string };
+export type Band = { min: number | null; max: number | null; days: number };
+
+// Pure selection: which recurring band governs the latest answer? A band matches
+// when its range contains the score (null bound = open-ended on that side); among
+// matches the SHORTEST interval wins (most attentive follow-up). null score or no
+// match → null (one-shot). Extracted so the questionnaire-status inspector can report
+// WHICH band matched without re-deriving the selection (single source of truth).
+export function matchRecurringBand(latestScore: number | null, bands: Band[]): Band | null {
+  if (latestScore === null || latestScore === undefined) return null; // no guessing
+  const matched = bands.filter(
+    (bd) => (bd.min === null || latestScore >= bd.min) && (bd.max === null || latestScore <= bd.max)
+  );
+  if (matched.length === 0) return null; // score matched no recurring band → one-shot
+  return matched.reduce((best, bd) => (bd.days < best.days ? bd : best));
+}
 
 // Pure decision: given the latest answer (score + when) and the questionnaire's
-// recurring bands, is it due again NOW? Extracted so the recurrence math is unit-
-// testable without the DB. Rules: null score → one-shot (false); a band matches when
-// its range contains the score (null bound = open-ended on that side); shortest
-// matching interval wins; due once elapsed >= that interval.
+// recurring bands, is it due again NOW? Unit-testable without the DB. Delegates band
+// selection to matchRecurringBand; due once elapsed >= the matched band's interval.
 export function isQuestionnaireDue(
   latestScore: number | null,
   latestCreatedAtMs: number,
   bands: Band[],
   nowMs: number
 ): boolean {
-  if (latestScore === null || latestScore === undefined) return false; // no guessing
-  const matched = bands
-    .filter((bd) => (bd.min === null || latestScore >= bd.min) && (bd.max === null || latestScore <= bd.max))
-    .map((bd) => bd.days);
-  if (matched.length === 0) return false; // score matched no recurring band → one-shot
-  const interval = Math.min(...matched); // shortest interval wins — most attentive follow-up
+  const band = matchRecurringBand(latestScore, bands);
+  if (!band) return false;
   const elapsedDays = (nowMs - latestCreatedAtMs) / 86_400_000;
-  return elapsedDays >= interval;
+  return elapsedDays >= band.days;
 }
 
 export async function computeDueQuestionnaires(completed: CompletedRow[]): Promise<Set<string>> {
@@ -193,8 +217,13 @@ export async function computeDueQuestionnaires(completed: CompletedRow[]): Promi
   return due;
 }
 
-// Rebuild a single user's MLP into user_mlp_v2 (verification phase).
-export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResult> {
+// The shared inputs the MLP is computed over: the user's active tracks (enriched
+// with track_type), the published candidate pool scoped to those tracks, and the
+// youngest child's age. Extracted so the questionnaire-status inspector sees the
+// EXACT same universe the rebuild does — one pool query, no divergence.
+export type UserMlpInputs = { tracks: MlpTrack[]; pool: MlpPoolItem[]; youngestAgeMonths: number | null };
+
+export async function loadUserMlpInputs(userId: string): Promise<UserMlpInputs> {
   // 1. Active tracks — the resolved track list (view owns demographics/defaults/
   //    questionnaire actions/manual mods; do NOT reimplement).
   const { data: activeTracksRaw, error: tErr } = await db
@@ -241,7 +270,7 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
     .eq("user_id", userId)
     .maybeSingle();
   if (dErr) throw new Error(`user_mlp_data query failed: ${dErr.message}`);
-  const youngest = num(mlpData?.youngest_age_in_months);
+  const youngestAgeMonths = num(mlpData?.youngest_age_in_months);
 
   // 3. Candidate pool — CHANGE 1: published only, scoped to the user's tracks.
   let pool: MlpPoolItem[] = [];
@@ -266,6 +295,14 @@ export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResu
       max_child_age: num(i.max_child_age),
     }));
   }
+
+  return { tracks, pool, youngestAgeMonths };
+}
+
+// Rebuild a single user's MLP into user_mlp_v2 (verification phase).
+export async function rebuildOneUser(userId: string): Promise<RebuildOneUserResult> {
+  // 1-3. Active tracks, track_type enrichment, demographics, candidate pool.
+  const { tracks, pool, youngestAgeMonths: youngest } = await loadUserMlpInputs(userId);
 
   // 4. Completed items — excluded from the pool. Keys are `item_type:item_id`.
   //    score + created_at are pulled for recurrence (migration 033); they're ignored

@@ -373,6 +373,14 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing
       `POST /mlp/recompute` (end-user JWT, user-scoped) DELIVERED (`src/routes/mlp.ts`).
+- [x] Questionnaire status inspector — `GET /mlp/:user_id/questionnaire-status` (ADMIN
+      JWT). Per-user questionnaire lifecycle for the CMS user-MLP inspector: status
+      (never_answered/answered_one_shot/answered_awaiting/due_now/suppressed) + latest
+      answer/score, matched recurring band, computed due_at, and suppressing milestone
+      fact. Read-only; REUSES the rebuild's pool (`loadUserMlpInputs`), due math
+      (`matchRecurringBand`/`isQuestionnaireDue`), and suppression
+      (`computeMilestoneSuppressionDetail`) — same universe + verdicts as the MLP, no
+      parallel logic (`src/mlp/questionnaireStatus.ts`, §3a). Suppression trumps due.
 - [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).
 
