@@ -224,13 +224,13 @@ export async function computeDueQuestionnaires(completed: CompletedRow[]): Promi
 export type UserMlpInputs = { tracks: MlpTrack[]; pool: MlpPoolItem[]; youngestAgeMonths: number | null };
 
 export async function loadUserMlpInputs(userId: string): Promise<UserMlpInputs> {
-  // 1. Active tracks — the resolved track list (view owns demographics/defaults/
-  //    questionnaire actions/manual mods; do NOT reimplement).
+  // 1. Active tracks — the resolved track list (owns demographics/defaults/questionnaire
+  //    actions/manual mods; do NOT reimplement). Resolved via the per-user FUNCTION
+  //    (migration 037) rather than the whole-user-base VIEW + filter: same rows (verified
+  //    byte-identical), but O(one user) so it stays cheap as the user base grows.
   const { data: activeTracksRaw, error: tErr } = await db
-    .from("user_active_tracks")
-    .select("user_id, track_id, track_name, priority, weight")
-    .eq("user_id", userId);
-  if (tErr) throw new Error(`user_active_tracks query failed: ${tErr.message}`);
+    .rpc("user_active_tracks_for_user", { p_user_id: userId });
+  if (tErr) throw new Error(`user_active_tracks_for_user rpc failed: ${tErr.message}`);
   const activeTracks = (activeTracksRaw ?? []) as Array<Record<string, unknown>>;
   const trackIds = [...new Set(activeTracks.map((t) => t.track_id as string))];
 

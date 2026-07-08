@@ -301,12 +301,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–036 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–037 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 036).
+      (high-water: 037).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
@@ -395,6 +395,11 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing
       `POST /mlp/recompute` (end-user JWT, user-scoped) DELIVERED (`src/routes/mlp.ts`).
+      PERF: `loadUserMlpInputs` resolves active tracks via `user_active_tracks_for_user(uuid)`
+      (migration 037) — a per-user FUNCTION twin of the `user_active_tracks` view that filters
+      each arm by user_id up front (O(one user), not whole-user-base-then-filter). ADDITIVE:
+      the view is untouched for its other consumers (`apply_classification` RPC, app); the two
+      must stay in sync. Verified byte-identical to the view for every user.
 - [x] MLP preview inspector — `GET /mlp/:user_id/preview?age_months&include_completed`
       (ADMIN JWT). Recomputes the path with overridden inputs (a chosen age; including
       completed items) WITHOUT persisting — read-only, no `user_mlp` writes. REUSES the
