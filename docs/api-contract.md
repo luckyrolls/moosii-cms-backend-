@@ -1014,13 +1014,15 @@ CMS editors manage the copy via the `is_admin()`-gated write policy (same gate o
 
 ---
 
-## 2k. Review lesson content (AI reviewer) — DELIVERED (slice 1)
+## 2k. Review lesson content (AI reviewer) — DELIVERED (slices 1–2)
 
 `POST /jobs { type:'review_lesson', input:{ lesson_id, review_type } } → 202 { job_id }`.
 A **READ-ONLY** AI reviewer that produces FINDINGS for human judgment. It never edits
-content, never approves/rejects, never emits a verdict/score. `review_type` (slice 1):
-`best_practices` (voice, AI-tells, reading level, structure) or `factual_smell`
-(confident specifics that warrant a HUMAN check — flagging, NOT fact-checking).
+content, never approves/rejects, never emits a verdict/score. `review_type`:
+`best_practices` (voice, AI-tells, reading level, structure), `factual_smell`
+(confident specifics that warrant a HUMAN check — flagging, NOT fact-checking), or
+`doc_grounded` (proof the cards against the lesson's linked authority documents — see
+below).
 
 Loads the lesson's cards (`lessons → segments → sub_segments`), assembles the review
 prompt from the DB (`prompts` row `prompt_type='review_<review_type>'`, provider via
@@ -1056,15 +1058,80 @@ id, correlation_id (the review run = job id), review_type,
 lesson_id (FK lessons, NOT NULL), sub_segment_id (FK sub_segments, NULL = LESSON-LEVEL / cross-card),
 finding (text), severity ('info'|'warning'|'issue' — reviewer-assigned ADVICE, humans may ignore),
 status ('open'|'dismissed'|'addressed', default 'open'), created_at,
-dismissed_at/dismissed_by, addressed_at/addressed_by (audit)
+dismissed_at/dismissed_by, addressed_at/addressed_by (audit),
+-- doc_grounded additions (migration 036; NULL for best_practices/factual_smell):
+finding_kind ('contradicted'|'unsupported'|'cross_doc_disagreement'),
+source_document_id (FK source_documents, ON DELETE SET NULL),
+source_version_label (COPIED snapshot of the doc's version AT REVIEW time — staleness),
+claim_quote (the card claim), source_passage (the source text, or 'no passage found')
 ```
 Anchoring: a finding names a card via `card_ref` = the exact card_id; the handler maps
 it to `sub_segment_id`, `null`/unknown → lesson-level (never mis-anchored to a wrong
 card, never dropped). **Re-run behavior (slice 1):** a re-run INSERTS new rows;
 previous rows remain, distinguishable by `correlation_id`. Cross-run deduplication /
-fingerprinting is **deferred to slice 3**. **Slice 2** (doc-grounded proofing against a
-source-document library) adds further `review_type`s — `review_type` is unconstrained
-text so new types need no schema change.
+fingerprinting is **deferred to slice 3**.
+
+**Content regen clears a card's findings.** Regenerating content deletes the affected
+cards' findings (they describe content that no longer exists): whole-segment regen and
+first-time/batch generate DELETE+reinsert cards, so `content_findings.sub_segment_id ON
+DELETE CASCADE` removes their findings automatically; single-card regen UPDATEs in place
+(no cascade) so it deletes that card's findings explicitly. **Lesson-level findings
+(`sub_segment_id NULL`) are NOT touched by a regen** — a cross-card observation may still
+hold; re-run the review to refresh them.
+
+### 2k-doc. `doc_grounded` review — DELIVERED (slice 2)
+
+`review_type:'doc_grounded'` proofs the lesson's cards against the **authority
+documents linked to that lesson** (§2l). It loads all cards + ALL linked docs into one
+call. **Zero linked docs → the job FAILS legibly** (`"No source documents linked …"`),
+never an empty success.
+
+**Three-way rule (the noise guard).** Every claim is classified against the source:
+- **supported** → say nothing.
+- **not-addressed** (source is simply silent) → **say nothing. NOT a finding.** (Content
+  merely uncovered by the source is not flagged — otherwise coverage-silence drowns
+  signal.)
+- **contradicted** → finding, `finding_kind='contradicted'`, `severity='issue'`.
+
+Plus two more finding kinds: **specific-but-unsupported** (a confident specific — stat,
+number, named threshold, strong medical claim — with NO provenance in ANY linked doc;
+`finding_kind='unsupported'`, `severity='warning'`, `source_passage='no passage found'`)
+and **cross-document disagreement** (two linked docs disagree; `finding_kind=
+'cross_doc_disagreement'`, `severity='warning'`, flagged **for human adjudication — the
+AI never picks a winner**). The server drops any finding whose `finding_kind` isn't one
+of these three (belt-and-suspenders on the noise rule).
+
+**It checks CONSISTENCY WITH THE DESIGNATED SOURCE, not truth** — a card that disagrees
+with the source is a finding even if the card might be "right"; the human decides.
+
+Each doc_grounded finding carries `claim_quote` (the card claim), `source_passage` (the
+exact source text, or `'no passage found'`), `finding_kind`, `source_document_id`, and
+`source_version_label` — the doc's `version_label` **snapshotted at review time**. That
+snapshot is the **staleness signal**: a finding recorded against `'2021'` stays `'2021'`
+even after the doc is revised to `'2021-rev'`, so "reviewed against an old version" is
+computable (compare to `source_documents.version_label` live). Updating a doc does NOT
+cascade to existing findings.
+
+## 2l. Source documents (authority library) — DELIVERED
+
+Admin (JWT). The authority docs `doc_grounded` proofs against. **Ingestion is
+paste-only for v1** — `body` is already-extracted text (no PDF/upload path yet; a later
+slice can add extraction that writes the same `body`).
+```
+GET    /source-documents                      → { source_documents: [ {id,name,origin_url,version_label,authority_note,created_at,updated_at} ] }  // body omitted (large)
+GET    /source-documents/:id                  → { source_document: {…, body}, linked_lessons: [lesson_id] }
+POST   /source-documents                      body { name, body, version_label, authority_note?, origin_url? } → 201 { source_document }
+PATCH  /source-documents/:id                  body { body?, version_label?, authority_note?, name?, origin_url? } → 200 { source_document }   // a new body + version_label revises the doc; existing findings KEEP their recorded version (staleness, not a cascade)
+DELETE /source-documents/:id                  → 204   // cascades link rows; findings keep their version snapshot (FK ON DELETE SET NULL)
+POST   /source-documents/:id/links            body { lesson_id } → 201 { ok }   // link a lesson (idempotent)
+DELETE /source-documents/:id/links/:lesson_id → 204   // unlink
+```
+`source_documents`: `id, name, body (extracted text), origin_url?, version_label
+(human, e.g. '2021'/'AAP 2022'), authority_note (who designated it + why — a HUMAN
+decision), created_at, updated_at`. `lesson_source_documents`: `(lesson_id,
+source_document_id)` PK — **lesson-level linkage by design** (a review reads all the
+lesson's cards against all linked docs). Both tables are internal/content-bearing and
+on the **RLS sweep** (`docs/rls-sweep.md`): RLS enabled, no anon read.
 
 ---
 

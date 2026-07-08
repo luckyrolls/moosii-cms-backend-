@@ -240,6 +240,18 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   // pointer). The card's new content won't match the old image.
   await purgeImagesForSubSegments([card_id!]);
 
+  // Same cascade trap for AI review findings: content_findings.sub_segment_id ON DELETE
+  // CASCADE fires when a card is DELETED (whole_segment regen + first-time/batch generate
+  // both delete+reinsert), but NOT on this in-place UPDATE — so delete this card's
+  // findings explicitly. They describe the OLD content and would otherwise go stale.
+  const { error: findingsDelErr } = await supabase
+    .from("content_findings")
+    .delete()
+    .eq("sub_segment_id", card_id!);
+  if (findingsDelErr) {
+    throw new Error(`Failed to clear content_findings for card ${card_id}: ${findingsDelErr.message}`);
+  }
+
   // tone_id stamps the retoned card — this is what makes mixed-tone segments
   // representable (siblings keep their own tone_id).
   const { error: updateErr } = await supabase

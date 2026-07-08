@@ -17,6 +17,7 @@ import questionnairePromptRouter from "./routes/questionnairePrompt";
 import classifyUpdateRouter from "./routes/classifyUpdate";
 import quizRouter from "./routes/quiz";
 import mlpRouter from "./routes/mlp";
+import sourceDocumentsRouter from "./routes/sourceDocuments";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
 
@@ -46,6 +47,7 @@ app.use("/structure-blocks", jwtAuthMiddleware, structureBlocksRouter);
 app.use("/questionnaires", jwtAuthMiddleware, questionnairesRouter);
 app.use("/questionnaire-prompt", jwtAuthMiddleware, questionnairePromptRouter);
 app.use("/quiz", jwtAuthMiddleware, quizRouter);
+app.use("/source-documents", jwtAuthMiddleware, sourceDocumentsRouter);
 
 // App-facing (mobile) AND admin console: /classify-update and /mlp verify the
 // end-user's Supabase JWT themselves (NOT the admin-only gate). classify-update has

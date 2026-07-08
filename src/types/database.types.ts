@@ -627,45 +627,60 @@ export type Database = {
         Row: {
           addressed_at: string | null
           addressed_by: string | null
+          claim_quote: string | null
           correlation_id: string
           created_at: string
           dismissed_at: string | null
           dismissed_by: string | null
           finding: string
+          finding_kind: string | null
           id: string
           lesson_id: string
           review_type: string
           severity: string
+          source_document_id: string | null
+          source_passage: string | null
+          source_version_label: string | null
           status: string
           sub_segment_id: string | null
         }
         Insert: {
           addressed_at?: string | null
           addressed_by?: string | null
+          claim_quote?: string | null
           correlation_id: string
           created_at?: string
           dismissed_at?: string | null
           dismissed_by?: string | null
           finding: string
+          finding_kind?: string | null
           id?: string
           lesson_id: string
           review_type: string
           severity?: string
+          source_document_id?: string | null
+          source_passage?: string | null
+          source_version_label?: string | null
           status?: string
           sub_segment_id?: string | null
         }
         Update: {
           addressed_at?: string | null
           addressed_by?: string | null
+          claim_quote?: string | null
           correlation_id?: string
           created_at?: string
           dismissed_at?: string | null
           dismissed_by?: string | null
           finding?: string
+          finding_kind?: string | null
           id?: string
           lesson_id?: string
           review_type?: string
           severity?: string
+          source_document_id?: string | null
+          source_passage?: string | null
+          source_version_label?: string | null
           status?: string
           sub_segment_id?: string | null
         }
@@ -704,6 +719,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_lesson_details"
             referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "content_findings_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "source_documents"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "content_findings_sub_segment_id_fkey"
@@ -1606,6 +1628,67 @@ export type Database = {
           type?: string
         }
         Relationships: []
+      }
+      lesson_source_documents: {
+        Row: {
+          created_at: string
+          lesson_id: string
+          source_document_id: string
+        }
+        Insert: {
+          created_at?: string
+          lesson_id: string
+          source_document_id: string
+        }
+        Update: {
+          created_at?: string
+          lesson_id?: string
+          source_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_source_documents_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_source_documents_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_source_documents_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_source_documents_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_source_documents_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_source_documents_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lesson_tags: {
         Row: {
@@ -3369,6 +3452,39 @@ export type Database = {
             referencedColumns: ["lesson_id"]
           },
         ]
+      }
+      source_documents: {
+        Row: {
+          authority_note: string | null
+          body: string
+          created_at: string
+          id: string
+          name: string
+          origin_url: string | null
+          updated_at: string
+          version_label: string
+        }
+        Insert: {
+          authority_note?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          name: string
+          origin_url?: string | null
+          updated_at?: string
+          version_label: string
+        }
+        Update: {
+          authority_note?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          name?: string
+          origin_url?: string | null
+          updated_at?: string
+          version_label?: string
+        }
+        Relationships: []
       }
       starred_items: {
         Row: {

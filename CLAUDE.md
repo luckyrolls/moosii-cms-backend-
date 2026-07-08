@@ -301,12 +301,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–035 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–036 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 035).
+      (high-water: 036).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
@@ -377,6 +377,20 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       (`REVIEW_WRITER`), retry fix applies. Findings anchor to a card (`sub_segment_id`)
       or lesson-level (NULL); re-run inserts new rows keyed by `correlation_id` (dedup =
       slice 3). `src/jobs/handlers/reviewLesson.ts`, §2k. Slice 2 = doc-grounded proofing.
+      Content regen CLEARS a card's findings (stale-content guard): whole-segment regen +
+      first-time/batch generate delete+reinsert cards → `content_findings.sub_segment_id
+      ON DELETE CASCADE` handles it; single-card regen UPDATEs in place → deletes that
+      card's findings explicitly (same cascade trap as image purge). Lesson-level findings
+      (`sub_segment_id NULL`) are NOT cleared by regen.
+- [x] AI content review — slice 2 (doc-grounded). `review_lesson` gains `review_type:
+      'doc_grounded'`: proofs cards against the lesson's LINKED authority docs
+      (`source_documents` + `lesson_source_documents`, migration 036; paste-only ingestion,
+      admin routes `/source-documents`). THREE-WAY rule: supported/not-addressed say nothing;
+      only contradicted (issue), specific-but-unsupported (warning), cross-doc disagreement
+      (warning) become findings — consistency-with-source, never truth, never picks a winner.
+      Zero linked docs → fails legibly. Findings gain `finding_kind`, `claim_quote`,
+      `source_passage`, `source_document_id`, COPIED `source_version_label` (staleness).
+      `source_documents`/etc. on the new `docs/rls-sweep.md`. §2k-doc/§2l.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing
