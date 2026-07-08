@@ -2,7 +2,10 @@ import { GoogleGenAI } from "@google/genai";
 import type { LLMClient, GenerateArgs, GenerateResult } from "../types";
 import { withRetry } from "../../lib/retry";
 
-const DEFAULT_MODEL = "gemini-3.5-flash";
+// gemini-2.5-flash is the stable, reliably-available default. gemini-3.5-flash (newer)
+// is frequently 503 "high demand" right now — callers can still opt into it per prompt
+// (the provider honors `model`), but the default must be a model that answers.
+const DEFAULT_MODEL = "gemini-2.5-flash";
 
 export function createGeminiClient(): LLMClient {
   const apiKey = process.env.GEMINI_API_KEY;

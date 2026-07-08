@@ -315,7 +315,8 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       handles HTTP 429/500/503 and network errors.
 - [x] Prompt assembly: base + overlay → instructions string. Versioned prompt
       files. `instructions_override` path for per-job tuning.
-- [x] LLM clients: Gemini (`gemini-3.5-flash`) and OpenAI (`gpt-4o`).
+- [x] LLM clients: Gemini (default `gemini-2.5-flash` — stable; the provider honors a
+      per-prompt `model`, so callers can opt into others) and OpenAI (`gpt-4o`).
       Structured output (responseSchema) supported on both.
 - [x] ImageGenerator: Gemini (`gemini-3.1-flash-image`). Imagen 4.0 provider
       built but not active (IMAGE_GENERATOR=gemini).
