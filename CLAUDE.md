@@ -398,8 +398,16 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       PERF: `loadUserMlpInputs` resolves active tracks via `user_active_tracks_for_user(uuid)`
       (migration 037) — a per-user FUNCTION twin of the `user_active_tracks` view that filters
       each arm by user_id up front (O(one user), not whole-user-base-then-filter). ADDITIVE:
-      the view is untouched for its other consumers (`apply_classification` RPC, app); the two
-      must stay in sync. Verified byte-identical to the view for every user.
+      the view is left in place; view + function hold the same logic and MUST stay in sync.
+      Verified byte-identical to the view for every user. VIEW RETAINED (not retired) — grep +
+      pg_depend audit: `user_active_tracks_with_reason` (the CMS User-MLP-Inspector's
+      reason-decorated view; extra columns the function doesn't provide) is BUILT ON the bare
+      view and is live in the CMS, so the bare view stays underneath it. Bare-view readers:
+      recompute → the function (this change); CMS `classify.ts` → the function (repointed);
+      `apply_classification` RPC → still the bare view via a whole-user-base EXISTS (repoint to
+      the function if that path ever gets hot). The APP reads `user_mlp_not_completed`, not the
+      view. The function stays executable by `authenticated` (the CMS calls it directly) — do
+      NOT lock it to service_role.
 - [x] MLP preview inspector — `GET /mlp/:user_id/preview?age_months&include_completed`
       (ADMIN JWT). Recomputes the path with overridden inputs (a chosen age; including
       completed items) WITHOUT persisting — read-only, no `user_mlp` writes. REUSES the
