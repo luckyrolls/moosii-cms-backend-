@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { LLMClient, GenerateArgs, GenerateResult } from "../types";
 import { withRetry } from "../../lib/retry";
 
-const MODEL = "gemini-3.5-flash";
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 export function createGeminiClient(): LLMClient {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -13,13 +13,18 @@ export function createGeminiClient(): LLMClient {
   return {
     name: "gemini",
 
-    async generate({ instructions, userPrompt, responseSchema }: GenerateArgs): Promise<GenerateResult> {
+    // Honors model / temperature / maxTokens from the caller (the prompt row), falling
+    // back to the hardcoded default model when unset. Lets reviewers tune temperature.
+    async generate({ instructions, userPrompt, responseSchema, model, temperature, maxTokens }: GenerateArgs): Promise<GenerateResult> {
+      const useModel = model ?? DEFAULT_MODEL;
       const response = await withRetry(() =>
         ai.models.generateContent({
-          model: MODEL,
+          model: useModel,
           contents: userPrompt,
           config: {
             systemInstruction: instructions,
+            ...(temperature !== undefined && { temperature }),
+            ...(maxTokens !== undefined && { maxOutputTokens: maxTokens }),
             ...(responseSchema && {
               responseMimeType: "application/json",
               responseSchema,
@@ -30,8 +35,8 @@ export function createGeminiClient(): LLMClient {
 
       return {
         text: response.text ?? "",
-        model: MODEL,
-        version: response.modelVersion ?? MODEL,
+        model: useModel,
+        version: response.modelVersion ?? useModel,
         raw: response,
       };
     },

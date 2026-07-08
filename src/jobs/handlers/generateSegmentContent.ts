@@ -30,6 +30,7 @@ export type SegmentContentPromptRow = {
   structure_block_id: string | null;
   length_block_id: string | null;
   size_profile_id: string | null;   // default size profile for this tone (014)
+  card_positions_block_id: string | null;  // per-position card rules (shared with review)
 };
 
 export type Card = { title: string; content: string };
@@ -43,7 +44,7 @@ export type Card = { title: string; content: string };
 export async function loadSegmentPromptRowById(toneId: string): Promise<SegmentContentPromptRow> {
   const { data, error } = await db
     .from("prompts")
-    .select("id, tone, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id, size_profile_id")
+    .select("id, tone, system_message, scope, output_schema, model, temperature, max_tokens, tone_block_id, structure_block_id, length_block_id, size_profile_id, card_positions_block_id")
     .eq("id", toneId)
     .eq("prompt_type", "segment")
     .eq("is_active", true)
@@ -111,6 +112,7 @@ export function composeUserMessage(opts: {
   scope: string | null;
   toneContent: string;
   structureContent: string;
+  cardPositionsContent?: string;   // per-position card rules — sits BETWEEN structure and length
   lengthContent: string;
   lessonTitle: string;
   segmentName: string;
@@ -123,6 +125,7 @@ export function composeUserMessage(opts: {
   if (opts.scope)            parts.push(opts.scope);
   if (opts.toneContent)      parts.push(`## Tone\n\n${opts.toneContent}`);
   if (opts.structureContent) parts.push(`## Structure\n\n${opts.structureContent}`);
+  if (opts.cardPositionsContent) parts.push(`## Card Positions\n\n${opts.cardPositionsContent}`);
   if (opts.lengthContent)    parts.push(`## Length\n\n${opts.lengthContent}`);
   if (opts.avoid)            parts.push(`## Avoid\n\n${opts.avoid}`);
   // Author feedback is authoritative — a human rejected the prior version. Placed
@@ -180,6 +183,7 @@ type CallAndParseOpts = {
   relatedEntityType: "segment" | "sub_segment";
   relatedEntityId: string;
   notes?: string;
+  blocks?: Record<string, string | null>;   // resolved block IDs used in composition
 };
 
 export async function callAndParseCards(opts: CallAndParseOpts): Promise<{
@@ -209,6 +213,7 @@ export async function callAndParseCards(opts: CallAndParseOpts): Promise<{
     relatedEntityType: opts.relatedEntityType,
     relatedEntityId:   opts.relatedEntityId,
     notes:             opts.notes,
+    blocks:            opts.blocks,
   });
 
   if (result.finishReason === "length" || result.finishReason === "content_filter") {
@@ -284,9 +289,10 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
   // Step 2 — load prompt row + blocks in parallel
   const promptRow = await loadSegmentPromptRowById(tone_id);
 
-  const [toneContent, structureContent, lengthContent] = await Promise.all([
+  const [toneContent, structureContent, cardPositionsContent, lengthContent] = await Promise.all([
     loadBlock(promptRow.tone_block_id,      "tone"),
     loadBlock(promptRow.structure_block_id, "structure"),
+    loadBlock(promptRow.card_positions_block_id, "card positions"),  // "" if FK null; throws if set-but-fails
     resolveLengthContent(promptRow),   // size profile (default) → rendered length, else block
   ]);
 
@@ -296,6 +302,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     scope:              promptRow.scope,
     toneContent,
     structureContent,
+    cardPositionsContent,
     lengthContent,
     lessonTitle:        lesson.lesson_name ?? "",
     segmentName:        segment.segment_name ?? "",
@@ -313,6 +320,12 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     relatedEntityType: "segment",
     relatedEntityId:   seg_id,
     notes:             `tone: ${promptRow.tone ?? tone_id} (${tone_id})`,
+    blocks: {
+      tone:           promptRow.tone_block_id,
+      structure:      promptRow.structure_block_id,
+      length:         promptRow.length_block_id,
+      card_positions: promptRow.card_positions_block_id,
+    },
   });
 
   // Step 5 — replace sub_segments (whole-unit: delete then insert).

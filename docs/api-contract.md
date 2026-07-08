@@ -767,6 +767,34 @@ while a tone references it — repoint first), `404 not_found`.
 > by all tones. Prefer a neutral structure for non-Sturdy tones; edit/add blocks
 > here and repoint via tone PATCH (§2g).
 
+### 2i-cp. Manage card-positions blocks (admin, edit-only) — DELIVERED
+JWT-protected editing of **card-positions blocks** (`prompt_blocks` where
+`block_type='card_positions'`) — the per-position card rules (first card / body
+cards / takeaway) shared by BOTH generation and review. Segment generation composes
+the chosen block as the `## Card Positions` section (between Structure and Length,
+§2b); a review prompt substitutes it into its `{{card_positions}}` token (§2k).
+Prompts reference one via `prompts.card_positions_block_id`.
+
+**Edit-only** — no POST/DELETE (it's a shared singleton; adding/removing would strand
+composition keys). `name` is **immutable via the API** — it's the composition key the
+handlers resolve by; only `label`, `content`, `is_active` are editable.
+```
+GET   /card-positions        → 200 { card_positions_blocks: CardPositionsBlock[] }
+PATCH /card-positions/:id     → 200 { card_positions_block: CardPositionsBlock }
+      body: { label?, content?, is_active? }
+```
+`CardPositionsBlock`:
+```ts
+{ id: string; name: string; label: string | null; content: string | null;
+  is_active: boolean; created_at: string; updated_at: string;
+  used_by: { segment_prompts: number; review_prompts: number } }
+```
+`used_by` is computed **per response** (no caching): counts `prompts` rows where
+`card_positions_block_id = <block id>`, split by `prompt_type='segment'`
+(`segment_prompts`) vs `prompt_type LIKE 'review%'` (`review_prompts`) — so an editor
+sees how many generation tones and review types a block feeds before changing it.
+Errors: `400 invalid_block` (no editable fields), `404 not_found`.
+
 ---
 
 ### 2j. Classify free-form parent update — slice 1 DELIVERED (enrich-only, dry-run, internal/test)

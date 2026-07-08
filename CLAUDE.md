@@ -391,6 +391,19 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       Zero linked docs → fails legibly. Findings gain `finding_kind`, `claim_quote`,
       `source_passage`, `source_document_id`, COPIED `source_version_label` (staleness).
       `source_documents`/etc. on the new `docs/rls-sweep.md`. §2k-doc/§2l.
+- [x] Card-positions policy block + best_practices review rework. New `prompt_blocks`
+      `block_type='card_positions'` (per-position card rules: first/body/takeaway) SHARED by
+      generation and review: segment gen composes it as `## Card Positions` (between Structure
+      and Length; `prompts.card_positions_block_id`), review substitutes it into a
+      `{{card_positions}}` token (abort if token present but block missing — never send raw
+      token). Admin edit-only route `/card-positions` (GET+PATCH, `name` immutable, `used_by`
+      computed; §2i-cp). best_practices output_schema reworked to `{category, card_title, note,
+      quote}` (5-value category enum → `content_findings.category`, CHECK-constrained; unknown
+      category dropped+logged; `note`→finding, `quote`→claim_quote, `card_title`→sub_segment).
+      Review schema is unwrapped ({name,schema,strict}→bare) so the enum survives on Gemini.
+      Block IDs logged to `ai_generation_log.blocks` (jsonb). Gemini provider now honors
+      model/temperature/max_tokens (hardcode = fallback) — NOTE: review prompt rows carry
+      `model='gpt-4o'`; on Gemini set them to a Gemini model or NULL.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing

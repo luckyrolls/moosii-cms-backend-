@@ -122,6 +122,8 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
          profileId: ov(overrides?.size_profile_id),
          inline: overrides?.size,
        });
+  // Card-positions policy (shared with generation) — "" if FK null; throws if set-but-fails.
+  const cardPositionsContent = await loadBlock(promptRow.card_positions_block_id, "card positions");
 
   const overridesApplied: string[] = (["scope", "tone", "structure", "length"] as const)
     .filter((k) => ov(overrides?.[k]));
@@ -134,6 +136,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     scope:              scopeText,
     toneContent,
     structureContent,
+    cardPositionsContent,
     lengthContent,
     lessonTitle:        lesson.lesson_name ?? "",
     segmentName:        segment.segment_name ?? "",
@@ -162,6 +165,12 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     relatedEntityType: logEntityType,
     relatedEntityId:   logEntityId,
     notes:             `scope: ${scope}, tone: ${promptRow.tone ?? tone_id} (${tone_id}), overrides: [${overridesApplied.join(", ") || "none"}]`,
+    blocks: {
+      tone:           promptRow.tone_block_id,
+      structure:      promptRow.structure_block_id,
+      length:         promptRow.length_block_id,
+      card_positions: promptRow.card_positions_block_id,
+    },
   });
 
   // Post-parse validation: single_card must produce exactly 1 card

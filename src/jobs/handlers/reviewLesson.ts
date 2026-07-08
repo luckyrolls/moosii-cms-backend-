@@ -33,26 +33,50 @@ type ReviewPromptRow = {
   model: string | null;
   temperature: number | null;
   max_tokens: number | null;
+  card_positions_block_id: string | null;  // block substituted into {{card_positions}}
 };
 
 // The model's structured output. NOTE: findings-or-silence — the shape is ONLY a
 // findings array; there is no pass/verdict/score field to parse. The doc_grounded type
 // adds the classification + quote/passage/source fields (undefined for the other types).
 type RawFinding = {
-  card_ref: string | null;
-  finding: string;
-  severity: string;
+  // factual_smell / doc_grounded shape:
+  card_ref?: string | null;
+  finding?: string;
+  severity?: string;
   kind?: string;                 // doc_grounded: contradicted | unsupported | cross_doc_disagreement
   claim_quote?: string;
   source_passage?: string;
   source_document_ref?: string | null;  // doc_grounded: the doc_id the finding concerns
+  // best_practices shape (new schema): category / card_title / note / quote
+  category?: string;
+  card_title?: string;
+  note?: string;
+  quote?: string;
 };
 
 const VALID_SEVERITY = new Set(["info", "warning", "issue"]);
 const DOC_GROUNDED = "doc_grounded";
+const BEST_PRACTICES = "best_practices";
 // The ONLY doc_grounded outcomes that become findings (three-way rule: supported /
 // not-addressed are NOT findings — that's the noise guard).
 const VALID_DOC_KINDS = new Set(["contradicted", "unsupported", "cross_doc_disagreement"]);
+// best_practices findings MUST carry one of these five categories (from the DB schema's
+// enum). Any other category = a rubric miss → drop + log (never persist).
+const VALID_CATEGORIES = new Set(["DEPENDENCY", "REPETITION", "REGISTER", "AI_TELL", "TAKEAWAY_RESTATE"]);
+const CARD_POSITIONS_TOKEN = "{{card_positions}}";
+
+// A review prompt's output_schema may be stored bare ({type:object,…}) OR in OpenAI's
+// wrapped form ({name, schema, strict}). Providers expect the BARE schema as
+// responseSchema (Gemini passes it straight through; OpenAI strictifies it), and the
+// category enum must survive — so unwrap the wrapper here.
+function toBareSchema(raw: unknown): Record<string, unknown> {
+  const o = raw as Record<string, unknown> | null;
+  if (o && typeof o === "object" && !("type" in o) && o.schema && typeof o.schema === "object") {
+    return o.schema as Record<string, unknown>;
+  }
+  return (o ?? {}) as Record<string, unknown>;
+}
 
 type SourceDoc = { id: string; name: string; version_label: string; authority_note: string | null; body: string };
 
@@ -79,10 +103,29 @@ function resolveProvider(): Provider {
 
 // Thin load — a review prompt is one `prompts` row keyed by prompt_type=review_<type>.
 // NOT the tone/structure/length block-composition path (review isn't toned).
-async function loadReviewPromptRow(reviewType: ReviewType): Promise<ReviewPromptRow> {
+// Resolve a review prompt's system_message: substitute {{card_positions}} with the
+// linked block's content. GENERIC — any review type whose system_message contains the
+// token gets it. If the token is present but the FK is null or the block fetch fails,
+// ABORT: a reviewer running without its policy is the exact failure this prevents — the
+// raw token must NEVER reach the model. Exported so the dry-run verifies the real path.
+export async function resolveReviewSystemMessage(promptRow: ReviewPromptRow, reviewType: ReviewType): Promise<string> {
+  const sys = promptRow.system_message;
+  if (!sys.includes(CARD_POSITIONS_TOKEN)) return sys;
+  if (!promptRow.card_positions_block_id) {
+    throw new Error(`Review prompt review_${reviewType} contains ${CARD_POSITIONS_TOKEN} but has no card_positions_block_id — cannot run the reviewer without its policy.`);
+  }
+  const { data: blk, error: blkErr } = await db
+    .from("prompt_blocks").select("content").eq("id", promptRow.card_positions_block_id).single();
+  if (blkErr || !blk?.content) {
+    throw new Error(`Failed to load card_positions block ${promptRow.card_positions_block_id} for review_${reviewType}: ${blkErr?.message ?? "empty content"}`);
+  }
+  return sys.split(CARD_POSITIONS_TOKEN).join(blk.content as string);
+}
+
+export async function loadReviewPromptRow(reviewType: ReviewType): Promise<ReviewPromptRow> {
   const { data, error } = await db
     .from("prompts")
-    .select("id, system_message, output_schema, model, temperature, max_tokens")
+    .select("id, system_message, output_schema, model, temperature, max_tokens, card_positions_block_id")
     .eq("prompt_type", `review_${reviewType}`)
     .eq("is_active", true)
     .single();
@@ -166,6 +209,7 @@ export async function reviewLesson(opts: {
 
   const promptRow = await loadReviewPromptRow(review_type);
   const { lessonName, cards } = await loadLessonCards(lesson_id);
+  const systemMessage = await resolveReviewSystemMessage(promptRow, review_type);
 
   // doc_grounded reviews against the lesson's linked authority documents. Zero linked
   // docs → FAIL LEGIBLY (not an empty success — there was nothing to proof against).
@@ -184,9 +228,9 @@ export async function reviewLesson(opts: {
   const client = getLLMClient(provider);
   const llmStart = Date.now();
   const result = await client.generate({
-    instructions:   promptRow.system_message,
+    instructions:   systemMessage,
     userPrompt,
-    responseSchema: promptRow.output_schema,
+    responseSchema: toBareSchema(promptRow.output_schema),  // unwrap {name,schema,strict} → bare; enum survives
     model:          promptRow.model ?? undefined,
     temperature:    promptRow.temperature ?? undefined,
     maxTokens:      promptRow.max_tokens ?? undefined,
@@ -195,13 +239,14 @@ export async function reviewLesson(opts: {
   await logAiCall({
     correlationId,
     operation:         `content_review_${review_type}`,
-    prompt:            formatLlmPrompt(promptRow.system_message, userPrompt),
+    prompt:            formatLlmPrompt(systemMessage, userPrompt),
     response:          result.raw,
     model:             result.model,
     latencyMs:         Date.now() - llmStart,
     relatedEntityType: "lesson",
     relatedEntityId:   lesson_id,
     notes:             `review_type=${review_type}, provider=${provider}, cards=${cards.length}`,
+    blocks:            { card_positions: promptRow.card_positions_block_id },
   });
 
   // Unparseable / truncated output → FAIL VISIBLY. Never silently zero findings — a
@@ -220,19 +265,36 @@ export async function reviewLesson(opts: {
     throw new Error(`Review response missing a findings array for lesson ${lesson_id}`);
   }
 
-  // Map findings → rows. card_ref must be one of THIS lesson's card ids; an unknown ref
-  // is anchored to the lesson (never mis-anchored to the wrong card, never dropped).
+  // Map findings → rows. Three output shapes by review_type:
+  //   best_practices → { category, card_title, note, quote }
+  //   factual_smell  → { card_ref, finding, severity }
+  //   doc_grounded   → { card_ref, kind, finding, severity, claim_quote, source_passage, source_document_ref }
   const isDocGrounded = review_type === DOC_GROUNDED;
+  const isBestPractices = review_type === BEST_PRACTICES;
   const cardIds = new Set(cards.map((c) => c.id));
+  const cardIdByTitle = new Map(cards.map((c) => [(c.title ?? "").trim().toLowerCase(), c.id]));
+
   const rows = findings
     .filter((f) => {
-      if (!f || typeof f.finding !== "string" || !f.finding.trim()) {
+      if (!f) return false;
+      if (isBestPractices) {
+        // Validate category against the five-value enum; DROP + LOG unknown (never persist).
+        if (!VALID_CATEGORIES.has(f.category ?? "")) {
+          console.warn(`[review_lesson] dropping best_practices finding with unknown category "${f.category}" (lesson ${lesson_id})`);
+          return false;
+        }
+        if (typeof f.note !== "string" || !f.note.trim()) {
+          console.warn(`[review_lesson] dropping best_practices finding with no note (lesson ${lesson_id})`);
+          return false;
+        }
+        return true;
+      }
+      if (typeof f.finding !== "string" || !f.finding.trim()) {
         console.warn(`[review_lesson] dropping a finding with no text (lesson ${lesson_id})`);
         return false;
       }
       // Three-way rule (server-side guard): a doc_grounded finding must be one of the
-      // three flaggable kinds. supported / not-addressed are NOT findings — drop anything
-      // the model over-produced so coverage-silence never becomes noise.
+      // three flaggable kinds. supported / not-addressed are NOT findings.
       if (isDocGrounded && !VALID_DOC_KINDS.has(f.kind ?? "")) {
         console.warn(`[review_lesson] dropping doc_grounded finding with non-flaggable kind "${f.kind}" (lesson ${lesson_id})`);
         return false;
@@ -240,16 +302,40 @@ export async function reviewLesson(opts: {
       return true;
     })
     .map((f) => {
+      if (isBestPractices) {
+        // Anchor by card_title (the new schema names the card, not its id).
+        let subId: string | null = null;
+        if (f.card_title) {
+          const hit = cardIdByTitle.get(f.card_title.trim().toLowerCase());
+          if (hit) subId = hit;
+          else console.warn(`[review_lesson] best_practices finding referenced unknown card_title "${f.card_title}" — anchoring to lesson level`);
+        }
+        return {
+          correlation_id: correlationId,
+          review_type,
+          lesson_id,
+          sub_segment_id: subId,
+          finding: f.note!.trim(),
+          severity: "info",                 // new schema carries no severity; category is the signal
+          status: "open",
+          category: f.category ?? null,     // REQUIRES a content_findings.category column (flagged)
+          claim_quote: (f.quote ?? "").trim() || null,
+          finding_kind: null,
+          source_passage: null,
+          source_document_id: null,
+          source_version_label: null,
+        };
+      }
+
+      // factual_smell / doc_grounded
       let subId: string | null = null;
       if (f.card_ref) {
         if (cardIds.has(f.card_ref)) subId = f.card_ref;
         else console.warn(`[review_lesson] finding referenced unknown card_id "${f.card_ref}" — anchoring to lesson level`);
       }
-      const severity = VALID_SEVERITY.has(f.severity) ? f.severity : "info";
+      const severity = VALID_SEVERITY.has(f.severity ?? "") ? f.severity! : "info";
 
-      // doc_grounded enrichment: resolve the doc the finding concerns and SNAPSHOT its
-      // version_label (staleness signal — recorded, not a live reference). Unknown ref →
-      // null (e.g. "unsupported by ALL docs" legitimately has no single source).
+      // doc_grounded enrichment: resolve the doc + SNAPSHOT its version_label (staleness).
       let sourceDocumentId: string | null = null;
       let sourceVersionLabel: string | null = null;
       if (isDocGrounded && f.source_document_ref) {
@@ -263,10 +349,9 @@ export async function reviewLesson(opts: {
         review_type,
         lesson_id,
         sub_segment_id: subId,
-        finding: f.finding.trim(),
+        finding: f.finding!.trim(),
         severity,
         status: "open",
-        // doc_grounded columns (NULL for best_practices / factual_smell)
         finding_kind:         isDocGrounded ? (f.kind ?? null) : null,
         claim_quote:          isDocGrounded ? (f.claim_quote ?? null) : null,
         source_passage:       isDocGrounded ? (f.source_passage ?? null) : null,
