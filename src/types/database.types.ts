@@ -623,6 +623,111 @@ export type Database = {
         }
         Relationships: []
       }
+      content_findings: {
+        Row: {
+          addressed_at: string | null
+          addressed_by: string | null
+          correlation_id: string
+          created_at: string
+          dismissed_at: string | null
+          dismissed_by: string | null
+          finding: string
+          id: string
+          lesson_id: string
+          review_type: string
+          severity: string
+          status: string
+          sub_segment_id: string | null
+        }
+        Insert: {
+          addressed_at?: string | null
+          addressed_by?: string | null
+          correlation_id: string
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          finding: string
+          id?: string
+          lesson_id: string
+          review_type: string
+          severity?: string
+          status?: string
+          sub_segment_id?: string | null
+        }
+        Update: {
+          addressed_at?: string | null
+          addressed_by?: string | null
+          correlation_id?: string
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          finding?: string
+          id?: string
+          lesson_id?: string
+          review_type?: string
+          severity?: string
+          status?: string
+          sub_segment_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_findings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "content_findings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_findings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_findings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_findings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "content_findings_sub_segment_id_fkey"
+            columns: ["sub_segment_id"]
+            isOneToOne: false
+            referencedRelation: "sub_segment_image_fallback"
+            referencedColumns: ["sub_segment_id"]
+          },
+          {
+            foreignKeyName: "content_findings_sub_segment_id_fkey"
+            columns: ["sub_segment_id"]
+            isOneToOne: false
+            referencedRelation: "sub_segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_findings_sub_segment_id_fkey"
+            columns: ["sub_segment_id"]
+            isOneToOne: false
+            referencedRelation: "sub_segments_image_fallback"
+            referencedColumns: ["sub_segment_id"]
+          },
+        ]
+      }
       content_images: {
         Row: {
           approved_at: string | null
