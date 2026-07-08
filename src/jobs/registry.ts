@@ -8,6 +8,7 @@ import { generateTrackContentHandler } from "./handlers/generateTrackContent";
 import { generateTrackImagesHandler } from "./handlers/generateTrackImages";
 import { rebuildMlpHandler } from "./handlers/rebuildMlp";
 import { generateQuestionnaireHandler } from "./handlers/generateQuestionnaire";
+import { reviewLessonHandler } from "./handlers/reviewLesson";
 
 export type Job = {
   id: string;
@@ -34,6 +35,7 @@ const registry: Record<string, JobHandler> = {
   generate_track_images:    generateTrackImagesHandler,
   rebuild_mlp:              rebuildMlpHandler,
   generate_questionnaire:   generateQuestionnaireHandler,
+  review_lesson:            reviewLessonHandler,
 };
 
 export function getHandler(type: string): JobHandler {

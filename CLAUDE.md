@@ -301,12 +301,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   via PostgREST introspection. Regenerate when the schema changes.
 
 ## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–034 and the
+- [x] Schema: migrations 001–005 applied normally. Migrations 006–035 and the
       `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
       in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
       `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
       See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 034).
+      (high-water: 035).
 - [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
       from GitHub `master`.
 - [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
@@ -369,6 +369,14 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 - [~] `database.types.ts` — regenerated as schema migrations land (current through 027;
       028 is prompt-only, 029 adds functions). A few files keep scoped `(supabase as any)`
       bridges for still-untyped MLP views / new rpcs.
+- [x] AI content review — slice 1 (mechanism). `review_lesson` job (`input:{lesson_id,
+      review_type}`): READ-ONLY reviewer that writes ONLY `content_findings` (migration
+      035) — never edits/approves/rejects, no verdict/score. Findings-or-silence (empty
+      list = nothing flagged, NOT endorsed). Two prompt-only types seeded in `prompts`
+      (`review_best_practices`, `review_factual_smell`); provider-parameterized
+      (`REVIEW_WRITER`), retry fix applies. Findings anchor to a card (`sub_segment_id`)
+      or lesson-level (NULL); re-run inserts new rows keyed by `correlation_id` (dedup =
+      slice 3). `src/jobs/handlers/reviewLesson.ts`, §2k. Slice 2 = doc-grounded proofing.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing

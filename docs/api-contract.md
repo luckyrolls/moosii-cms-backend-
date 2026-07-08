@@ -173,7 +173,8 @@ type JobType =
   | 'generate_quiz'               // §2d
   | 'generate_questionnaire'      // §2e
   | 'generate_track_content'      // §2f
-  | 'generate_track_images';      // §2g
+  | 'generate_track_images'       // §2g
+  | 'review_lesson';              // §2k
 ```
 
 ---
@@ -1013,6 +1014,60 @@ CMS editors manage the copy via the `is_admin()`-gated write policy (same gate o
 
 ---
 
+## 2k. Review lesson content (AI reviewer) — DELIVERED (slice 1)
+
+`POST /jobs { type:'review_lesson', input:{ lesson_id, review_type } } → 202 { job_id }`.
+A **READ-ONLY** AI reviewer that produces FINDINGS for human judgment. It never edits
+content, never approves/rejects, never emits a verdict/score. `review_type` (slice 1):
+`best_practices` (voice, AI-tells, reading level, structure) or `factual_smell`
+(confident specifics that warrant a HUMAN check — flagging, NOT fact-checking).
+
+Loads the lesson's cards (`lessons → segments → sub_segments`), assembles the review
+prompt from the DB (`prompts` row `prompt_type='review_<review_type>'`, provider via
+`REVIEW_WRITER`, default `openai`), calls the LLM, parses structured findings, and
+inserts `content_findings` rows. AI-logged with the job id as `correlation_id`.
+
+**`jobs.result` on success:**
+```json
+{
+  "lesson_id": "uuid", "review_type": "best_practices", "correlation_id": "uuid (= job id)",
+  "provider": "openai", "model": "gpt-4o",
+  "findings_count": 3, "lesson_level_count": 1, "card_level_count": 2
+}
+```
+
+**Two structural rules (not tonal):**
+- **Read-only by construction** — the job writes ONLY `content_findings` (+
+  `ai_generation_log`, like every AI call). No approve/reject/regen/content-write
+  capability exists in its code path.
+- **Findings-or-silence** — output is a list of specific flagged issues, possibly
+  **empty**. There is NO pass / score / verdict field anywhere (schema, prompt, or
+  parse). An empty findings list means **nothing was flagged, not that the content is
+  endorsed**. (`findings_count: 0` with `jobs.status='succeeded'` is valid silence.)
+
+**Unparseable / truncated model output → the job FAILS visibly** (thrown error,
+`jobs.status='failed'`) and writes **zero** findings — a parse failure is never
+silently reported as "nothing flagged".
+
+**`content_findings` (migration 035)** — one row per flagged issue; the CMS renders and
+humans work these rows:
+```
+id, correlation_id (the review run = job id), review_type,
+lesson_id (FK lessons, NOT NULL), sub_segment_id (FK sub_segments, NULL = LESSON-LEVEL / cross-card),
+finding (text), severity ('info'|'warning'|'issue' — reviewer-assigned ADVICE, humans may ignore),
+status ('open'|'dismissed'|'addressed', default 'open'), created_at,
+dismissed_at/dismissed_by, addressed_at/addressed_by (audit)
+```
+Anchoring: a finding names a card via `card_ref` = the exact card_id; the handler maps
+it to `sub_segment_id`, `null`/unknown → lesson-level (never mis-anchored to a wrong
+card, never dropped). **Re-run behavior (slice 1):** a re-run INSERTS new rows;
+previous rows remain, distinguishable by `correlation_id`. Cross-run deduplication /
+fingerprinting is **deferred to slice 3**. **Slice 2** (doc-grounded proofing against a
+source-document library) adds further `review_type`s — `review_type` is unconstrained
+text so new types need no schema change.
+
+---
+
 ## 2f. Generate track content (batch orchestrator) — DELIVERED
 
 `POST /jobs { type:'generate_track_content', input:{...} } → 202 { job_id }`.
@@ -1283,7 +1338,8 @@ type JobType =
   | 'generate_quiz'
   | 'generate_questionnaire'    // §2e
   | 'generate_track_content'    // §2f
-  | 'generate_track_images';    // §2g
+  | 'generate_track_images'     // §2g
+  | 'review_lesson';            // §2k
 ```
 
 ---

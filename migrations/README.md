@@ -12,21 +12,21 @@ that.
 ## The two tracks
 - **001–005** — applied through the normal runner; **present** in
   `schema_migrations`. Trustworthy high-water mark for this range.
-- **006–034 + the `0001`–`0004` prompt track** — applied **by hand via the Supabase
+- **006–035 + the `0001`–`0004` prompt track** — applied **by hand via the Supabase
   SQL editor**; **NOT** in `schema_migrations`. This is the reconciliation list.
   (Note: `032` is reserved for the `user_track_matches`/column-drop migration, tracked
   separately — the list may temporarily have that hole.)
 
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
-high-water number is bumped as migrations are added. (Current high-water: **034**.)
+high-water number is bumped as migrations are added. (Current high-water: **035**.)
 
 ## Why this matters
 - A file existing here does **not** prove it was applied — confirm against the live
   schema, not the folder listing.
 - `schema_migrations` is **blind** to everything applied by hand, so it under-reports
   what's live.
-- A **fresh/rebuilt database** would NOT receive 006–034 by running the tracked
+- A **fresh/rebuilt database** would NOT receive 006–035 by running the tracked
   migrations — someone must re-apply the hand-run ones, **in order**, via the SQL
   editor.
 
