@@ -21,6 +21,7 @@ for internal/authoring/licensed data.
 | `source_documents` | Authority/guideline text, possibly licensed (e.g. AAP). Internal review input only — never app-facing. | 036 |
 | `lesson_source_documents` | Lesson↔doc linkage; internal review config. | 036 |
 | `content_findings` | AI review findings for internal human judgment — not app-facing. | 035 |
+| `screen_help` | Per-screen CMS help content (panels + concept markers). Internal authoring UI only — the app has no reason to read it. Readable content, admin-writable via the CMS. | 039 |
 
 ## Notes
 - Authoring tables already covered by the app's existing RLS posture (lessons, segments,

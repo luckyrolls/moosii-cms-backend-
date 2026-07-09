@@ -1513,6 +1513,14 @@ backend must preserve and the frontend leans on:
   predate this backend and are NOT created by any 006–037 migration; the demographic
   DDL record is backfilled as migration 008. Note: single/multi-select and any
   answer imagery are **not modeled** in these tables (the app owns that).
+- **`screen_help` (CMS help content, migration 039):** per-screen help text —
+  one row per `(screen_key, section_key)`: `section_key` NULL = the screen's main
+  collapsible panel (at most one per screen, partial-unique-index enforced), non-null =
+  a targeted concept marker (e.g. `'retroactivity'`, `'host_vs_target'`). Carries
+  `title`, `body` (markdown), `sort_order`, `updated_at`, `updated_by` (nullable uuid,
+  no FK). Content-not-code — edited without a deploy. The **CMS owns reads AND writes
+  Supabase-direct** (its config-table convention); this backend adds NO routes.
+  Internal-only (`docs/rls-sweep.md`).
 
 ---
 
