@@ -55,6 +55,10 @@ generation have been ported and are delivered.
 - **Health check — DELIVERED:** `GET /health → 200 { status: "ok" }`, **no
   auth**. Use for a "backend reachable?" indicator (the two halves deploy
   separately).
+- **Version — DELIVERED:** `GET /version → 200 { commit, short, branch, source }`,
+  **no auth**. Reports the commit the running instance is on — `source:"render"`
+  (from `RENDER_GIT_COMMIT`) in prod, `source:"git"` locally. Answers "what's
+  deployed?" without opening the Render dashboard.
 
 ---
 

@@ -21,6 +21,7 @@ import mlpRouter from "./routes/mlp";
 import sourceDocumentsRouter from "./routes/sourceDocuments";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
+import { getVersionInfo } from "./lib/version";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -34,6 +35,12 @@ app.use(express.json());
 // Unauthenticated
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+// Unauthenticated — reports the commit this instance is running so "what's deployed?"
+// is a one-line curl, not a dashboard hunt. Low sensitivity (a git SHA), like /health.
+app.get("/version", (_req, res) => {
+  res.status(200).json(getVersionInfo());
 });
 
 // SPA routes — JWT auth (Supabase access token)
