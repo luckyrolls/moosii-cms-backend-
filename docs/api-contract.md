@@ -1493,6 +1493,22 @@ backend must preserve and the frontend leans on:
   target on `questionnaire_response`. Routing is read via the
   `questionnaire_response_with_track_tag` view (§7). The atom is created as a
   draft (`is_published=false`); publish is the human approve step (§2e).
+- **Demographic config is a LIVE activation source with RETROACTIVE semantics.**
+  `demographic_questions` → `demographic_answers` (`is_active`, `sort_order`) →
+  `demographic_track_rules` (bare `answer_id`→`track_id` mapping; no `is_active`,
+  no weight/order). A user's `user_demographic_responses` join
+  `demographic_track_rules` to resolve which tracks they get, via the
+  `user_active_tracks` machinery, **gated on `question.is_active AND
+  answer.is_active`**. Consequences the CMS/editor must respect: (a) editing config is
+  NOT inert history — deactivating a question/answer or deleting a rule **retroactively
+  changes existing users' resolved tracks on the next recompute**; (b) prefer
+  **DEACTIVATE (`is_active=false`) over delete** for questions/answers — migration 038
+  swaps the two `user_demographic_responses` FKs to `ON DELETE RESTRICT` so a
+  question/answer with responses **cannot be hard-deleted** (protects response history +
+  past activation); rules stay hard-delete (nothing references them). These tables
+  predate this backend and are NOT created by any 006–037 migration; the demographic
+  DDL record is backfilled as migration 008. Note: single/multi-select and any
+  answer imagery are **not modeled** in these tables (the app owns that).
 
 ---
 
