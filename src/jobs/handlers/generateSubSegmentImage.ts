@@ -263,7 +263,7 @@ export async function generateSubSegmentImage(
     .update({ storage_path: path })
     .eq("id", contentImage.id);
 
-  // Step 8 — auto-approve if requested
+  // Step 8 — reconcile approval state.
   let finalStatus = "candidate";
   if (auto_approve) {
     // Supersede any existing approved image for this sub_segment
@@ -285,6 +285,20 @@ export async function generateSubSegmentImage(
       .eq("id", sub_segment_id);
 
     finalStatus = "approved";
+  } else {
+    // A new candidate means this segment is no longer fully reviewed: knock it out of
+    // 'approved' so it must be re-published — mirroring content regen, which resets
+    // seg_status/approved_by (regenSegmentContent.ts). seg_status is the segment-wide
+    // content gate, so regenerating one image re-gates the WHOLE segment (content + quiz
+    // too) — the intended policy. Scoped to currently-'complete' segments, so this is a
+    // true no-op for first-time / batch generation on un-approved segments (no needless
+    // updated_at churn). auto_approve is an explicit "approve this now" and is never set
+    // by the CMS regen paths, so it correctly skips the invalidation.
+    await supabase
+      .from("segments")
+      .update({ seg_status: "pending", approved_by: null })
+      .eq("id", subSeg.seg_id!) // loadContext threw already if seg_id was null
+      .eq("seg_status", "complete");
   }
 
   return {

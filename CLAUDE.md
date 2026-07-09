@@ -353,6 +353,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       (service-role, bypasses the `quiz_questions` RLS wall — per-artifact counterpart to
       the bulk approve); content regen PURGES the old cards' images (no storage bloat, see
       Data model). Per-card tone persisted (`sub_segments.tone_id`, migration 030).
+- [x] Image regen invalidates segment approval: `generate_sub_segment_image`
+      (non-`auto_approve` path) resets `segments.seg_status`→`pending` + clears
+      `approved_by` when the segment was `complete` — mirroring content regen, so
+      regenerating an image on an approved lesson forces a re-publish (no stale
+      `approved` across an image swap). Whole-segment gate = re-gates content + quiz too;
+      scoped to `complete` segments (no-op for first-time/batch gen). Code-only, no migration.
 - [x] `generate_track_content` / `generate_track_images` — batch orchestrators over the
       per-unit generators (content: fill_missing + replace with derivable resume; images:
       fill_missing). Progress in `jobs.result`, content tables are the resume checkpoint,

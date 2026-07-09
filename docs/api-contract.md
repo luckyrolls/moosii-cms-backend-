@@ -1478,7 +1478,11 @@ backend must preserve and the frontend leans on:
   `topic_name`) record which models + prompt versions produced a candidate — the
   backend populates these on generation.
 - **Segment content approval:** `segments.seg_status` (`'pending'` / `'complete'`)
-  and `segments.approved_by`. Regen resets both to un-reviewed state.
+  and `segments.approved_by`. CONTENT regen resets both to un-reviewed. **IMAGE
+  (re)generation ALSO resets them** (`generate_sub_segment_image`, non-`auto_approve`
+  path): a new image candidate re-gates the WHOLE segment, so an approved lesson drops
+  out of `'complete'` until re-published — no stale "approved" across an image swap.
+  Scoped to currently-`'complete'` segments (a no-op for first-time / batch gen).
 - **Quiz tables:** `quiz_questions` (`question_id`, `question_text`, `type`,
   `segment_id`, `lesson_id`, `answer_status`) and `quiz_answers` (`id`,
   `question_id`, `answer_text`, `is_correct`, `response`, `score`). Separate rows,
