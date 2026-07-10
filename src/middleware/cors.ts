@@ -1,7 +1,8 @@
 import cors from "cors";
 
-// Allowed browser origins, driven by CORS_ALLOWED_ORIGINS (comma-separated).
-// Falls back to the local dev SPA so the app works out of the box in dev.
+// Allowed browser origins, driven by ALLOWED_ORIGINS (comma-separated), with
+// CORS_ALLOWED_ORIGINS accepted as a legacy alias. Falls back to the local dev SPA so
+// local dev works out of the box with no env set.
 const DEFAULT_ORIGINS = ["http://localhost:5173"];
 
 // Normalize an origin for tolerant comparison: trim whitespace, strip a single
@@ -12,7 +13,17 @@ function normalizeOrigin(value: string): string {
   return value.trim().replace(/\/+$/, "").toLowerCase();
 }
 
-const rawEnv = process.env.CORS_ALLOWED_ORIGINS ?? "";
+// ALLOWED_ORIGINS is the current name; CORS_ALLOWED_ORIGINS is a legacy alias kept so an
+// existing Render value keeps working. First non-empty (whitespace-trimmed) value wins.
+const rawEnv =
+  process.env.ALLOWED_ORIGINS?.trim() ||
+  process.env.CORS_ALLOWED_ORIGINS?.trim() ||
+  "";
+const envVarUsed = process.env.ALLOWED_ORIGINS?.trim()
+  ? "ALLOWED_ORIGINS"
+  : process.env.CORS_ALLOWED_ORIGINS?.trim()
+    ? "CORS_ALLOWED_ORIGINS (legacy alias)"
+    : "none → localhost default";
 const configured = rawEnv
   .split(",")
   .map((o) => o.trim())
@@ -23,8 +34,7 @@ const allowedNormalized = new Set(sourceList.map(normalizeOrigin));
 
 // Startup diagnostics — confirm what the running instance actually has.
 console.log(
-  `[cors] CORS_ALLOWED_ORIGINS raw=${JSON.stringify(rawEnv)} ` +
-    `(${configured.length > 0 ? "from env" : "DEFAULT fallback"}) ` +
+  `[cors] origins source=${envVarUsed} raw=${JSON.stringify(rawEnv)} ` +
     `allowed=${JSON.stringify([...allowedNormalized])}`
 );
 

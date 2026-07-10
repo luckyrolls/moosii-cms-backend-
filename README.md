@@ -20,14 +20,14 @@ cp .env.example .env   # fill in your values
 ## CORS
 
 Browser origins allowed to call the API are configured via the
-`CORS_ALLOWED_ORIGINS` env var (comma-separated). If unset, it defaults to
-`http://localhost:5173` (the local dev SPA).
+`ALLOWED_ORIGINS` env var (comma-separated; `CORS_ALLOWED_ORIGINS` is accepted as a
+legacy alias). If unset, it defaults to `http://localhost:5173` (the local dev SPA).
 
 ```
-CORS_ALLOWED_ORIGINS=http://localhost:5173,https://cms.moosii.app
+ALLOWED_ORIGINS=http://localhost:5173,https://moosii-cms.onrender.com
 ```
 
-On **Render**, set `CORS_ALLOWED_ORIGINS` to include every deployed CMS origin
+On **Render**, set `ALLOWED_ORIGINS` to include every deployed CMS origin
 (the local dev origin is only needed locally). Without it, the deployed backend
 falls back to the dev origin and the production SPA will be blocked.
 
