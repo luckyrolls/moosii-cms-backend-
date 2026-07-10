@@ -1521,6 +1521,15 @@ backend must preserve and the frontend leans on:
   no FK). Content-not-code — edited without a deploy. The **CMS owns reads AND writes
   Supabase-direct** (its config-table convention); this backend adds NO routes.
   Internal-only (`docs/rls-sweep.md`).
+- **Track deletion is guarded — a track deletes only when BARE (migration 040):** the
+  "config" FKs on `tracks.id` are `ON DELETE RESTRICT` — `lessons.track_id` (always was),
+  plus `questionnaire.track_id`, `demographic_track_rules.track_id`, `track_tag_map.track_id`,
+  and `questionnaire_response.track_id` (040 flipped these four from silent `CASCADE`/`SET
+  NULL`). Deleting a track that still has lessons, a hosted questionnaire, a demographic/tag
+  rule, or a targeting response rule now returns `23001` (restrict_violation; RESTRICT
+  raises 23001, not the 23503 that NO ACTION does) — clear those first. Only per-user
+  state FKs (`user_track`, `user_mlp_mods`) still `CASCADE` (that state is meant to die with
+  the track).
 
 ---
 

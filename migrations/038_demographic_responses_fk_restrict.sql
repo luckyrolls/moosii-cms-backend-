@@ -19,8 +19,9 @@
 -- it carries no is_active, so add/remove of rule rows stays the correct CRUD.
 --
 -- CONSUMER IMPACT. The CMS delete flow (which today shows a cascade-count warning and
--- relies on the cascade) will now get a 23503 foreign_key_violation when a question/answer
--- has responses. The frontend should catch that and steer the user to DEACTIVATE instead.
+-- relies on the cascade) will now get a 23001 restrict_violation when a question/answer
+-- has responses (RESTRICT raises 23001, NOT the 23503 that NO ACTION raises — verified in
+-- pglite). The frontend should catch that and steer the user to DEACTIVATE instead.
 -- No data is migrated; only future delete behavior changes.
 --
 -- Constraint NAMES are preserved so database.types.ts `foreignKeyName` values stay stable.
