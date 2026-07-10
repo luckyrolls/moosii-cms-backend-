@@ -1347,8 +1347,13 @@ Authorization: Bearer <admin Supabase JWT>   // admin gate (arbitrary user_id)
 ```
 Read-only lifecycle view for the CMS inspector — one entry per questionnaire in the
 user's MLP **universe** (published `mlp_item_pool` items whose host track is in the
-user's `user_active_tracks`; questionnaires carry open age bounds so the age filter
-never drops them). Runs the SAME logic the rebuild does — no reimplementation: the
+user's `user_active_tracks`). The inspector reads the RAW pool (`loadUserMlpInputs`,
+BEFORE the age filter), so it lists every questionnaire in the universe. **CAVEAT since
+migration 041:** questionnaires now carry `age` as a lower bound, so the real MLP
+age-gates them — a questionnaire the inspector lists may be ABSENT from the user's actual
+MLP when the youngest child is younger than `age`. (The inspector deliberately does not
+re-run the age filter; reconciling the two is a noted follow-up.) Runs the SAME logic the
+rebuild does — no reimplementation: the
 pool comes from the rebuild's `loadUserMlpInputs`; due-ness from the exported pure
 `matchRecurringBand` + `isQuestionnaireDue`; suppression from the rebuild's
 `computeMilestoneSuppressionDetail`. So the inspector can never show a different
@@ -1530,6 +1535,14 @@ backend must preserve and the frontend leans on:
   raises 23001, not the 23503 that NO ACTION does) — clear those first. Only per-user
   state FKs (`user_track`, `user_mlp_mods`) still `CASCADE` (that state is meant to die with
   the track).
+- **Questionnaire age gate wired into `mlp_item_pool` (migration 041):** the view's
+  questionnaire arm now emits `questionnaire.age AS min_child_age` (was `NULL`);
+  `max_child_age` stays `NULL`. So a published questionnaire with a non-null `age` is
+  dropped from a user's MLP when the youngest child is younger than `age` (single lower
+  bound; `age IS NULL` = open gate). `generateFullMLP`'s age filter is unchanged — it just
+  finally receives a real bound. 041 is also the first in-repo record of the previously
+  DB-only `mlp_item_pool` view. Downstream caveat: the questionnaire-status inspector
+  (§3a) reads the pre-filter pool, so it may over-list age-gated questionnaires.
 
 ---
 
