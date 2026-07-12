@@ -1341,9 +1341,8 @@ NOT mention-due (shows, or waits for its band) — deferral can only ever hide a
 silently hide a safety check-in. **POLICY (not code-enforced):** concern-shaped / clinical
 questionnaires must NOT opt in without clinician sign-off; the CMS slice carries the
 warning. All NULL → byte-identical to pre-042 (`decideQuestionnaire`'s band branch is
-equivalent to `isQuestionnaireDue`). *Follow-up (known, not built): `/questionnaire-status`
-does not yet report a `deferred` state — same pattern as the `age_gated` flag; flagged for
-a later slice.*
+equivalent to `isQuestionnaireDue`). The `/questionnaire-status` inspector surfaces this as
+an orthogonal `deferred` flag (§3a).
 
 **Admin/server — `POST /jobs { type:"rebuild_mlp" }`** — `input:{ user_id }` for one
 user, or `input:{ scope:"all" }` for a full rebuild. Async (202 + job). Admin JWT
@@ -1377,17 +1376,23 @@ Read-only lifecycle view for the CMS inspector — one entry per questionnaire i
 user's MLP **universe** (published `mlp_item_pool` items whose host track is in the
 user's `user_active_tracks`). The inspector reads the RAW pool (`loadUserMlpInputs`,
 BEFORE the age filter), so its universe = the raw pool: it lists **every** questionnaire
-and never drops age-gated ones. Since migration 041 gave questionnaires a real lower age
-bound, each entry now carries an **orthogonal age-gate flag** (not a status value, because
-a questionnaire can be gated AND due/suppressed): `age_gated` (bool), `age_gate_months`
-(the lower bound, `== questionnaire.age`), and `youngest_age_months` (the user's youngest
-child). `age_gated` is computed with the **same predicate** the pool filter uses
-(`isAgeEligible`, shared from `generateFullMLP` — not a copy), so it's true exactly when
-the real MLP would drop the questionnaire now. Recommended **display precedence** when a
-row is both gated and something else: `suppressed > age_gated > due_now > answered_awaiting
-> answered_one_shot > never_answered` — mirrors the pipeline (suppression removes before
-the age filter) and gated outranks due (a gated item isn't actually surfaced). Runs the
-SAME logic the rebuild does — no reimplementation: the
+and never drops age-gated or deferred ones. Since migrations 041/042, each entry carries
+**orthogonal flags** (not status values — a questionnaire can be gated AND deferred AND
+due/suppressed): **age gate** — `age_gated` (bool), `age_gate_months` (the lower bound,
+`== questionnaire.age`), `youngest_age_months` (the user's youngest child); and
+**deferral** — `deferred` (bool), `deferred_until` (ISO — the governing `mention_at +
+defer_days`, which may be in the PAST once the window has closed; paired with
+`deferred=false` it reads "was deferred until then"), `mention_at` (ISO — the governing
+latest mention, i.e. newer than the answer; `null` when there's no defer config, no
+mention, or the answer supersedes the mention). `age_gated` uses the **same predicate** the
+pool filter uses (`isAgeEligible`); `deferred` is the **same decision** the rebuild's pivot
+uses (`decideQuestionnaire === "deferred"`, over the shared `loadDeferConfig` /
+`loadLatestMentionByTrack` queries — not a copy), so each is true exactly when the real MLP
+hides the questionnaire now. Recommended **display precedence** when several apply:
+`suppressed > age_gated > deferred > due_now > answered_awaiting > answered_one_shot >
+never_answered` — pipeline order (suppression removes first, the age gate filters next,
+deferral is the most transient hide). The payload keeps `status` plus all flags; precedence
+is rendering-only. Runs the SAME logic the rebuild does — no reimplementation: the
 pool comes from the rebuild's `loadUserMlpInputs`; due-ness from the exported pure
 `matchRecurringBand` + `isQuestionnaireDue`; suppression from the rebuild's
 `computeMilestoneSuppressionDetail`. So the inspector can never show a different

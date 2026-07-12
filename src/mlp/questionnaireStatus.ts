@@ -4,6 +4,9 @@ import {
   computeMilestoneSuppressionDetail,
   matchRecurringBand,
   isQuestionnaireDue,
+  decideQuestionnaire,
+  loadDeferConfig,
+  loadLatestMentionByTrack,
   type Band,
 } from "../jobs/handlers/rebuildMlp";
 import { isAgeEligible } from "./generateFullMLP";
@@ -11,11 +14,12 @@ import { isAgeEligible } from "./generateFullMLP";
 // ---------------------------------------------------------------------------
 // Per-user questionnaire lifecycle status for the CMS user-MLP inspector.
 //
-// Read-only. Runs the REAL recurrence + suppression logic over the real rows —
+// Read-only. Runs the REAL recurrence + suppression + deferral logic over the real rows —
 // it reuses loadUserMlpInputs (same pool/universe the rebuild computes over),
-// matchRecurringBand + isQuestionnaireDue (the pure due math), and
-// computeMilestoneSuppressionDetail (the exact suppression resolution). No parallel
-// due logic, no writes, no MLP side effects.
+// matchRecurringBand + isQuestionnaireDue (the pure due math), decideQuestionnaire +
+// loadDeferConfig + loadLatestMentionByTrack (the exact deferral decision + queries the
+// pivot runs), and computeMilestoneSuppressionDetail (the exact suppression resolution).
+// No parallel logic, no writes, no MLP side effects.
 // ---------------------------------------------------------------------------
 
 export type QuestionnaireStatus =
@@ -37,17 +41,21 @@ export type QuestionnaireStatusEntry = {
   due_at: string | null;
   // Populated only when suppressed — the milestone fact that caused it.
   suppressed_by: { milestone_id: string; milestone_name: string | null } | null;
-  // Age gate — ORTHOGONAL to `status` (a questionnaire can be gated AND due/suppressed/
-  // answered), so it's a flag, not a status value. `age_gated` = the youngest child is
-  // outside the questionnaire's age bounds, so the real MLP (generateFullMLP) drops it
-  // right now. Computed with the SAME predicate the pool filter uses (isAgeEligible).
-  // Display precedence (recommended): suppressed > age_gated > due_now > answered_awaiting
-  // > answered_one_shot > never_answered — mirrors the pipeline (suppression removes
-  // before the age filter), and gated outranks due because a gated item isn't actually
-  // surfaced. The payload keeps `status` AND `age_gated` so nothing is lost.
+  // Age gate + topic-mention deferral — ORTHOGONAL flags (a questionnaire can be gated
+  // AND deferred AND due/suppressed/answered), so they're flags, not status values, and
+  // the payload keeps `status` alongside them so nothing is lost. `age_gated` = youngest
+  // child outside the age bounds (isAgeEligible — same predicate the pool filter uses);
+  // `deferred` = an active topic mention is hiding it right now (decideQuestionnaire ===
+  // "deferred" — the SAME decision the rebuild uses). Display precedence (recommended):
+  // suppressed > age_gated > deferred > due_now > answered_awaiting > answered_one_shot >
+  // never_answered — pipeline order (suppression removes first, the age gate filters next,
+  // deferral is the most transient hide).
   age_gated: boolean;
   age_gate_months: number | null;     // the questionnaire's lower age bound (== questionnaire.age post-041)
   youngest_age_months: number | null; // the user's youngest-child age used for the check
+  deferred: boolean;
+  deferred_until: string | null;      // ISO — governing mention_at + defer_days (may be in the past)
+  mention_at: string | null;          // ISO — the governing latest mention (newer than the answer); null if none/superseded/no config
 };
 
 const DAY = 86_400_000;
@@ -106,17 +114,26 @@ export async function assembleQuestionnaireStatus(userId: string): Promise<Quest
     bandsByQ.set(b.questionnaire_id, list);
   }
 
+  // Deferral inputs — the SAME two queries the rebuild's decision runs (shared helpers,
+  // NOT copied), so the inspector's `deferred` can't drift from the pool's.
+  const deferConfig = await loadDeferConfig(qIds);
+  const deferTrackIds = [...new Set([...deferConfig.values()].map((c) => c.track))];
+  const mentionByTrack = await loadLatestMentionByTrack(userId, deferTrackIds);
+
   const now = Date.now();
-  // One entry per questionnaire — the universe is preserved (never filtered by the gate).
-  const entries: QuestionnaireStatusEntry[] = questionnaires.map((q) =>
-    classifyQuestionnaire(q, {
+  // One entry per questionnaire — the universe is preserved (never filtered by any gate).
+  const entries: QuestionnaireStatusEntry[] = questionnaires.map((q) => {
+    const cfg = deferConfig.get(q.item_id) ?? null;
+    return classifyQuestionnaire(q, {
       youngestAgeMonths,
       latest: latestByQ.get(q.item_id) ?? null,
       bands: bandsByQ.get(q.item_id) ?? [],
       suppressedBy: suppression.get(q.item_id) ?? null,
       now,
-    })
-  );
+      deferDays: cfg?.days ?? null,
+      mentionMs: cfg ? mentionByTrack.get(cfg.track) ?? null : null,
+    });
+  });
 
   entries.sort((a, b) => (a.questionnaire_name ?? "").localeCompare(b.questionnaire_name ?? ""));
   return entries;
@@ -136,6 +153,8 @@ export type QuestionnaireClassifyCtx = {
   bands: Band[];
   suppressedBy: { milestone_id: string; milestone_name: string | null } | null;
   now: number;
+  deferDays: number | null; // from the questionnaire's defer config (null = not deferrable)
+  mentionMs: number | null; // latest topic mention for its defer_topic track (null = none)
 };
 
 // Pure per-questionnaire classifier — the answer lifecycle status PLUS the orthogonal age
@@ -148,14 +167,30 @@ export function classifyQuestionnaire(
   q: QuestionnairePoolItem,
   ctx: QuestionnaireClassifyCtx
 ): QuestionnaireStatusEntry {
-  const { youngestAgeMonths, latest, bands, suppressedBy, now } = ctx;
+  const { youngestAgeMonths, latest, bands, suppressedBy, now, deferDays, mentionMs } = ctx;
 
   const matched = latest ? matchRecurringBand(latest.score, bands) : null;
+  const answerMs = latest ? new Date(latest.created_at).getTime() : null;
   const due = latest && matched
-    ? isQuestionnaireDue(latest.score, new Date(latest.created_at).getTime(), bands, now)
+    ? isQuestionnaireDue(latest.score, answerMs as number, bands, now)
     : false;
   const dueAt = latest && matched
-    ? new Date(new Date(latest.created_at).getTime() + matched.days * DAY).toISOString()
+    ? new Date((answerMs as number) + matched.days * DAY).toISOString()
+    : null;
+
+  // Topic-mention deferral (migration 042) — ORTHOGONAL, driven by the SAME decision the
+  // rebuild uses so it can't drift: deferred ⟺ decideQuestionnaire(...) === "deferred".
+  const deferred = decideQuestionnaire(answerMs, mentionMs, deferDays, matched?.days ?? null, now) === "deferred";
+  // A mention GOVERNS iff configured, present, and newer than the answer. Only then do we
+  // report mention_at / deferred_until. deferred_until = mention + defer_days is ALWAYS the
+  // window end for the governing mention, so it can be in the PAST (window closed) — paired
+  // with deferred=false it reads as "was deferred until then".
+  const mentionGoverns =
+    deferDays !== null && deferDays > 0 && mentionMs !== null &&
+    (answerMs === null || mentionMs > answerMs);
+  const mentionAt = mentionGoverns ? new Date(mentionMs as number).toISOString() : null;
+  const deferredUntil = mentionGoverns
+    ? new Date((mentionMs as number) + (deferDays as number) * DAY).toISOString()
     : null;
 
   // Answer lifecycle status — UNCHANGED. Suppression trumps due-ness (mirrors the rebuild).
@@ -182,5 +217,9 @@ export function classifyQuestionnaire(
     age_gated: !isAgeEligible(youngestAgeMonths, q.min_child_age, q.max_child_age),
     age_gate_months: q.min_child_age ?? null,
     youngest_age_months: youngestAgeMonths,
+    // ORTHOGONAL topic-mention deferral — same decision the rebuild's pivot uses.
+    deferred,
+    deferred_until: deferredUntil,
+    mention_at: mentionAt,
   };
 }

@@ -222,6 +222,62 @@ export function decideQuestionnaire(
   return nowMs - latestAnswerMs >= bandIntervalDays * DAY ? "due" : "not_due";
 }
 
+// Opt-in deferral config for the given questionnaires (both fields non-null = deferrable).
+// SHARED by the rebuild's decision AND the questionnaire-status inspector (one query, no
+// copy). Load failure → empty map (fail-open: nothing deferrable → deferral never hides).
+export async function loadDeferConfig(
+  qIds: string[]
+): Promise<Map<string, { track: string; days: number }>> {
+  const configByQ = new Map<string, { track: string; days: number }>();
+  if (qIds.length === 0) return configByQ;
+  const { data, error } = await db
+    .from("questionnaire")
+    .select("id, defer_topic, defer_days")
+    .in("id", qIds)
+    .not("defer_topic", "is", null)
+    .not("defer_days", "is", null);
+  if (error) {
+    console.warn(`[mlp] deferral config load failed; treating none as deferrable: ${error.message}`);
+    return configByQ;
+  }
+  for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+    const id = r.id as string | null;
+    const track = r.defer_topic as string | null;
+    const days = num(r.defer_days);
+    if (id && track && days !== null && days > 0) configByQ.set(id, { track, days });
+  }
+  return configByQ;
+}
+
+// Latest topic mention per track = max(created_at) over the user's track-proposing signals
+// (user_update_signals.matched_track_id ⨝ user_update_events on this user). SHARED by the
+// rebuild AND the inspector. Load failure → empty (fail-open: no mention → no deferral).
+// Mention rows persist only under classify-apply, so previews record none.
+export async function loadLatestMentionByTrack(
+  userId: string,
+  trackIds: string[]
+): Promise<Map<string, number>> {
+  const byTrack = new Map<string, number>();
+  if (trackIds.length === 0) return byTrack;
+  const { data, error } = await db
+    .from("user_update_signals")
+    .select("matched_track_id, created_at, user_update_events!inner(user_id)")
+    .in("matched_track_id", trackIds)
+    .eq("user_update_events.user_id", userId);
+  if (error) {
+    console.warn(`[mlp] mention query failed for ${userId}; treating none as mentioned: ${error.message}`);
+    return byTrack;
+  }
+  for (const s of (data ?? []) as Array<Record<string, unknown>>) {
+    const track = s.matched_track_id as string | null;
+    if (!track || !s.created_at) continue;
+    const t = new Date(s.created_at as string).getTime();
+    const prev = byTrack.get(track);
+    if (prev === undefined || t > prev) byTrack.set(track, t);
+  }
+  return byTrack;
+}
+
 // Per-user DUE + DEFERRED sets for questionnaires, computed through the single
 // decideQuestionnaire above (no logic split between pivot and filter). Sibling to
 // computeMilestoneSuppression. Gathers the three inputs the decision needs — latest answer
@@ -275,51 +331,14 @@ export async function computeQuestionnaireDecisions(
     }
   }
 
-  // Deferral config (both fields non-null = deferrable) + latest topic mention per track.
-  // Any failure leaves configByQ empty → decideQuestionnaire sees no active mention →
-  // band-only (never silently hides).
-  const configByQ = new Map<string, { track: string; days: number }>();
-  const mentionByTrack = new Map<string, number>();
+  // Deferral config + latest topic mention per track, via the SHARED helpers (the
+  // questionnaire-status inspector reuses the exact same two queries — no copy). Either
+  // helper failing yields empty → decideQuestionnaire sees no active mention → band-only
+  // (never silently hides).
   const qIds = pool.filter((i) => i.item_type === "questionnaire").map((i) => i.item_id);
-  if (qIds.length > 0) {
-    const { data: cfgRaw, error: cfgErr } = await db
-      .from("questionnaire")
-      .select("id, defer_topic, defer_days")
-      .in("id", qIds)
-      .not("defer_topic", "is", null)
-      .not("defer_days", "is", null);
-    if (cfgErr) {
-      console.warn(`[rebuild_mlp] deferral config load failed for ${userId}; deferring nothing: ${cfgErr.message}`);
-    } else {
-      for (const r of (cfgRaw ?? []) as Array<Record<string, unknown>>) {
-        const id = r.id as string | null;
-        const track = r.defer_topic as string | null;
-        const days = num(r.defer_days);
-        if (id && track && days !== null && days > 0) configByQ.set(id, { track, days });
-      }
-      const trackIds = [...new Set([...configByQ.values()].map((c) => c.track))];
-      if (trackIds.length > 0) {
-        // Latest mention per track: max(created_at) over the user's track-proposing signals.
-        const { data: sigRaw, error: sigErr } = await db
-          .from("user_update_signals")
-          .select("matched_track_id, created_at, user_update_events!inner(user_id)")
-          .in("matched_track_id", trackIds)
-          .eq("user_update_events.user_id", userId);
-        if (sigErr) {
-          console.warn(`[rebuild_mlp] mention query failed for ${userId}; deferring nothing: ${sigErr.message}`);
-          configByQ.clear(); // no reliable mentions → no active mention anywhere (show)
-        } else {
-          for (const s of (sigRaw ?? []) as Array<Record<string, unknown>>) {
-            const track = s.matched_track_id as string | null;
-            if (!track || !s.created_at) continue;
-            const t = new Date(s.created_at as string).getTime();
-            const prev = mentionByTrack.get(track);
-            if (prev === undefined || t > prev) mentionByTrack.set(track, t);
-          }
-        }
-      }
-    }
-  }
+  const configByQ = await loadDeferConfig(qIds);
+  const trackIds = [...new Set([...configByQ.values()].map((c) => c.track))];
+  const mentionByTrack = await loadLatestMentionByTrack(userId, trackIds);
 
   // Classify every answered-OR-configured questionnaire through the ONE pure decision.
   const allQ = new Set<string>([...latestByQ.keys(), ...configByQ.keys()]);
