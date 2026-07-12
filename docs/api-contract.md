@@ -1346,7 +1346,25 @@ an orthogonal `deferred` flag (§3a).
 
 **Admin/server — `POST /jobs { type:"rebuild_mlp" }`** — `input:{ user_id }` for one
 user, or `input:{ scope:"all" }` for a full rebuild. Async (202 + job). Admin JWT
-or `INTERNAL_API_KEY`. Used by CMS/tooling.
+or `INTERNAL_API_KEY`. Used by CMS/tooling (this is the manual "rebuild everything"
+button — intentionally **un-coalesced**; an explicit force must not be swallowed).
+
+**Publish-triggered rebuild (auto) — `POST /mlp/rebuild-all`** (admin JWT). A
+publish-state change propagates to users by enqueuing a **coalesced** `rebuild_mlp
+scope:all`. Triggers: questionnaire **publish/unpublish** hook it **server-side**
+(`/questionnaires/:id/publish|unpublish`, fire-and-forget — never blocks the publish);
+lesson **publish/unpublish** is a CMS Supabase-direct write with no backend route, so the
+CMS calls **`POST /mlp/rebuild-all`** right after it. Body (optional): `{ reason?,
+correlation_id? }` → stamped into the job's `input` (`triggered_by`, `correlation_id`) so
+**"why did a rebuild run"** is answerable from the `jobs` row. Returns `202 { enqueued,
+job_id, coalesced_into }`. **Coalescing guard:** if a `rebuild_mlp scope:all` job is
+already `queued`/`running`, no second is enqueued (one check, not a debounce). The
+resulting race is **correctness-safe** — two concurrent `scope:all` runs are harmless
+because `rebuild_user_mlp` is derive-and-overwrite (atomic per-user delete+insert, no
+non-idempotent step), so they converge; a rare double-enqueue is wasted work, never wrong
+data. Accordingly the trigger fails **toward** rebuilding (a coalescing-check error
+enqueues anyway). NOT in this pass: targeted rebuild-by-track (parked until rebuild-all is
+observably slow).
 
 Ordering inputs: item `priority`, track `priority`/`order`/`weight`,
 `age_track_weights`, global `consts`. `user_mlp_mods` (per-user manual overrides)

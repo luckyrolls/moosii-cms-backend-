@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { apiError } from "../lib/errors";
 import { rebuildOneUser } from "../jobs/handlers/rebuildMlp";
+import { enqueueRebuildAllIfIdle } from "../jobs/runner";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import { assembleQuestionnaireStatus } from "../mlp/questionnaireStatus";
 import { assembleMlpPreview, parseAgeMonthsParam } from "../mlp/mlpPreview";
@@ -46,6 +47,24 @@ router.get("/:user_id/questionnaire-status", jwtAuthMiddleware, async (req: Requ
   } catch (e) {
     apiError(res, 500, "questionnaire_status_failed", e instanceof Error ? e.message : String(e));
   }
+});
+
+// POST /mlp/rebuild-all — ADMIN. Enqueue a COALESCED `rebuild_mlp scope:all`. The CMS
+// calls this right after a Supabase-direct lesson publish/unpublish (which the backend
+// can't hook server-side). Coalesced: if a scope:all rebuild is already queued/running,
+// it returns that job instead of enqueuing a second (see enqueueRebuildAllIfIdle). Always
+// 202. NOT the manual "rebuild everything" admin button — that posts /jobs directly and is
+// intentionally un-coalesced (an explicit force must not be swallowed). Optional body:
+// { reason?, correlation_id? } for provenance ("why did this rebuild run").
+router.post("/rebuild-all", jwtAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const reason = typeof req.body?.reason === "string" && req.body.reason.trim() ? req.body.reason.trim() : "cms_publish";
+  const correlationId = typeof req.body?.correlation_id === "string" ? req.body.correlation_id : undefined;
+  const r = await enqueueRebuildAllIfIdle({ reason, correlationId });
+  res.status(202).json({
+    enqueued: r.enqueued,
+    job_id: r.jobId ?? null,
+    coalesced_into: r.coalescedInto ?? null,
+  });
 });
 
 // POST /mlp/recompute — APP-FACING. Unlike /jobs (admin/internal auth) and the SPA

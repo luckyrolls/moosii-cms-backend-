@@ -30,6 +30,51 @@ export async function createAndStartJob(
   return id;
 }
 
+// Enqueue a `rebuild_mlp scope:all` UNLESS one is already queued/running (coalescing —
+// ONE check, not a debounce). Used by the publish-state triggers (questionnaire routes +
+// POST /mlp/rebuild-all). NEVER throws — safe to fire-and-forget from a request handler;
+// a publish must never be blocked or failed by this. `reason` + `correlationId` are stamped
+// into the job input so "why did this rebuild run" is answerable from the jobs row.
+//
+// The coalesced race is CORRECTNESS-SAFE: two concurrent scope:all runs are harmless
+// because rebuild_user_mlp is derive-and-overwrite (atomic per-user delete+insert, no
+// non-idempotent step), so they converge — a rare double-enqueue is wasted work, never
+// wrong data. Accordingly we fail TOWARD triggering: if the coalescing check itself errors,
+// we enqueue anyway (a missed rebuild is worse than a harmless duplicate).
+export async function enqueueRebuildAllIfIdle(
+  ctx: { reason: string; correlationId?: string }
+): Promise<{ enqueued: boolean; jobId?: string; coalescedInto?: string }> {
+  try {
+    const { data: existing, error } = await supabase
+      .from("jobs")
+      .select("id, status")
+      .eq("type", "rebuild_mlp")
+      .in("status", ["queued", "running"])
+      .contains("input", { scope: "all" })
+      .limit(1);
+
+    if (!error && existing && existing.length > 0) {
+      const into = existing[0].id as string;
+      console.log(`[rebuild-trigger] coalesced into ${into} (${existing[0].status}) — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
+      return { enqueued: false, coalescedInto: into };
+    }
+    if (error) {
+      console.warn(`[rebuild-trigger] coalescing check failed (${ctx.reason}); enqueuing anyway (harmless dup): ${error.message}`);
+    }
+
+    const jobId = await createAndStartJob("rebuild_mlp", {
+      scope: "all",
+      triggered_by: ctx.reason,
+      correlation_id: ctx.correlationId ?? null,
+    });
+    console.log(`[rebuild-trigger] enqueued ${jobId} scope:all — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
+    return { enqueued: true, jobId };
+  } catch (e) {
+    console.error(`[rebuild-trigger] enqueue errored (${ctx.reason}), non-fatal: ${e instanceof Error ? e.message : String(e)}`);
+    return { enqueued: false };
+  }
+}
+
 // Run a list of job IDs through a worker pool capped at `concurrency`.
 // Spawns min(concurrency, n) workers; each drains the shared queue until empty.
 // Fire-and-forget: errors per job are already caught inside runJob.

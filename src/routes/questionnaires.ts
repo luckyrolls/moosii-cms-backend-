@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { apiError } from "../lib/errors";
+import { enqueueRebuildAllIfIdle } from "../jobs/runner";
 
 // questionnaire tables aren't in database.types.ts. Untyped bridge.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,6 +34,10 @@ router.post("/:id/publish", async (req: Request, res: Response): Promise<void> =
     .from("questionnaire_questions").update({ answer_status: "approved" }).eq("questionnaire_id", id);
   if (aErr) { apiError(res, 500, "db_error", aErr.message); return; }
 
+  // Publish-state changed → propagate to users via a coalesced rebuild. Fire-and-forget;
+  // never block or fail the publish on the rebuild trigger.
+  void enqueueRebuildAllIfIdle({ reason: "questionnaire_publish", correlationId: id });
+
   res.json({ questionnaire_id: id, is_published: true, questions_approved: qs.length });
 });
 
@@ -51,6 +56,9 @@ router.post("/:id/unpublish", async (req: Request, res: Response): Promise<void>
   if (pErr) { apiError(res, 500, "db_error", pErr.message); return; }
 
   await db.from("questionnaire_questions").update({ answer_status: "pending" }).eq("questionnaire_id", id);
+
+  // Publish-state changed → propagate to users via a coalesced rebuild (fire-and-forget).
+  void enqueueRebuildAllIfIdle({ reason: "questionnaire_unpublish", correlationId: id });
 
   res.json({ questionnaire_id: id, is_published: false });
 });
