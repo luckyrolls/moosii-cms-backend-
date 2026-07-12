@@ -2448,6 +2448,8 @@ export type Database = {
         Row: {
           age: number | null
           created_at: string
+          defer_days: number | null
+          defer_topic: string | null
           description: string | null
           id: string
           is_published: boolean | null
@@ -2467,6 +2469,8 @@ export type Database = {
         Insert: {
           age?: number | null
           created_at?: string
+          defer_days?: number | null
+          defer_topic?: string | null
           description?: string | null
           id?: string
           is_published?: boolean | null
@@ -2486,6 +2490,8 @@ export type Database = {
         Update: {
           age?: number | null
           created_at?: string
+          defer_days?: number | null
+          defer_topic?: string | null
           description?: string | null
           id?: string
           is_published?: boolean | null
@@ -2503,6 +2509,20 @@ export type Database = {
           with_quiz?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "questionnaire_defer_topic_fkey"
+            columns: ["defer_topic"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_defer_topic_fkey"
+            columns: ["defer_topic"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
           {
             foreignKeyName: "questionnaire_milestone_id_fkey"
             columns: ["milestone_id"]
