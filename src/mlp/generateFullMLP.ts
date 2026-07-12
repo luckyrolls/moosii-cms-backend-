@@ -83,6 +83,23 @@ export type GenerateFullMLPOutput = {
 
 type BucketItem = MlpPoolItem & { track_name: string };
 
+// Age-overlap predicate — the SINGLE source of truth for "is an item with these age
+// bounds eligible for a child of this age". Shared by generateFullMLP's pool filter AND
+// the questionnaire-status inspector (do NOT copy this logic). NULL/undefined bounds are
+// open-ended; a NULL/undefined youngest age means we can't gate, so everything is eligible
+// (matches the filter below, which only runs once a youngest age is known).
+export function isAgeEligible(
+  youngestAgeMonths: number | null | undefined,
+  minChildAge: number | null | undefined,
+  maxChildAge: number | null | undefined
+): boolean {
+  if (youngestAgeMonths === null || youngestAgeMonths === undefined) return true;
+  const y = youngestAgeMonths;
+  const minOk = minChildAge === null || minChildAge === undefined || y >= minChildAge;
+  const maxOk = maxChildAge === null || maxChildAge === undefined || y <= maxChildAge;
+  return minOk && maxOk;
+}
+
 export function generateFullMLP(input: GenerateFullMLPInput): GenerateFullMLPOutput {
   const pool = input.pool ?? [];
   const tracks = input.tracks ?? [];
@@ -153,14 +170,9 @@ export function generateFullMLP(input: GenerateFullMLPInput): GenerateFullMLPOut
   // which used age only for bracket weighting and never filtered the pool.
   const poolBeforeAge = filteredPool.length;
   if (youngestAgeMonths !== null && youngestAgeMonths !== undefined) {
-    const y = youngestAgeMonths;
-    filteredPool = filteredPool.filter((item) => {
-      const minOk =
-        item.min_child_age === null || item.min_child_age === undefined || y >= item.min_child_age;
-      const maxOk =
-        item.max_child_age === null || item.max_child_age === undefined || y <= item.max_child_age;
-      return minOk && maxOk;
-    });
+    filteredPool = filteredPool.filter((item) =>
+      isAgeEligible(youngestAgeMonths, item.min_child_age, item.max_child_age)
+    );
   }
   const removedByAge = poolBeforeAge - filteredPool.length;
 

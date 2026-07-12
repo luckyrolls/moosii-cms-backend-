@@ -6,6 +6,7 @@ import {
   isQuestionnaireDue,
   type Band,
 } from "../jobs/handlers/rebuildMlp";
+import { isAgeEligible } from "./generateFullMLP";
 
 // ---------------------------------------------------------------------------
 // Per-user questionnaire lifecycle status for the CMS user-MLP inspector.
@@ -36,15 +37,29 @@ export type QuestionnaireStatusEntry = {
   due_at: string | null;
   // Populated only when suppressed — the milestone fact that caused it.
   suppressed_by: { milestone_id: string; milestone_name: string | null } | null;
+  // Age gate — ORTHOGONAL to `status` (a questionnaire can be gated AND due/suppressed/
+  // answered), so it's a flag, not a status value. `age_gated` = the youngest child is
+  // outside the questionnaire's age bounds, so the real MLP (generateFullMLP) drops it
+  // right now. Computed with the SAME predicate the pool filter uses (isAgeEligible).
+  // Display precedence (recommended): suppressed > age_gated > due_now > answered_awaiting
+  // > answered_one_shot > never_answered — mirrors the pipeline (suppression removes
+  // before the age filter), and gated outranks due because a gated item isn't actually
+  // surfaced. The payload keeps `status` AND `age_gated` so nothing is lost.
+  age_gated: boolean;
+  age_gate_months: number | null;     // the questionnaire's lower age bound (== questionnaire.age post-041)
+  youngest_age_months: number | null; // the user's youngest-child age used for the check
 };
 
 const DAY = 86_400_000;
 
 export async function assembleQuestionnaireStatus(userId: string): Promise<QuestionnaireStatusEntry[]> {
   // Same universe the rebuild uses: published pool items in the user's active tracks.
-  // (Questionnaires carry open [null, null] age bounds, so the rebuild's downstream
-  // age filter never removes them — this pool IS the questionnaire universe.)
-  const { pool } = await loadUserMlpInputs(userId);
+  // The universe is the RAW pool (BEFORE the age filter): the inspector reports EVERY
+  // questionnaire and never drops age-gated ones — gating is surfaced per-entry via the
+  // `age_gated` flag (see classifyQuestionnaire), not by removal. (Pre-041 this pool
+  // happened to equal the age-filtered set because questionnaires carried [null,null]
+  // bounds; 041 gave them a real lower bound, so the two now differ and we flag it.)
+  const { pool, youngestAgeMonths } = await loadUserMlpInputs(userId);
   const questionnaires = pool.filter((i) => i.item_type === "questionnaire");
   if (questionnaires.length === 0) return [];
   const qIds = questionnaires.map((q) => q.item_id);
@@ -92,45 +107,80 @@ export async function assembleQuestionnaireStatus(userId: string): Promise<Quest
   }
 
   const now = Date.now();
-  const entries: QuestionnaireStatusEntry[] = questionnaires.map((q) => {
-    const qid = q.item_id;
-    const latest = latestByQ.get(qid) ?? null;
-    const bands = bandsByQ.get(qid) ?? [];
-    // Single source of truth: matchRecurringBand picks the governing band; isQuestionnaireDue
-    // decides due-ness. Both are the same functions the rebuild uses.
-    const matched = latest ? matchRecurringBand(latest.score, bands) : null;
-    const due = latest && matched
-      ? isQuestionnaireDue(latest.score, new Date(latest.created_at).getTime(), bands, now)
-      : false;
-    const dueAt = latest && matched
-      ? new Date(new Date(latest.created_at).getTime() + matched.days * DAY).toISOString()
-      : null;
-    const supp = suppression.get(qid) ?? null;
-
-    // Precedence mirrors the rebuild: suppression trumps due-ness. Due/answer fields
-    // are still included as secondary context when suppressed.
-    let status: QuestionnaireStatus;
-    if (supp) status = "suppressed";
-    else if (!latest) status = "never_answered";
-    else if (!matched) status = "answered_one_shot";
-    else if (due) status = "due_now";
-    else status = "answered_awaiting";
-
-    return {
-      questionnaire_id: qid,
-      questionnaire_name: q.item_name ?? null,
-      published: true, // the pool is published-only
-      status,
-      latest_answer_at: latest?.created_at ?? null,
-      latest_score: latest?.score ?? null,
-      matched_band: matched
-        ? { score_min_range: matched.min, score_max_range: matched.max, repeat_after_days: matched.days }
-        : null,
-      due_at: dueAt,
-      suppressed_by: supp,
-    };
-  });
+  // One entry per questionnaire — the universe is preserved (never filtered by the gate).
+  const entries: QuestionnaireStatusEntry[] = questionnaires.map((q) =>
+    classifyQuestionnaire(q, {
+      youngestAgeMonths,
+      latest: latestByQ.get(q.item_id) ?? null,
+      bands: bandsByQ.get(q.item_id) ?? [],
+      suppressedBy: suppression.get(q.item_id) ?? null,
+      now,
+    })
+  );
 
   entries.sort((a, b) => (a.questionnaire_name ?? "").localeCompare(b.questionnaire_name ?? ""));
   return entries;
+}
+
+// Inputs a questionnaire pool item carries for classification.
+type QuestionnairePoolItem = {
+  item_id: string;
+  item_name?: string | null;
+  min_child_age?: number | null;
+  max_child_age?: number | null;
+};
+
+export type QuestionnaireClassifyCtx = {
+  youngestAgeMonths: number | null;
+  latest: { score: number | null; created_at: string } | null;
+  bands: Band[];
+  suppressedBy: { milestone_id: string; milestone_name: string | null } | null;
+  now: number;
+};
+
+// Pure per-questionnaire classifier — the answer lifecycle status PLUS the orthogonal age
+// gate. No DB, no side effects (exported for unit testing). Status uses the same pure due
+// math the rebuild uses (matchRecurringBand + isQuestionnaireDue); the age gate uses the
+// same predicate the pool filter uses (isAgeEligible). Suppression trumps due (unchanged);
+// the age gate is reported separately so a gated-AND-due (or gated-AND-suppressed)
+// questionnaire keeps both facts.
+export function classifyQuestionnaire(
+  q: QuestionnairePoolItem,
+  ctx: QuestionnaireClassifyCtx
+): QuestionnaireStatusEntry {
+  const { youngestAgeMonths, latest, bands, suppressedBy, now } = ctx;
+
+  const matched = latest ? matchRecurringBand(latest.score, bands) : null;
+  const due = latest && matched
+    ? isQuestionnaireDue(latest.score, new Date(latest.created_at).getTime(), bands, now)
+    : false;
+  const dueAt = latest && matched
+    ? new Date(new Date(latest.created_at).getTime() + matched.days * DAY).toISOString()
+    : null;
+
+  // Answer lifecycle status — UNCHANGED. Suppression trumps due-ness (mirrors the rebuild).
+  let status: QuestionnaireStatus;
+  if (suppressedBy) status = "suppressed";
+  else if (!latest) status = "never_answered";
+  else if (!matched) status = "answered_one_shot";
+  else if (due) status = "due_now";
+  else status = "answered_awaiting";
+
+  return {
+    questionnaire_id: q.item_id,
+    questionnaire_name: q.item_name ?? null,
+    published: true, // the pool is published-only
+    status,
+    latest_answer_at: latest?.created_at ?? null,
+    latest_score: latest?.score ?? null,
+    matched_band: matched
+      ? { score_min_range: matched.min, score_max_range: matched.max, repeat_after_days: matched.days }
+      : null,
+    due_at: dueAt,
+    suppressed_by: suppressedBy,
+    // ORTHOGONAL age gate — same predicate as generateFullMLP's pool filter.
+    age_gated: !isAgeEligible(youngestAgeMonths, q.min_child_age, q.max_child_age),
+    age_gate_months: q.min_child_age ?? null,
+    youngest_age_months: youngestAgeMonths,
+  };
 }

@@ -1348,12 +1348,18 @@ Authorization: Bearer <admin Supabase JWT>   // admin gate (arbitrary user_id)
 Read-only lifecycle view for the CMS inspector — one entry per questionnaire in the
 user's MLP **universe** (published `mlp_item_pool` items whose host track is in the
 user's `user_active_tracks`). The inspector reads the RAW pool (`loadUserMlpInputs`,
-BEFORE the age filter), so it lists every questionnaire in the universe. **CAVEAT since
-migration 041:** questionnaires now carry `age` as a lower bound, so the real MLP
-age-gates them — a questionnaire the inspector lists may be ABSENT from the user's actual
-MLP when the youngest child is younger than `age`. (The inspector deliberately does not
-re-run the age filter; reconciling the two is a noted follow-up.) Runs the SAME logic the
-rebuild does — no reimplementation: the
+BEFORE the age filter), so its universe = the raw pool: it lists **every** questionnaire
+and never drops age-gated ones. Since migration 041 gave questionnaires a real lower age
+bound, each entry now carries an **orthogonal age-gate flag** (not a status value, because
+a questionnaire can be gated AND due/suppressed): `age_gated` (bool), `age_gate_months`
+(the lower bound, `== questionnaire.age`), and `youngest_age_months` (the user's youngest
+child). `age_gated` is computed with the **same predicate** the pool filter uses
+(`isAgeEligible`, shared from `generateFullMLP` — not a copy), so it's true exactly when
+the real MLP would drop the questionnaire now. Recommended **display precedence** when a
+row is both gated and something else: `suppressed > age_gated > due_now > answered_awaiting
+> answered_one_shot > never_answered` — mirrors the pipeline (suppression removes before
+the age filter) and gated outranks due (a gated item isn't actually surfaced). Runs the
+SAME logic the rebuild does — no reimplementation: the
 pool comes from the rebuild's `loadUserMlpInputs`; due-ness from the exported pure
 `matchRecurringBand` + `isQuestionnaireDue`; suppression from the rebuild's
 `computeMilestoneSuppressionDetail`. So the inspector can never show a different
