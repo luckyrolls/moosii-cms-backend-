@@ -198,6 +198,7 @@ export type Database = {
       }
       ai_generation_log: {
         Row: {
+          blocks: Json | null
           correlation_id: string | null
           created_at: string
           id: string
@@ -211,6 +212,7 @@ export type Database = {
           response: Json
         }
         Insert: {
+          blocks?: Json | null
           correlation_id?: string | null
           created_at?: string
           id?: string
@@ -224,6 +226,7 @@ export type Database = {
           response: Json
         }
         Update: {
+          blocks?: Json | null
           correlation_id?: string | null
           created_at?: string
           id?: string
@@ -627,6 +630,7 @@ export type Database = {
         Row: {
           addressed_at: string | null
           addressed_by: string | null
+          category: string | null
           claim_quote: string | null
           correlation_id: string
           created_at: string
@@ -647,6 +651,7 @@ export type Database = {
         Insert: {
           addressed_at?: string | null
           addressed_by?: string | null
+          category?: string | null
           claim_quote?: string | null
           correlation_id: string
           created_at?: string
@@ -667,6 +672,7 @@ export type Database = {
         Update: {
           addressed_at?: string | null
           addressed_by?: string | null
+          category?: string | null
           claim_quote?: string | null
           correlation_id?: string
           created_at?: string
@@ -2338,6 +2344,7 @@ export type Database = {
       }
       prompts: {
         Row: {
+          card_positions_block_id: string | null
           created_at: string
           default: boolean | null
           id: string
@@ -2346,7 +2353,6 @@ export type Database = {
           max_tokens: number | null
           model: string | null
           output_schema: Json | null
-          prompt: string | null
           prompt_type: string | null
           question_count: number
           scope: string | null
@@ -2359,6 +2365,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          card_positions_block_id?: string | null
           created_at?: string
           default?: boolean | null
           id?: string
@@ -2367,7 +2374,6 @@ export type Database = {
           max_tokens?: number | null
           model?: string | null
           output_schema?: Json | null
-          prompt?: string | null
           prompt_type?: string | null
           question_count?: number
           scope?: string | null
@@ -2380,6 +2386,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          card_positions_block_id?: string | null
           created_at?: string
           default?: boolean | null
           id?: string
@@ -2388,7 +2395,6 @@ export type Database = {
           max_tokens?: number | null
           model?: string | null
           output_schema?: Json | null
-          prompt?: string | null
           prompt_type?: string | null
           question_count?: number
           scope?: string | null
@@ -2401,6 +2407,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "prompts_card_positions_block_id_fkey"
+            columns: ["card_positions_block_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_blocks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prompts_length_block_id_fkey"
             columns: ["length_block_id"]
@@ -3333,6 +3346,39 @@ export type Database = {
           key?: string
           template?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      screen_help: {
+        Row: {
+          body: string
+          id: string
+          screen_key: string
+          section_key: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          body: string
+          id?: string
+          screen_key: string
+          section_key?: string | null
+          sort_order?: number
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          body?: string
+          id?: string
+          screen_key?: string
+          section_key?: string | null
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -6471,6 +6517,16 @@ export type Database = {
         Returns: undefined
       }
       unapprove_segment_bundle: { Args: { p_seg_id: string }; Returns: Json }
+      user_active_tracks_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          priority: number
+          track_id: string
+          track_name: string
+          user_id: string
+          weight: number
+        }[]
+      }
     }
     Enums: {
       account_type:
