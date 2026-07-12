@@ -176,45 +176,163 @@ export function isQuestionnaireDue(
   return elapsedDays >= band.days;
 }
 
-export async function computeDueQuestionnaires(completed: CompletedRow[]): Promise<Set<string>> {
-  // Latest completed row per questionnaire (by created_at).
+// Topic-mention deferral (migration 042) + recurrence, as ONE three-way decision.
+//
+// A recurring check-in is briefly HIDDEN after the parent recently "mentioned" its topic
+// (a track-proposing classify signal on defer_topic). Opt-in per questionnaire via
+// (defer_topic, defer_days); both NULL = off. The mention is ALSO a second DUE source: a
+// mention newer than the latest answer re-opens the topic, so the questionnaire is
+// deferred (hidden) until mention_T + defer_days and then becomes DUE — which can be
+// EARLIER than the answer's recurrence band (answer "fine" → 30d band; a mention a week
+// later → re-surfaces ~day 14, not day 30 — the chosen "shortening" semantic).
+//
+// PRECEDENCE: an ACTIVE mention (newer than the answer) wins over the band entirely —
+// deferred inside its window, due after it. An answer newer-or-equal to the mention
+// supersedes the mention (band governs, mention ignored). With no active mention the
+// recurrence band governs exactly as before. matchRecurringBand / isQuestionnaireDue stay
+// untouched — the inspector still uses them, and decideQuestionnaire's band branch is
+// equivalent to isQuestionnaireDue.
+
+export type QuestionnaireDecision = "deferred" | "due" | "not_due";
+
+// The whole three-way, PURE and unit-testable in one place. bandIntervalDays = the matched
+// recurring band's interval for the latest answer (null = one-shot / no recurring band;
+// the caller resolves it via matchRecurringBand). deferred → hide; due → (re)surface;
+// not_due → excluded as normal. Total + pure; the FAIL DIRECTIONS live in the caller.
+export function decideQuestionnaire(
+  latestAnswerMs: number | null,
+  latestMentionMs: number | null,
+  deferDays: number | null,
+  bandIntervalDays: number | null,
+  nowMs: number
+): QuestionnaireDecision {
+  const DAY = 86_400_000;
+  // Active mention = configured, exists, and NEWER than the answer (answer wins on tie).
+  const mentionActive =
+    deferDays !== null && deferDays !== undefined && deferDays > 0 &&
+    latestMentionMs !== null && latestMentionMs !== undefined &&
+    (latestAnswerMs === null || latestAnswerMs === undefined || latestMentionMs > latestAnswerMs);
+  if (mentionActive) {
+    // Deferred inside the window; the SAME mention past its window is the second due-source.
+    return nowMs - (latestMentionMs as number) < deferDays * DAY ? "deferred" : "due";
+  }
+  // No active mention → recurrence band governs (equivalent to isQuestionnaireDue).
+  if (latestAnswerMs === null || latestAnswerMs === undefined) return "not_due"; // never answered
+  if (bandIntervalDays === null || bandIntervalDays === undefined) return "not_due"; // one-shot
+  return nowMs - latestAnswerMs >= bandIntervalDays * DAY ? "due" : "not_due";
+}
+
+// Per-user DUE + DEFERRED sets for questionnaires, computed through the single
+// decideQuestionnaire above (no logic split between pivot and filter). Sibling to
+// computeMilestoneSuppression. Gathers the three inputs the decision needs — latest answer
+// (completedRows in hand), matched recurring-band interval (questionnaire_response), and
+// deferral config + latest topic mention (questionnaire + user_update_signals ⨝
+// user_update_events) — then classifies every answered-OR-configured questionnaire.
+//
+// FAIL DIRECTIONS are per-input so one failing query can't over-hide:
+//   • band load fails → treat as one-shot (no re-surface) = today's recurrence fail-safe.
+//   • defer/mention load fails → NO active mention anywhere (no deferral, no mention-due) —
+//     deferral can only ever HIDE, so its failure must read as "asked normally", never
+//     "silently hidden". Mention persistence is apply-only, so previews record none.
+export async function computeQuestionnaireDecisions(
+  userId: string,
+  pool: MlpPoolItem[],
+  completedRows: CompletedRow[]
+): Promise<{ due: Set<string>; deferred: Set<string> }> {
+  const due = new Set<string>();
+  const deferred = new Set<string>();
+  const now = Date.now();
+
+  // Latest answer per questionnaire (score + when).
   const latestByQ = new Map<string, { score: number | null; createdAt: number }>();
-  for (const r of completed) {
+  for (const r of completedRows) {
     if (r.item_type !== "questionnaire" || !r.item_id) continue;
     const t = new Date(r.created_at).getTime();
     const prev = latestByQ.get(r.item_id);
     if (!prev || t > prev.createdAt) latestByQ.set(r.item_id, { score: r.score, createdAt: t });
   }
-  if (latestByQ.size === 0) return new Set();
 
-  // Recurring bands for those questionnaires (repeat_after_days NOT NULL).
-  const { data: bandRows, error } = await db
-    .from("questionnaire_response")
-    .select("questionnaire_id, score_min_range, score_max_range, repeat_after_days")
-    .in("questionnaire_id", [...latestByQ.keys()])
-    .not("repeat_after_days", "is", null);
-  if (error) {
-    console.warn(`[rebuild_mlp] recurring-band load failed; treating all as one-shot: ${error.message}`);
-    return new Set();
-  }
+  // Recurring bands for the ANSWERED questionnaires (repeat_after_days NOT NULL). Load
+  // failure → leave empty → those questionnaires read as one-shot (recurrence fail-safe).
   const bandsByQ = new Map<string, Band[]>();
-  for (const b of (bandRows ?? []) as Array<Record<string, unknown>>) {
-    const qid = b.questionnaire_id as string | null;
-    const days = num(b.repeat_after_days);
-    if (!qid || days === null) continue;
-    const list = bandsByQ.get(qid) ?? [];
-    list.push({ min: num(b.score_min_range), max: num(b.score_max_range), days });
-    bandsByQ.set(qid, list);
-  }
-
-  const now = Date.now();
-  const due = new Set<string>();
-  for (const [qid, latest] of latestByQ) {
-    if (isQuestionnaireDue(latest.score, latest.createdAt, bandsByQ.get(qid) ?? [], now)) {
-      due.add(qid); // answered AND past due → re-surface
+  if (latestByQ.size > 0) {
+    const { data: bandRows, error } = await db
+      .from("questionnaire_response")
+      .select("questionnaire_id, score_min_range, score_max_range, repeat_after_days")
+      .in("questionnaire_id", [...latestByQ.keys()])
+      .not("repeat_after_days", "is", null);
+    if (error) {
+      console.warn(`[rebuild_mlp] recurring-band load failed; treating all as one-shot: ${error.message}`);
+    } else {
+      for (const b of (bandRows ?? []) as Array<Record<string, unknown>>) {
+        const qid = b.questionnaire_id as string | null;
+        const days = num(b.repeat_after_days);
+        if (!qid || days === null) continue;
+        const list = bandsByQ.get(qid) ?? [];
+        list.push({ min: num(b.score_min_range), max: num(b.score_max_range), days });
+        bandsByQ.set(qid, list);
+      }
     }
   }
-  return due;
+
+  // Deferral config (both fields non-null = deferrable) + latest topic mention per track.
+  // Any failure leaves configByQ empty → decideQuestionnaire sees no active mention →
+  // band-only (never silently hides).
+  const configByQ = new Map<string, { track: string; days: number }>();
+  const mentionByTrack = new Map<string, number>();
+  const qIds = pool.filter((i) => i.item_type === "questionnaire").map((i) => i.item_id);
+  if (qIds.length > 0) {
+    const { data: cfgRaw, error: cfgErr } = await db
+      .from("questionnaire")
+      .select("id, defer_topic, defer_days")
+      .in("id", qIds)
+      .not("defer_topic", "is", null)
+      .not("defer_days", "is", null);
+    if (cfgErr) {
+      console.warn(`[rebuild_mlp] deferral config load failed for ${userId}; deferring nothing: ${cfgErr.message}`);
+    } else {
+      for (const r of (cfgRaw ?? []) as Array<Record<string, unknown>>) {
+        const id = r.id as string | null;
+        const track = r.defer_topic as string | null;
+        const days = num(r.defer_days);
+        if (id && track && days !== null && days > 0) configByQ.set(id, { track, days });
+      }
+      const trackIds = [...new Set([...configByQ.values()].map((c) => c.track))];
+      if (trackIds.length > 0) {
+        // Latest mention per track: max(created_at) over the user's track-proposing signals.
+        const { data: sigRaw, error: sigErr } = await db
+          .from("user_update_signals")
+          .select("matched_track_id, created_at, user_update_events!inner(user_id)")
+          .in("matched_track_id", trackIds)
+          .eq("user_update_events.user_id", userId);
+        if (sigErr) {
+          console.warn(`[rebuild_mlp] mention query failed for ${userId}; deferring nothing: ${sigErr.message}`);
+          configByQ.clear(); // no reliable mentions → no active mention anywhere (show)
+        } else {
+          for (const s of (sigRaw ?? []) as Array<Record<string, unknown>>) {
+            const track = s.matched_track_id as string | null;
+            if (!track || !s.created_at) continue;
+            const t = new Date(s.created_at as string).getTime();
+            const prev = mentionByTrack.get(track);
+            if (prev === undefined || t > prev) mentionByTrack.set(track, t);
+          }
+        }
+      }
+    }
+  }
+
+  // Classify every answered-OR-configured questionnaire through the ONE pure decision.
+  const allQ = new Set<string>([...latestByQ.keys(), ...configByQ.keys()]);
+  for (const qid of allQ) {
+    const latest = latestByQ.get(qid) ?? null;
+    const bandInterval = latest ? matchRecurringBand(latest.score, bandsByQ.get(qid) ?? [])?.days ?? null : null;
+    const cfg = configByQ.get(qid);
+    const mentionT = cfg ? mentionByTrack.get(cfg.track) ?? null : null;
+    const decision = decideQuestionnaire(latest?.createdAt ?? null, mentionT, cfg?.days ?? null, bandInterval, now);
+    if (decision === "due") due.add(qid);
+    else if (decision === "deferred") deferred.add(qid);
+  }
+  return { due, deferred };
 }
 
 // The shared inputs the MLP is computed over: the user's active tracks (enriched
@@ -350,6 +468,8 @@ export async function computeUserMlp(
   // 4. Completed exclusion. include_completed → exclude NOTHING (skip the query + due
   //    computation entirely). Otherwise the normal set with due-again re-inclusion.
   let completedItems: CompletedItem[] = [];
+  // Topic-mention deferral exclusion keys (the never-answered case) — empty unless configured.
+  let deferredKeys: string[] = [];
   if (!overrides.includeCompleted) {
     //    score + created_at are pulled for recurrence (migration 033); they're ignored
     //    for non-questionnaire items and when no band has a repeat interval.
@@ -368,19 +488,28 @@ export async function computeUserMlp(
     // 4a. Recurrence (slice: score-band intervals) — DERIVED per-user at build time.
     //     Wrapped so any failure yields "nothing due" (default-to-exclude = today's
     //     one-shot behavior); a bug here can only fail to re-surface, never wrongly hide.
+    // 4a. Questionnaire due + deferral in ONE pass (recurrence band + topic-mention
+    //     deferral, migration 042), via the single decideQuestionnaire. `due` = band-elapsed
+    //     OR mention-resurfaced; `deferred` = currently hidden by an active topic mention.
+    //     Wrapped so any failure yields nothing-due + nothing-deferred (one-shot + shown) —
+    //     a bug here can only fail to re-surface or fail to hide, never wrongly hide.
     let dueQuestionnaires: Set<string> = new Set();
     try {
-      dueQuestionnaires = await computeDueQuestionnaires(completedRows);
+      const decisions = await computeQuestionnaireDecisions(userId, pool, completedRows);
+      dueQuestionnaires = decisions.due;
+      deferredKeys = [...decisions.deferred].map((id) => `questionnaire:${id}`);
     } catch (e) {
       console.warn(
-        `[rebuild_mlp] recurrence check errored for ${userId}; treating all questionnaires as one-shot: ${e instanceof Error ? e.message : String(e)}`
+        `[rebuild_mlp] questionnaire due/deferral check errored for ${userId}; treating all as one-shot, deferring nothing: ${e instanceof Error ? e.message : String(e)}`
       );
       dueQuestionnaires = new Set();
+      deferredKeys = [];
     }
 
-    // Due-again questionnaires drop OUT of the exclusion set so the pool re-includes
-    // them; everything else (all lessons, not-yet-due and one-shot questionnaires)
-    // excludes exactly as before.
+    // DUE questionnaires (band-elapsed OR mention-resurfaced) drop OUT of the exclusion set
+    // so the pool re-includes them; DEFERRED ones are NOT in `due` (decideQuestionnaire
+    // never returns both) and their keys join the exclusion channel below (the
+    // never-answered case). Everything else excludes exactly as before.
     completedItems = completedRows
       .filter((c) => !(c.item_type === "questionnaire" && dueQuestionnaires.has(c.item_id)))
       .map((c) => ({ item_id: c.item_id, item_type: c.item_type })) as CompletedItem[];
@@ -407,7 +536,10 @@ export async function computeUserMlp(
     completedItems,
     ages: ageMonthsUsed !== null ? [ageMonthsUsed] : [], // v1: youngest child only
     youngestAgeMonths: ageMonthsUsed, // CHANGE 2 pool age filter
-    suppressedItemKeys, // CHANGE 3 (slice 3) milestone suppression
+    // CHANGE 3 (milestone suppression) + CHANGE 4 (topic-mention deferral, migration 042):
+    // both hide regardless of answered state, so they share the exclusion channel. When no
+    // questionnaire is configured, deferredKeys is [] → byte-identical to before.
+    suppressedItemKeys: suppressedItemKeys.concat(deferredKeys),
   });
 
   const items: MlpItemRow[] = finalMLP.map((i) => ({

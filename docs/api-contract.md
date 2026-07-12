@@ -1317,6 +1317,34 @@ state table — so a recurring questionnaire only re-surfaces when a recompute r
 (today's onboarding/answer triggers; a due-moment trigger like on-open recompute is
 app-side, out of scope here).
 
+**Topic-mention deferral (migration 042).** Opt-in per questionnaire via
+`questionnaire.defer_topic` (uuid → `tracks.id`) + `defer_days` (int > 0); both NULL =
+off (the default). A recurring check-in is briefly HIDDEN after the parent recently
+"mentioned" its topic — a *mention* = a track-proposing classify signal
+(`max(user_update_signals.created_at)` over the user's signals where
+`matched_track_id = defer_topic`; persisted only under apply, so previews never record
+one). A mention is BOTH a deferral trigger and a second **due-source**, resolved as one
+three-way decision per questionnaire (`decideQuestionnaire`): **deferred** while
+`(no answer OR mention_T > latest_answer_T) ∧ (now − mention_T) < defer_days`, then
+**due** once `now ≥ mention_T + defer_days`, else the recurrence band governs.
+**Precedence:** an active mention (newer than the answer) wins over the band entirely —
+the questionnaire is hidden inside the window and **re-surfaces at `mention_T +
+defer_days`**; an answer newer-or-equal to the mention supersedes it (band governs,
+mention ignored). **Shortening (chosen, real):** because the mention drives due-ness, a
+post-answer mention can make an *answered* questionnaire re-appear EARLIER than its band —
+answer "fine" → 30d band, then a mention a week later → the check-in returns **~day 14,
+not day 30** (absent days 7–13, present from day 14). Mechanically: a due decision
+(band-elapsed OR mention-resurfaced) drops the item from the completed-exclusion; a
+deferred decision keeps it hidden and adds its key to the exclusion channel (covering the
+never-answered case). **INVERTED fail-safe:** any doubt or query error → NOT deferred /
+NOT mention-due (shows, or waits for its band) — deferral can only ever hide an ask, never
+silently hide a safety check-in. **POLICY (not code-enforced):** concern-shaped / clinical
+questionnaires must NOT opt in without clinician sign-off; the CMS slice carries the
+warning. All NULL → byte-identical to pre-042 (`decideQuestionnaire`'s band branch is
+equivalent to `isQuestionnaireDue`). *Follow-up (known, not built): `/questionnaire-status`
+does not yet report a `deferred` state — same pattern as the `age_gated` flag; flagged for
+a later slice.*
+
 **Admin/server — `POST /jobs { type:"rebuild_mlp" }`** — `input:{ user_id }` for one
 user, or `input:{ scope:"all" }` for a full rebuild. Async (202 + job). Admin JWT
 or `INTERNAL_API_KEY`. Used by CMS/tooling.
