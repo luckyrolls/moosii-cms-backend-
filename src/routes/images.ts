@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
+import { logApproval } from "../lib/approvalLog";
 
 const router = Router();
 const BUCKET = "lessons";
@@ -7,7 +8,6 @@ const BUCKET = "lessons";
 // POST /images/:id/approve
 router.post("/:id/approve", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  const { approved_by } = req.body as { approved_by?: string };
 
   // Load the row — need storage_path to derive the public URL before calling the RPC
   const { data: image, error: loadErr } = await supabase
@@ -33,7 +33,8 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: result, error: rpcErr } = await (supabase as any).rpc("approve_content_image", {
     p_id: id,
-    p_approved_by: approved_by ?? null,
+    // Actor is the verified JWT user ONLY — client-supplied approver retired.
+    p_approved_by: req.user?.id ?? null,
     p_public_url: urlData.publicUrl,
     p_storage_path: image.storage_path,
   } as any);
@@ -44,6 +45,7 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
     return;
   }
 
+  await logApproval("image", id, "approve", req);
   res.json({ ok: true, ...(result as object) });
 });
 

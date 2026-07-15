@@ -21,6 +21,7 @@ for internal/authoring/licensed data.
 | `source_documents` | Authority/guideline text, possibly licensed (e.g. AAP). Internal review input only — never app-facing. | 036 |
 | `lesson_source_documents` | Lesson↔doc linkage; internal review config. | 036 |
 | `content_findings` | AI review findings for internal human judgment — not app-facing. | 035 |
+| `content_approvals` | Append-only approval/attribution audit (who approved/published what). Written backend-only (service role via `logApproval`); never app-facing. A future CMS read-UI should go through a backend route (or needs an admin read policy — like `screen_help`, not a blanket deny). | 043 |
 | `screen_help` | Per-screen CMS help content (panels + concept markers). Internal authoring UI only — the app has no reason to read it. Readable content, admin-writable via the CMS. **CMS-direct — needs an admin POLICY, not blanket-deny (see Notes).** | 039 |
 
 ## Notes

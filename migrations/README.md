@@ -12,7 +12,7 @@ that.
 ## The two tracks
 - **001–005** — applied through the normal runner; **present** in
   `schema_migrations`. Trustworthy high-water mark for this range.
-- **006–042 + the `0001`–`0004` prompt track** — applied **by hand via the Supabase
+- **006–043 + the `0001`–`0004` prompt track** — applied **by hand via the Supabase
   SQL editor**; **NOT** in `schema_migrations`. This is the reconciliation list.
   (Note: `032` is reserved for the `user_track_matches`/column-drop migration, tracked
   separately — the list may temporarily have that hole. `008` is a BACKFILLED RECORD of
@@ -21,7 +21,7 @@ that.
 
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
-high-water number is bumped as migrations are added. (Current high-water: **042**.)
+high-water number is bumped as migrations are added. (Current high-water: **043**.)
 
 ## Why this matters
 - A file existing here does **not** prove it was applied — confirm against the live

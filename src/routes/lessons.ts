@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
-import { createAndStartJob } from "../jobs/runner";
+import { createAndStartJob, enqueueRebuildAllIfIdle } from "../jobs/runner";
 import { apiError } from "../lib/errors";
+import { logApproval } from "../lib/approvalLog";
 
 const router = Router();
 const BUCKET = "lessons";
@@ -54,7 +55,8 @@ router.post("/generate", async (req: Request, res: Response): Promise<void> => {
 // content + quiz are all-or-nothing per segment. Refuses a segment with no content.
 router.post("/:id/approve", async (req: Request, res: Response): Promise<void> => {
   const lessonId = req.params.id;
-  const approvedBy = (req.body?.approved_by as string | undefined) ?? req.user?.id ?? null;
+  // Actor is the verified JWT user ONLY — the client-supplied approver field is retired.
+  const approvedBy = req.user?.id ?? null;
 
   const { data: segs, error: segErr } = await supabase
     .from("segments").select("id").eq("lesson_id", lessonId);
@@ -111,6 +113,7 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
       p_seg_id: seg.id, p_approved_by: approvedBy, p_images: images,
     });
     if (error) { apiError(res, 500, "approve_failed", error.message); return; }
+    await logApproval("segment", seg.id, "approve", req);
     results.push(r);
   }
   res.json({ ok: true, lesson_id: lessonId, segments: results });
@@ -130,9 +133,44 @@ router.post("/:id/unapprove", async (req: Request, res: Response): Promise<void>
   for (const seg of segs) {
     const { data: r, error } = await db.rpc("unapprove_segment_bundle", { p_seg_id: seg.id });
     if (error) { apiError(res, 500, "unapprove_failed", error.message); return; }
+    await logApproval("segment", seg.id, "unapprove", req);
     results.push(r);
   }
   res.json({ ok: true, lesson_id: lessonId, segments: results });
+});
+
+// POST /lessons/:id/publish — flip lessons.is_published=true server-side. Replaces the
+// CMS's old Supabase-direct toggle so the publish is ATTRIBUTED (logApproval) and the
+// rebuild is hooked. Writes published_by=req.user.id (wiring the previously-unwired
+// column), logs the approval, and enqueues a coalesced rebuild. "Publishing ≠ content
+// approval" — this only flips the app-facing published flag.
+router.post("/:id/publish", async (req: Request, res: Response): Promise<void> => {
+  const id = req.params.id;
+  const { data, error } = await supabase
+    .from("lessons")
+    .update({ is_published: true, published_by: req.user?.id ?? null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) { apiError(res, 500, "db_error", error.message); return; }
+  if (!data || data.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
+  await logApproval("lesson", id, "publish", req);
+  void enqueueRebuildAllIfIdle({ reason: "lesson_publish", correlationId: id });
+  res.json({ ok: true, lesson_id: id, is_published: true });
+});
+
+// POST /lessons/:id/unpublish — flip is_published=false, clear published_by, log, rebuild.
+router.post("/:id/unpublish", async (req: Request, res: Response): Promise<void> => {
+  const id = req.params.id;
+  const { data, error } = await supabase
+    .from("lessons")
+    .update({ is_published: false, published_by: null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) { apiError(res, 500, "db_error", error.message); return; }
+  if (!data || data.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
+  await logApproval("lesson", id, "unpublish", req);
+  void enqueueRebuildAllIfIdle({ reason: "lesson_unpublish", correlationId: id });
+  res.json({ ok: true, lesson_id: id, is_published: false });
 });
 
 export default router;

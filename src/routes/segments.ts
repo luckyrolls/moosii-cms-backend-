@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { createJob, startJobsBatch } from "../jobs/runner";
 import { apiError } from "../lib/errors";
+import { logApproval } from "../lib/approvalLog";
 import { loadSegmentPromptRowById, loadBlock } from "../jobs/handlers/generateSegmentContent";
 
 const router = Router();
@@ -164,12 +165,13 @@ router.get("/:id/generation-log", async (req: Request, res: Response): Promise<v
 // (service-role) so it bypasses the segments RLS wall that blocks a direct
 // browser UPDATE. Mirrors the image-approve / questionnaire-publish pattern.
 router.post("/:id/approve", async (req: Request, res: Response): Promise<void> => {
-  const approvedBy = (req.body ?? {}).approved_by as string | undefined;
+  // Actor is the verified JWT user ONLY — client-supplied approver retired (the CMS used
+  // to send the session email into this uuid column; see migration 043).
   const { data, error } = await supabase
     .from("segments")
     .update({
       seg_status: "complete",
-      approved_by: approvedBy ?? null,
+      approved_by: req.user?.id ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", req.params.id)
@@ -177,6 +179,7 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
     .maybeSingle();
   if (error) { apiError(res, 500, "db_error", error.message); return; }
   if (!data) { apiError(res, 404, "not_found", "segment not found"); return; }
+  await logApproval("segment", req.params.id, "approve", req);
   res.json({ segment: data });
 });
 
@@ -190,6 +193,7 @@ router.post("/:id/unapprove", async (req: Request, res: Response): Promise<void>
     .maybeSingle();
   if (error) { apiError(res, 500, "db_error", error.message); return; }
   if (!data) { apiError(res, 404, "not_found", "segment not found"); return; }
+  await logApproval("segment", req.params.id, "unapprove", req);
   res.json({ segment: data });
 });
 

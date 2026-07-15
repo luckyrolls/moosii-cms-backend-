@@ -1353,8 +1353,11 @@ button — intentionally **un-coalesced**; an explicit force must not be swallow
 publish-state change propagates to users by enqueuing a **coalesced** `rebuild_mlp
 scope:all`. Triggers: questionnaire **publish/unpublish** hook it **server-side**
 (`/questionnaires/:id/publish|unpublish`, fire-and-forget — never blocks the publish);
-lesson **publish/unpublish** is a CMS Supabase-direct write with no backend route, so the
-CMS calls **`POST /mlp/rebuild-all`** right after it. Body (optional): `{ reason?,
+lesson **publish/unpublish** now go through backend routes **`POST
+/lessons/:id/publish|unpublish`** (migration 043) that flip `is_published` + `published_by`,
+log the approval, AND enqueue the coalesced rebuild — the CMS repointed its toggle here, so
+it no longer calls `/mlp/rebuild-all` for lessons (that endpoint stays for any other
+Supabase-direct publish-state change). Body (optional): `{ reason?,
 correlation_id? }` → stamped into the job's `input` (`triggered_by`, `correlation_id`) so
 **"why did a rebuild run"** is answerable from the `jobs` row. Returns `202 { enqueued,
 job_id, coalesced_into }`. **Coalescing guard:** if a `rebuild_mlp scope:all` job is
@@ -1600,6 +1603,26 @@ backend must preserve and the frontend leans on:
   finally receives a real bound. 041 is also the first in-repo record of the previously
   DB-only `mlp_item_pool` view. Downstream caveat: the questionnaire-status inspector
   (§3a) reads the pre-filter pool, so it may over-list age-gated questionnaires.
+- **`content_approvals` — append-only approval audit (migration 043).** One row per
+  approve/unapprove/publish/unpublish: `entity_type` (`segment`|`image`|`quiz`|
+  `questionnaire`|`lesson`), `entity_id` (uuid, polymorphic, **no FK** so the audit
+  survives entity deletion), `action`, `actor_id` (uuid, no FK), `actor_role`
+  (`admin`|`super_admin`), `created_at`. **JWT-STAMPING RULE (mandatory):** the actor is
+  ALWAYS `req.user.id`/`req.user.role` from the verified admin JWT — **never** the request
+  body. Written by `logApproval(entity_type, entity_id, action, req)` (`src/lib/approvalLog.ts`,
+  no approver parameter → a client-supplied approver structurally cannot reach it), called
+  from every approve/unapprove/publish/unpublish route: the lesson bundle
+  (`/lessons/:id/approve|unapprove` → one `segment` row per segment), standalone segment
+  (`/segments/:id/approve|unapprove`), image (`/content-images/:id/approve`), quiz
+  (`/quiz/:segment_id/approve|unapprove` → `entity_id` = segment), questionnaire
+  (`/questionnaires/:id/publish|unpublish`), and the new lesson (`/lessons/:id/publish|unpublish`).
+  This is the AUTHORITATIVE attribution record (append-only history answers "what did
+  approver X do while Y was away"); the per-entity `approved_by`/`published_by` columns are
+  kept as a convenience "current approver" mirror, written the correct server-side value
+  going forward. Legacy `segments.approved_by` is unreliable (pre-043 the CMS sent an
+  email) — left documented-dead, not nulled (migration 043 header). NOT logged: image
+  `reject` (outside the four-action enum — flagged for a follow-up if a `reject` action is
+  wanted). Internal-only (`docs/rls-sweep.md`).
 
 ---
 
