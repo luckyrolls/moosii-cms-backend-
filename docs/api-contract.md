@@ -1167,6 +1167,52 @@ on the **RLS sweep** (`docs/rls-sweep.md`): RLS enabled, no anon read.
 
 ---
 
+## 2m. Track coverage audit — analyze → propose → accept
+
+A review-before-insert front-end to lesson ideation: analyze a track's EXISTING lessons
+(stubs — pre-content) against its topic + age span and propose gap-filler stubs. Splits
+the comparative gap-fill that `generate_lessons` already does — the **analysis writes
+NOTHING**; a human picks; a separate **sync accept** inserts via the same atomic RPC. No
+generation-pipeline change.
+
+**Analyze — `POST /jobs { type:"coverage_audit" }`** (admin/internal). Async job (202 +
+job; poll `jobs.result`).
+```
+input: { track_id, min_child_age?, max_child_age? }
+  // age span is DERIVED from existing lessons' [min,max] when the track has lessons;
+  // min/max_child_age are REQUIRED only on a ZERO-lesson track (tracks carry no age range).
+jobs.result: {
+  track: { id, name, description, min_age, max_age },
+  age_span_used: { min, max },
+  coverage_read: { summary, thin_areas: [ { topic, age_band, note } ] },   // where it's thin, by subtopic AND age band
+  existing_lessons: [ { lesson_name, description, min_child_age, max_child_age, priority, topic } ], // echoed for side-by-side
+  proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority, fills_gap, rationale } ],
+  model
+}
+```
+Each proposal carries `topic` (from the topics allow-set) + `priority` — the fields the
+accept tail needs — plus `fills_gap`/`rationale` for display. **Nothing is written**;
+proposals are ephemeral (this payload) until accepted. Prompt: a `prompts` row,
+`prompt_type='coverage_audit'` (starts from the `'lesson'` system_message + comparative
+framing).
+
+**Accept — `POST /lessons/coverage-accept`** (admin JWT). **Sync** (an insert, no LLM).
+Per-proposal — the CMS sends only the picked proposals (they aren't stored):
+```
+body: { track_id, proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority } ] }
+→ 200 { ok, track_id, lessons_created, lessons: [ { id, lesson_name, description } ] }
+→ 422 unresolved_topic  // a topic outside the allow-set → fail-loud, NOTHING inserted (identical to generate_lessons)
+```
+Resolves `topic` name→id (fail-loud) then calls `create_lessons_with_segments` — so accepted
+stubs are **byte-identical** to ideation-created stubs (unpublished, un-approved, same 8
+columns, one segment each) and the downstream batch-generate flow treats them identically.
+**`band_rationale`/`safety_sensitive` are display-only — the RPC drops them** (the same
+pre-existing quirk as ideation; not fixed here). The proposal's `fills_gap`/`rationale` are
+display-only too (never persisted). The stale `POST /lessons/generate` route is unrelated
+dead code (flagged for housekeeping, not used here).
+
+---
+
 ## 2f. Generate track content (batch orchestrator) — DELIVERED
 
 `POST /jobs { type:'generate_track_content', input:{...} } → 202 { job_id }`.

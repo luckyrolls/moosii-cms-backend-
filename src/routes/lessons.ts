@@ -173,4 +173,59 @@ router.post("/:id/unpublish", async (req: Request, res: Response): Promise<void>
   res.json({ ok: true, lesson_id: id, is_published: false });
 });
 
+// POST /lessons/coverage-accept — accept selected track-coverage-audit proposals as lesson
+// STUBS. Sync (just an insert, no LLM). Per-proposal: the CMS sends only the picked
+// proposals (they're ephemeral — held in the audit job's result). Resolves each topic
+// name -> id and FAILS LOUD on any miss (identical to generate_lessons), then inserts via
+// the SAME atomic create_lessons_with_segments RPC — so accepted stubs are byte-identical
+// to ideation-created stubs (unpublished, un-approved, same 8 columns, one segment each).
+// band_rationale/safety_sensitive are display-only and NOT persisted (the RPC drops them —
+// the same pre-existing quirk as ideation; not fixed here).
+router.post("/coverage-accept", async (req: Request, res: Response): Promise<void> => {
+  const { track_id, proposals } = req.body as {
+    track_id?: string;
+    proposals?: Array<{
+      lesson_name: string; description: string;
+      min_child_age: number; max_child_age: number; topic: string; priority: number;
+    }>;
+  };
+  if (!track_id) { apiError(res, 400, "missing_field", "track_id is required"); return; }
+  if (!Array.isArray(proposals) || proposals.length === 0) {
+    apiError(res, 400, "missing_field", "proposals (non-empty array) is required"); return;
+  }
+
+  // Topic allow-set for name -> id resolution (identical to generate_lessons Step 8).
+  const { data: topics, error: topicsErr } = await supabase.from("topics").select("id, name");
+  if (topicsErr || !topics) { apiError(res, 500, "db_error", topicsErr?.message ?? "failed to load topics"); return; }
+  const normalize = (s: string) => (s ?? "").trim().toLowerCase();
+  const topicIdByName = new Map(topics.map((t) => [normalize(t.name ?? ""), t.id]));
+
+  const unresolved: string[] = [];
+  const rows = proposals.map((p) => {
+    const topic_id = topicIdByName.get(normalize(p.topic));
+    if (!topic_id) unresolved.push(`"${p.lesson_name}" → topic "${p.topic}"`);
+    return {
+      lesson_name: p.lesson_name,
+      description: p.description,
+      min_child_age: p.min_child_age,
+      max_child_age: p.max_child_age,
+      priority: p.priority,
+      track_id,
+      topic_id,
+      ...(req.user?.id && { created_by: req.user.id }),
+    };
+  });
+  if (unresolved.length > 0) {
+    apiError(res, 422, "unresolved_topic",
+      `Proposal(s) with a topic outside the allowed set: ${unresolved.join("; ")}. ` +
+      `Allowed: ${topics.map((t) => t.name).join(", ")}. Nothing inserted.`);
+    return;
+  }
+
+  // Same atomic tail as ideation — lessons + one segment each, all other columns defaulted.
+  const { data: created, error: rpcErr } = await db.rpc("create_lessons_with_segments", { p_lessons: rows });
+  if (rpcErr || !created) { apiError(res, 500, "insert_failed", rpcErr?.message ?? "insert failed"); return; }
+  res.json({ ok: true, track_id, lessons_created: (created as unknown[]).length, lessons: created });
+});
+
 export default router;
