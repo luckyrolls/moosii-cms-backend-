@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -623,6 +623,36 @@ export type Database = {
           updated_at?: string | null
           weight_factor?: number | null
           yearly_fee?: number
+        }
+        Relationships: []
+      }
+      content_approvals: {
+        Row: {
+          action: string
+          actor_id: string
+          actor_role: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          actor_role?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          actor_role?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
         }
         Relationships: []
       }
