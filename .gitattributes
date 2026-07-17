@@ -1,0 +1,4 @@
+# The coverage_audit prompt seed's system_message must be stored with CRLF, byte-identical
+# to the live prompt_type='lesson' row it derives from. -text disables all line-ending
+# conversion so git preserves the CRLF exactly (blob == working tree), never autocrlf'ing it.
+migrations/0006_coverage_audit_prompt_seed.sql -text

@@ -1184,17 +1184,28 @@ input: { track_id, min_child_age?, max_child_age? }
 jobs.result: {
   track: { id, name, description, min_age, max_age },
   age_span_used: { min, max },
-  coverage_read: { summary, thin_areas: [ { topic, age_band, note } ] },   // where it's thin, by subtopic AND age band
+  coverage_read: { summary, thin_areas: [ { area, age_band, note } ] },
+    // The audit's assessment, emitted BEFORE proposing (it's what forces whole-span
+    // reasoning). `area` = the subtopic, FREE-FORM prose — deliberately NOT the
+    // allow-set-constrained `proposals[].topic`. Both `area` and `age_band` are always
+    // present; the literal "all" in either means it spans every subtopic / every age band.
+    // On an empty track, `thin_areas` enumerates the major uncovered areas across the span.
   existing_lessons: [ { lesson_name, description, min_child_age, max_child_age, priority, topic } ], // echoed for side-by-side
-  proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority, fills_gap, rationale } ],
+  proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority,
+                 band_rationale, safety_sensitive, coverage_rationale, fills_gap } ],
   model
 }
 ```
 Each proposal carries `topic` (from the topics allow-set) + `priority` — the fields the
-accept tail needs — plus `fills_gap`/`rationale` for display. **Nothing is written**;
-proposals are ephemeral (this payload) until accepted. Prompt: a `prompts` row,
-`prompt_type='coverage_audit'` (starts from the `'lesson'` system_message + comparative
-framing).
+accept tail needs — plus, for display: **`fills_gap`** (which gap it fills — a subtopic, an
+age band, or both) and **`coverage_rationale`** — *`coverage_rationale` IS the per-proposal
+display rationale the CMS renders; there is **no** bare `rationale` field, and one must not
+be invented.* `band_rationale`/`safety_sensitive` are display-only too (the accept RPC drops
+them). **Nothing is written**; proposals are ephemeral (this payload) until accepted.
+**Zero proposals is a correct result** on a well-covered track (findings-or-silence — the
+prompt forbids padding, and no code cap is enforced because accept is human-gated
+per-proposal). Prompt: a `prompts` row, `prompt_type='coverage_audit'` (migration 0006 —
+derived from the `'lesson'` system_message, six sections byte-identical).
 
 **Accept — `POST /lessons/coverage-accept`** (admin JWT). **Sync** (an insert, no LLM).
 Per-proposal — the CMS sends only the picked proposals (they aren't stored):

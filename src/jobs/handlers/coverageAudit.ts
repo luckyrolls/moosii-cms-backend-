@@ -72,6 +72,7 @@ function buildUserMessage(opts: {
   maxAge: number;
   topicNames: string[];
   existing: unknown[];
+  usedPriorities: number[];
 }): string {
   const parts: string[] = [];
   parts.push(
@@ -82,9 +83,13 @@ function buildUserMessage(opts: {
   );
   parts.push(`AVAILABLE TOPICS\n${opts.topicNames.join("\n")}`);
   if (opts.existing.length > 0) {
+    // The trailing priority line is REQUIRED: the (verbatim) PRIORITY rule says "you will
+    // be given the priority values already used in this track" and forbids collisions —
+    // without this line that rule is dead text. Format matches generate_lessons exactly.
     parts.push(
       `EXISTING LESSONS IN THIS TRACK — map coverage across subtopic AND age band, then propose ` +
-      `ONLY gap-fillers; do not duplicate or closely overlap these:\n${JSON.stringify(opts.existing, null, 2)}`
+      `ONLY gap-fillers; do not duplicate or closely overlap these:\n${JSON.stringify(opts.existing, null, 2)}\n` +
+      `Priority values already in use: ${opts.usedPriorities.join(", ")}`
     );
   } else {
     parts.push(`EXISTING LESSONS IN THIS TRACK\nNone yet — the audit degenerates to full age-aware ideation across the span.`);
@@ -123,6 +128,8 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
     priority: l.priority,
     topic: l.topic_id ? topicNameById.get(l.topic_id) ?? null : null,
   }));
+  // Reference anchors for the PRIORITY rule (never collide with a value in use).
+  const usedPriorities = existingRows.map((l) => l.priority).filter(Boolean) as number[];
 
   // Age span: DERIVE [min,max] from existing lessons when present; REQUIRE it as input on a
   // zero-lesson track (tracks carry no age range column).
@@ -151,6 +158,7 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
     maxAge,
     topicNames: topics.map((t) => t.name ?? "").filter(Boolean),
     existing: existingForPrompt,
+    usedPriorities,
   });
 
   const correlationId = randomUUID();
