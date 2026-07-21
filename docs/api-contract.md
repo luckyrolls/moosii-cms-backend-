@@ -1221,7 +1221,11 @@ stubs are **byte-identical** to ideation-created stubs (unpublished, un-approved
 columns, one segment each) and the downstream batch-generate flow treats them identically.
 **`band_rationale`/`safety_sensitive` are display-only — the RPC drops them** (the same
 pre-existing quirk as ideation; not fixed here). The proposal's `fills_gap`/`rationale` are
-display-only too (never persisted). The stale `POST /lessons/generate` route is unrelated
+display-only too (never persisted). `lessons` rows may also carry an optional **`curator_note`**
+(nullable text) — CMS-reviewer curation metadata, never parent-facing and never AI-written.
+Migration 044 lets `create_lessons_with_segments` persist it when the payload includes the key
+(NULL when absent); it is NOT part of the accept body above (the handler's row whitelist omits
+it) and no generation path sets it — it is written via a separate CMS curation update. The stale `POST /lessons/generate` route is unrelated
 dead code (flagged for housekeeping, not used here).
 
 ---
