@@ -17,7 +17,9 @@ const db = supabase as any;
 
 type Input = {
   track_id: string;
-  // Required only when the track has ZERO existing lessons (nothing to derive the span from).
+  // Age span override. When supplied, it WINS over the derived span (operator override); when
+  // omitted, the span is derived from existing lessons. REQUIRED only when the track has ZERO
+  // existing lessons (nothing to derive from).
   min_child_age?: number;
   max_child_age?: number;
 };
@@ -131,22 +133,23 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
   // Reference anchors for the PRIORITY rule (never collide with a value in use).
   const usedPriorities = existingRows.map((l) => l.priority).filter(Boolean) as number[];
 
-  // Age span: DERIVE [min,max] from existing lessons when present; REQUIRE it as input on a
-  // zero-lesson track (tracks carry no age range column).
+  // Age span precedence: SUPPLIED span always wins (operator override — the CMS sends it when
+  // the author narrows/widens the audit window); DERIVE [min,max] from existing lessons only
+  // when the input omits it; REQUIRE it as input on a zero-lesson track (tracks carry no age
+  // range column, so there is nothing to derive from). age_span_used reports the outcome.
   let minAge: number, maxAge: number;
   const mins = existingRows.map((l) => l.min_child_age).filter((v): v is number => typeof v === "number");
   const maxs = existingRows.map((l) => l.max_child_age).filter((v): v is number => typeof v === "number");
-  if (mins.length > 0 && maxs.length > 0) {
+  if (typeof min_child_age === "number" && typeof max_child_age === "number") {
+    minAge = min_child_age;
+    maxAge = max_child_age;
+  } else if (mins.length > 0 && maxs.length > 0) {
     minAge = Math.min(...mins);
     maxAge = Math.max(...maxs);
   } else {
-    if (typeof min_child_age !== "number" || typeof max_child_age !== "number") {
-      throw new Error(
-        "No age span available: the track has no existing lessons with age bounds — supply min_child_age and max_child_age in the job input."
-      );
-    }
-    minAge = min_child_age;
-    maxAge = max_child_age;
+    throw new Error(
+      "No age span available: the track has no existing lessons with age bounds — supply min_child_age and max_child_age in the job input."
+    );
   }
 
   // Prompt + LLM (params + schema from the DB row, like generate_lessons).

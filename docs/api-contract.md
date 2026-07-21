@@ -1179,8 +1179,10 @@ generation-pipeline change.
 job; poll `jobs.result`).
 ```
 input: { track_id, min_child_age?, max_child_age? }
-  // age span is DERIVED from existing lessons' [min,max] when the track has lessons;
-  // min/max_child_age are REQUIRED only on a ZERO-lesson track (tracks carry no age range).
+  // age span precedence: a SUPPLIED span always wins (operator override); derivation from
+  // existing lessons' [min,max] is the FALLBACK when the span is omitted; the span is
+  // REQUIRED when the track has zero lessons (tracks carry no age range column to derive from).
+  // `age_span_used` in the result reports which span was applied.
 jobs.result: {
   track: { id, name, description, min_age, max_age },
   age_span_used: { min, max },
