@@ -1178,11 +1178,13 @@ generation-pipeline change.
 **Analyze — `POST /jobs { type:"coverage_audit" }`** (admin/internal). Async job (202 +
 job; poll `jobs.result`).
 ```
-input: { track_id, min_child_age?, max_child_age? }
+input: { track_id, min_child_age?, max_child_age?, author_instructions? }
   // age span precedence: a SUPPLIED span always wins (operator override); derivation from
   // existing lessons' [min,max] is the FALLBACK when the span is omitted; the span is
   // REQUIRED when the track has zero lessons (tracks carry no age range column to derive from).
   // `age_span_used` in the result reports which span was applied.
+  // author_instructions: authoritative per-run guidance, injected as an AUTHOR INSTRUCTIONS
+  // block — same semantics as generate_lessons (overrides on conflict); absent → no block.
 jobs.result: {
   track: { id, name, description, min_age, max_age },
   age_span_used: { min, max },

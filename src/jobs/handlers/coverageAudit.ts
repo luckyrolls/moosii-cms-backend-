@@ -22,6 +22,11 @@ type Input = {
   // existing lessons (nothing to derive from).
   min_child_age?: number;
   max_child_age?: number;
+  // Authoritative per-run guidance, injected as an AUTHOR INSTRUCTIONS block — same framing,
+  // position, and semantics as generate_lessons (the prompt's AUTHOR INSTRUCTIONS section,
+  // carried verbatim from the lesson prompt, treats it as overriding). Absent/blank → no block
+  // injected, output byte-identical to before.
+  author_instructions?: string;
 };
 
 type CoverageAuditPromptRow = {
@@ -75,6 +80,7 @@ function buildUserMessage(opts: {
   topicNames: string[];
   existing: unknown[];
   usedPriorities: number[];
+  additionalInfo?: string;
 }): string {
   const parts: string[] = [];
   parts.push(
@@ -96,11 +102,16 @@ function buildUserMessage(opts: {
   } else {
     parts.push(`EXISTING LESSONS IN THIS TRACK\nNone yet — the audit degenerates to full age-aware ideation across the span.`);
   }
+  // AUTHOR INSTRUCTIONS — mirrored verbatim from generate_lessons (same header, same trim,
+  // same trailing position). The prompt's AUTHOR INSTRUCTIONS section makes this authoritative.
+  if (opts.additionalInfo && opts.additionalInfo.trim()) {
+    parts.push(`AUTHOR INSTRUCTIONS\n${opts.additionalInfo.trim()}`);
+  }
   return parts.join("\n\n");
 }
 
 export async function coverageAuditHandler(job: Job): Promise<unknown> {
-  const { track_id, min_child_age, max_child_age } = job.input as Input;
+  const { track_id, min_child_age, max_child_age, author_instructions } = job.input as Input;
   if (!track_id) throw new Error("input.track_id is required");
 
   // Step 1 (VERBATIM from generate_lessons) — track name + description.
@@ -162,6 +173,7 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
     topicNames: topics.map((t) => t.name ?? "").filter(Boolean),
     existing: existingForPrompt,
     usedPriorities,
+    additionalInfo: author_instructions,
   });
 
   const correlationId = randomUUID();
@@ -184,7 +196,9 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
     latencyMs: Date.now() - llmStart,
     relatedEntityType: null,
     relatedEntityId: null,
-    notes: `track_id: ${track_id}; age_span: ${minAge}-${maxAge}; existing_lessons: ${existingRows.length}`,
+    notes: `track_id: ${track_id}; age_span: ${minAge}-${maxAge}; existing_lessons: ${existingRows.length}; author_instructions: ${
+      author_instructions && author_instructions.trim() ? JSON.stringify(author_instructions) : "none"
+    }`,
   });
   if (result.finishReason === "length" || result.finishReason === "content_filter") {
     throw new Error(
