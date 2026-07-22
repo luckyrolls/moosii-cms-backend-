@@ -1214,21 +1214,24 @@ derived from the `'lesson'` system_message, six sections byte-identical).
 **Accept — `POST /lessons/coverage-accept`** (admin JWT). **Sync** (an insert, no LLM).
 Per-proposal — the CMS sends only the picked proposals (they aren't stored):
 ```
-body: { track_id, proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority } ] }
+body: { track_id, proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority,
+        safety_sensitive?, band_rationale?, curator_note? } ] }
 → 200 { ok, track_id, lessons_created, lessons: [ { id, lesson_name, description } ] }
 → 422 unresolved_topic  // a topic outside the allow-set → fail-loud, NOTHING inserted (identical to generate_lessons)
 ```
 Resolves `topic` name→id (fail-loud) then calls `create_lessons_with_segments` — so accepted
-stubs are **byte-identical** to ideation-created stubs (unpublished, un-approved, same 8
-columns, one segment each) and the downstream batch-generate flow treats them identically.
-**`band_rationale`/`safety_sensitive` are display-only — the RPC drops them** (the same
-pre-existing quirk as ideation; not fixed here). The proposal's `fills_gap`/`rationale` are
-display-only too (never persisted). `lessons` rows may also carry an optional **`curator_note`**
-(nullable text) — CMS-reviewer curation metadata, never parent-facing and never AI-written.
-Migration 044 lets `create_lessons_with_segments` persist it when the payload includes the key
-(NULL when absent); it is NOT part of the accept body above (the handler's row whitelist omits
-it) and no generation path sets it — it is written via a separate CMS curation update. The stale `POST /lessons/generate` route is unrelated
-dead code (flagged for housekeeping, not used here).
+stubs are **byte-identical** to ideation-created stubs (unpublished, un-approved, one segment
+each) and the downstream batch-generate flow treats them identically. **`band_rationale` and
+`safety_sensitive` ARE persisted on accept** — the RPC has inserted both since migration 011,
+and the handler forwards them from each proposal (`safety_sensitive` as the model emitted it;
+absent → coalesces false / band_rationale NULL). The old "RPC drops them" claim was pre-011
+folklore. The proposal's `coverage_rationale`/`fills_gap` stay display-only (never persisted).
+Optional **`curator_note`** (nullable text) — CMS-reviewer curation provenance, never
+parent-facing, never AI-written — is accepted per-proposal and forwarded (migration 044; absent
+→ NULL). **NOTE:** the CMS `acceptPayload` currently sends only the 6-field subset, so accepts
+*through the CMS* still default `safety_sensitive`/`band_rationale` until it forwards them; a
+direct caller (the bulk import) that sends the full proposal gets them persisted. The stale
+`POST /lessons/generate` route is unrelated dead code (flagged for housekeeping, not used here).
 
 ---
 

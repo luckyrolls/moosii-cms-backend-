@@ -178,15 +178,24 @@ router.post("/:id/unpublish", async (req: Request, res: Response): Promise<void>
 // proposals (they're ephemeral — held in the audit job's result). Resolves each topic
 // name -> id and FAILS LOUD on any miss (identical to generate_lessons), then inserts via
 // the SAME atomic create_lessons_with_segments RPC — so accepted stubs are byte-identical
-// to ideation-created stubs (unpublished, un-approved, same 8 columns, one segment each).
-// band_rationale/safety_sensitive are display-only and NOT persisted (the RPC drops them —
-// the same pre-existing quirk as ideation; not fixed here).
+// to ideation-created stubs (unpublished, un-approved, one segment each). The RPC PERSISTS
+// band_rationale + safety_sensitive (added in migration 011) and curator_note (044); this
+// handler forwards all three from each proposal so an accepted safety-sensitive lesson lands
+// flagged (the old "RPC drops them" note was pre-011 folklore). coverage_rationale/fills_gap
+// stay display-only (never sent). NOTE: the CMS acceptPayload currently sends only the 6-field
+// subset — until it forwards safety_sensitive/band_rationale too, accepts THROUGH the CMS still
+// default those; direct callers (import) that send the full proposal get them persisted.
 router.post("/coverage-accept", async (req: Request, res: Response): Promise<void> => {
   const { track_id, proposals } = req.body as {
     track_id?: string;
     proposals?: Array<{
       lesson_name: string; description: string;
       min_child_age: number; max_child_age: number; topic: string; priority: number;
+      // Persisted columns the model emits on each proposal (create_lessons_with_segments
+      // has carried these since 011). Optional so a caller still sending the old 6-field
+      // subset keeps working: absent safety_sensitive coalesces false, absent band_rationale
+      // inserts NULL. curator_note is human-supplied provenance (011/044) — absent = NULL.
+      safety_sensitive?: boolean; band_rationale?: string; curator_note?: string;
     }>;
   };
   if (!track_id) { apiError(res, 400, "missing_field", "track_id is required"); return; }
@@ -212,6 +221,12 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
       priority: p.priority,
       track_id,
       topic_id,
+      // Forward the model's flags so an accepted proposal lands byte-identical to
+      // ideation. safety_sensitive is passed as-is (including false); undefined →
+      // dropped → RPC coalesces false. band_rationale undefined → dropped → NULL.
+      safety_sensitive: p.safety_sensitive,
+      band_rationale: p.band_rationale,
+      ...(p.curator_note ? { curator_note: p.curator_note } : {}),
       ...(req.user?.id && { created_by: req.user.id }),
     };
   });
@@ -222,7 +237,7 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
     return;
   }
 
-  // Same atomic tail as ideation — lessons + one segment each, all other columns defaulted.
+  // Same atomic tail as ideation — lessons (with the model's flags) + one segment each.
   const { data: created, error: rpcErr } = await db.rpc("create_lessons_with_segments", { p_lessons: rows });
   if (rpcErr || !created) { apiError(res, 500, "insert_failed", rpcErr?.message ?? "insert failed"); return; }
   res.json({ ok: true, track_id, lessons_created: (created as unknown[]).length, lessons: created });
