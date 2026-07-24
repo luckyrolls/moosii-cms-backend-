@@ -1441,6 +1441,39 @@ Ordering inputs: item `priority`, track `priority`/`order`/`weight`,
 `age_track_weights`, global `consts`. `user_mlp_mods` (per-user manual overrides)
 — **not yet applied by the recompute** (BuildShip did; port pending).
 
+### 3c. Archival — parent-invisibility (migrations 045–046) — DELIVERED
+`tracks.archived_at` and `lessons.archived_at` (both nullable timestamptz; non-null =
+archived). Purpose: shelve test/legacy content while rebuilding the catalog, WITHOUT
+deleting it. **Effective-archived is DERIVED, never stamped:** a lesson is archived if
+`lessons.archived_at IS NOT NULL` **OR** its track's `archived_at IS NOT NULL`. Archiving a
+track does **not** bulk-update its lessons.
+
+**Guarantee: archived content is invisible to PARENTS, not just the CMS.** Enforced in the
+derived assignment/MLP layer, at three points that all inputs converge on:
+- **Track archival** → excluded from the resolved active-track set in
+  `user_active_tracks_for_user()` **and** its view twin `user_active_tracks` (migration 045,
+  `AND t.archived_at IS NULL` beside the `* All Tracks` sentinel). Because every assignment
+  path (defaults, demographic rules, questionnaire routing, classify/manual mods) converges
+  on that one `JOIN tracks`, and `generateFullMLP` only buckets pool items whose track is in
+  that set, an archived track's **lessons and its host questionnaires** all drop from every
+  MLP. Questionnaire visibility follows its **host** track (`mlp_item_pool.track_id`); routing
+  to an archived **target** track is also inert (filtered at the same resolution).
+- **Lesson archival** (individual lesson in a live track) → `mlp_item_pool` lesson arm
+  excludes `l.archived_at IS NOT NULL` (migration 046). Questionnaire arm unchanged
+  (questionnaires carry no `archived_at`; track-derived only).
+- **AI classification** → `assembleCatalog()` loads only `archived_at IS NULL` tracks, so the
+  classifier can never propose an archived track (and `applyGate` drops any that aren't in the
+  catalog). `apply_classification` is left as-is — an archived proposal it never receives, and
+  recompute is the backstop regardless.
+
+**CMS is unaffected:** admin list routes (`/lessons`, `/questionnaires`, `/segments`, …) stay
+UNFILTERED so the CMS can see/manage archived rows; `GET /mlp/:user/preview` *does* inherit the
+exclusion (it mirrors the parent's real path). **Enforcement is at RECOMPUTE** — an archived
+row leaves a user's plan on their next `/mlp/recompute` (or a `scope:all` rebuild), not
+instantly. Acceptable today (no live users). **Known follow-up if instant effect is ever
+needed for a live population:** add `archived_at IS NULL` to the app-read view
+`user_mlp_not_completed`.
+
 ### 3a. Questionnaire status (CMS user-MLP inspector) — DELIVERED
 ```
 GET /mlp/:user_id/questionnaire-status

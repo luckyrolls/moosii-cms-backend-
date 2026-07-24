@@ -30,9 +30,13 @@ export type Catalog = {
 };
 
 export async function assembleCatalog(): Promise<Catalog> {
-  // 1. every track
-  const { data: tracks, error: tErr } = await db
-    .from("tracks").select("id, track_name, description").order("track_name");
+  // 1. every ACTIVE track — archived tracks are excluded so the classifier can never
+  //    propose one (applyGate then also drops any track_id absent from this catalog).
+  //    Parent-invisibility: an archived track must not be an activation candidate.
+  //    `archived_at` postdates database.types.ts → `as any` bridge (regenerate to drop it).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: tracks, error: tErr } = await (db as any)
+    .from("tracks").select("id, track_name, description").is("archived_at", null).order("track_name");
   if (tErr) throw new Error(`Failed to load tracks: ${tErr.message}`);
 
   // 2. add-track routing rules (the §7 view)
@@ -79,7 +83,9 @@ export async function assembleCatalog(): Promise<Catalog> {
     routesByTrack.set(tid, arr);
   }
 
-  const catalogTracks: CatalogTrack[] = (tracks ?? []).map((t) => ({
+  const catalogTracks: CatalogTrack[] = ((tracks ?? []) as Array<{
+    id: string; track_name: string | null; description: string | null;
+  }>).map((t) => ({
     id:          t.id,
     name:        t.track_name,
     description: t.description,
