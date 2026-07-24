@@ -409,8 +409,15 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       category dropped+logged; `note`→finding, `quote`→claim_quote, `card_title`→sub_segment).
       Review schema is unwrapped ({name,schema,strict}→bare) so the enum survives on Gemini.
       Block IDs logged to `ai_generation_log.blocks` (jsonb). Gemini provider now honors
-      model/temperature/max_tokens (hardcode = fallback) — NOTE: review prompt rows carry
-      `model='gpt-4o'`; on Gemini set them to a Gemini model or NULL.
+      model/temperature/max_tokens (hardcode = fallback). NOTE: the review path now DERIVES its
+      provider from the row's `model` via `providerForModel()` (`src/llm/index.ts`) — the model
+      string selects the client (gemini* → gemini, gpt*/o[134]* → openai), so setting a review
+      row's `model` is sufficient to route it (no `REVIEW_WRITER` change needed; that env is only
+      the fallback when `model` is NULL). A NULL model falls back to `REVIEW_WRITER` (default
+      openai). Earlier folklore ("set the row to a Gemini model or NULL") was incomplete — a
+      gemini model with `REVIEW_WRITER` still openai used to 404 because provider and model were
+      chosen independently. Other handlers still hardcode their provider (consistent with their
+      gpt-* rows today); adopt `providerForModel` there too if any switches provider.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
       `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing

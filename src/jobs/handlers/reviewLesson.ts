@@ -1,5 +1,5 @@
 import { supabase } from "../../supabase";
-import { getLLMClient } from "../../llm";
+import { getLLMClient, providerForModel, type LLMProvider } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
 
@@ -24,7 +24,6 @@ const db = supabase as any;
 // ---------------------------------------------------------------------------
 
 type ReviewType = string; // free text; the seeded types are best_practices | factual_smell
-type Provider = "openai" | "gemini";
 
 type ReviewPromptRow = {
   id: string;
@@ -93,7 +92,9 @@ async function loadLinkedDocs(lessonId: string): Promise<SourceDoc[]> {
   return (docs ?? []) as SourceDoc[];
 }
 
-function resolveProvider(): Provider {
+// Fallback provider ONLY — used when the prompt row carries no model. Provider is normally
+// derived from the row's model via providerForModel (the row is the source of truth).
+function resolveProvider(): LLMProvider {
   const p = (process.env.REVIEW_WRITER || "openai").toLowerCase();
   if (p !== "openai" && p !== "gemini") {
     throw new Error(`Invalid REVIEW_WRITER="${p}" (expected "openai" or "gemini")`);
@@ -191,7 +192,7 @@ export type ReviewLessonResult = {
   lesson_id: string;
   review_type: ReviewType;
   correlation_id: string;
-  provider: Provider;
+  provider: LLMProvider;
   model: string;
   findings_count: number;
   lesson_level_count: number;
@@ -205,9 +206,13 @@ export async function reviewLesson(opts: {
   correlationId: string;
 }): Promise<ReviewLessonResult> {
   const { lesson_id, review_type, correlationId } = opts;
-  const provider = resolveProvider();
 
   const promptRow = await loadReviewPromptRow(review_type);
+  // Provider is derived FROM the row's model (single source of truth), so a gemini-* model
+  // routes to the gemini client — not to whatever REVIEW_WRITER happens to be. REVIEW_WRITER
+  // is only the fallback when the row has no model. (This is the 404 fix: the model string and
+  // the provider were previously chosen independently, so a gemini row hit the OpenAI client.)
+  const provider = providerForModel(promptRow.model, resolveProvider());
   const { lessonName, cards } = await loadLessonCards(lesson_id);
   const systemMessage = await resolveReviewSystemMessage(promptRow, review_type);
 
