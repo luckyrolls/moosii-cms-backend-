@@ -88,6 +88,24 @@ The scene actually used (given or derived) is recorded on the row as
 `content_images.scene`; `image_prompt` stays the full rendered prompt.
 `prompt_override` skips the LLM entirely, so `scene` is left null on that row.
 
+### 1a-del. Delete a card (sub-segment) — DELIVERED
+```
+DELETE /sub-segments/:id
+Authorization: Bearer <jwt>            // admin
+→ 200 { ok: true, seg_id, deleted_id, cards: [ { id, sequence } ] }   // renumbered survivors
+→ 404 not_found                        // no such sub_segment
+```
+Deleting a card is **not** a direct CMS write: image cleanup has a strict ordered purge
+(a storage trigger enforces clear-pointer → delete `content_images` → remove file → drop
+`image_assets`, else P0001), owned by `purgeImagesForSubSegments` (service-role). The
+endpoint runs, in order: (1) **purge images** (storage + `image_assets` + `content_images`;
+best-effort on the file removal); (2) **delete the row** (`content_findings.sub_segment_id
+ON DELETE CASCADE` clears its findings); (3) **renumber** the segment's remaining cards to
+contiguous `1..N` by `sequence` — **mandatory**, since a gap breaks single-card regen
+("card 5 of 4") and the `sequence == totalCards ⇒ takeaway` role detection; (4) **re-gate**
+the segment (`segments.seg_status → 'pending'`, `approved_by → null`) because the structure
+changed — same posture as content regen. Returns the renumbered survivor list.
+
 ### 1b. Batch generate for a segment
 ```
 POST /segments/:id/generate-images
