@@ -460,5 +460,27 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       share scale/direction, so inheriting a track priority into the item slot is sound.
 - [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).
+- [~] PARKED (2026-07-25, until a large real content set exists): **multi-age MLP
+      weighting** — for a household with children of DIFFERENT ages, tilt the plan toward
+      the YOUNGER child's lessons. This is the whole reason `tracks.track_type='Age'`
+      exists (its ONLY functional use: `generateFullMLP` scales an `Age` track's weight by
+      the active age brackets; younger brackets weigh more — newborn 4 / infant·toddler 2 /
+      older 1). The mechanism is BUILT but DORMANT: the recompute feeds only the youngest
+      child's age (`rebuildMlp.ts` computeUserMlp: `ages: [ageMonthsUsed]`, "v1: youngest
+      child only"), so multiple brackets never activate; and the pool age FILTER also keys
+      off youngest only (`isAgeEligible(youngestAgeMonths, …)`), so an OLDER child's
+      age-specific lessons are dropped entirely, not just under-weighted. Difficulty is
+      LOW (~half a day incl. proof) — the `children` table already has per-child
+      birth_year/month (recompute reads it, just `.limit(1)`), and `generateFullMLP`
+      already loops multiple ages. Changes: load ALL child ages in `loadUserMlpInputs`;
+      pass them to `ages`; change the pool filter to "ANY child overlaps" (a `.some()`);
+      thread all-ages into `questionnaireStatus.ts` (age_gated flag) for consistency; decide
+      the preview `ageMonthsOverride` semantics. Real work is DECISIONS not code: (a)
+      any-child filter → bigger MLPs incl. older-targeted content (confirm wanted); (b) the
+      `weight * (totalAgeWeight/totalTrackWeight)` magnitude gives the right DIRECTION but
+      the tilt amount needs eyeballing real mixed-age output — only meaningful once real
+      content exists, which is why it's parked. `track_type` is otherwise vestigial
+      (free-text, ~15 inconsistent values incl. test junk; `'milestone'` drives only a CMS
+      badge).
 
 Update this status section as steps complete.
