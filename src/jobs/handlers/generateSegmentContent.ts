@@ -108,6 +108,17 @@ export type RegenTarget = {
   nextCard: { sequence: number; title: string; content: string } | null;
 };
 
+// Render the lesson's developmental window for the ## Context block. Null bounds are
+// open-ended; both-null → no line (don't assert an age the lesson never recorded).
+function formatChildAge(min?: number | null, max?: number | null): string | null {
+  const hasMin = typeof min === "number";
+  const hasMax = typeof max === "number";
+  if (hasMin && hasMax) return `Child age range: ${min}–${max} months`;
+  if (hasMin) return `Child age range: ${min} months and older`;
+  if (hasMax) return `Child age range: up to ${max} months`;
+  return null;
+}
+
 export function composeUserMessage(opts: {
   scope: string | null;
   toneContent: string;
@@ -115,6 +126,8 @@ export function composeUserMessage(opts: {
   cardPositionsContent?: string;   // per-position card rules — sits BETWEEN structure and length
   lengthContent: string;
   lessonTitle: string;
+  minChildAge?: number | null;   // the lesson's developmental window — the SPECIFIC age
+  maxChildAge?: number | null;   // band for THIS lesson (voice/examples should fit it)
   segmentName: string;
   segmentDescription: string | null;
   avoid?: string;            // error-severity voice-lint bans (prevention layer)
@@ -134,7 +147,13 @@ export function composeUserMessage(opts: {
     parts.push(`## Author Feedback (a prior version was REJECTED — apply this)\n\n${opts.guidance.trim()}`);
   }
 
-  const ctx = [`Lesson title: ${opts.lessonTitle}`, `Segment: ${opts.segmentName}`];
+  const ctx = [`Lesson title: ${opts.lessonTitle}`];
+  // The lesson's SPECIFIC age band — accurate per lesson (a toddler lesson says 24–36mo,
+  // not a global constant). Keeps age out of the reusable tone: voice belongs to the tone,
+  // the age specific belongs to the lesson. Omitted when the lesson has no bounds recorded.
+  const ageLine = formatChildAge(opts.minChildAge, opts.maxChildAge);
+  if (ageLine) ctx.push(ageLine);
+  ctx.push(`Segment: ${opts.segmentName}`);
   if (opts.segmentDescription) ctx.push(`Description: ${opts.segmentDescription}`);
   parts.push(`## Context\n\n${ctx.join("\n")}`);
 
@@ -281,7 +300,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
 
   const { data: lesson, error: lessonErr } = await supabase
     .from("lessons")
-    .select("id, lesson_name")
+    .select("id, lesson_name, min_child_age, max_child_age")
     .eq("id", segment.lesson_id)
     .single();
   if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
@@ -305,6 +324,8 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     cardPositionsContent,
     lengthContent,
     lessonTitle:        lesson.lesson_name ?? "",
+    minChildAge:        lesson.min_child_age,
+    maxChildAge:        lesson.max_child_age,
     segmentName:        segment.segment_name ?? "",
     segmentDescription: segment.description ?? null,
     avoid:              await loadPromptBanInstruction(),

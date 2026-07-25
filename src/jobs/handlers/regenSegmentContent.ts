@@ -71,7 +71,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
 
   const { data: lesson, error: lessonErr } = await supabase
     .from("lessons")
-    .select("id, lesson_name, is_published")
+    .select("id, lesson_name, is_published, min_child_age, max_child_age")
     .eq("id", segment.lesson_id)
     .single();
   if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
@@ -139,6 +139,8 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     cardPositionsContent,
     lengthContent,
     lessonTitle:        lesson.lesson_name ?? "",
+    minChildAge:        lesson.min_child_age,
+    maxChildAge:        lesson.max_child_age,
     segmentName:        segment.segment_name ?? "",
     segmentDescription: segment.description ?? null,
     avoid:              await loadPromptBanInstruction(),
