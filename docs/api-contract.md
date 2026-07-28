@@ -239,8 +239,12 @@ empty set). The **cap is enforced in code, not prompt-trust**: if the model retu
 more than `max_lessons`, the least-essential (highest priority values) are dropped
 and surfaced (`coverage_truncated` / `topics_dropped`) so the human knows the track
 wanted more than the cap allowed — a signal to re-run with a higher cap, not a
-silent trim. Each lesson still carries the eight-field contract (name, description,
-topic, min/max child age, priority, `band_rationale`, `safety_sensitive`). The model
+silent trim. Each lesson carries the nine-field stub contract (name, `internal_name`,
+description, topic, min/max child age, priority, `band_rationale`, `safety_sensitive`).
+`internal_name` is the curator's searchable catalog handle (vs the parent-facing
+`lesson_name`); when author instructions supply a source title it goes VERBATIM into
+`internal_name` and `lesson_name` is the rewrite, else it is AI-descriptive (migrations
+0008 prompt / 047 RPC; the RPC coalesces absent/empty → `lesson_name`). The model
 returns a `topic` NAME per lesson, resolved to `topic_id` via a normalized
 (case-insensitive, trimmed) lookup against `topics.name`. **Any unresolved topic
 fails the whole job before insert** (no partial write) — surfaced as an error naming
@@ -1213,7 +1217,7 @@ jobs.result: {
     // present; the literal "all" in either means it spans every subtopic / every age band.
     // On an empty track, `thin_areas` enumerates the major uncovered areas across the span.
   existing_lessons: [ { lesson_name, description, min_child_age, max_child_age, priority, topic } ], // echoed for side-by-side
-  proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority,
+  proposals: [ { lesson_name, internal_name, description, min_child_age, max_child_age, topic, priority,
                  band_rationale, safety_sensitive, coverage_rationale, fills_gap } ],
   model
 }
@@ -1233,7 +1237,7 @@ derived from the `'lesson'` system_message, six sections byte-identical).
 Per-proposal — the CMS sends only the picked proposals (they aren't stored):
 ```
 body: { track_id, proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority,
-        safety_sensitive?, band_rationale?, curator_note? } ] }
+        safety_sensitive?, band_rationale?, curator_note?, internal_name? } ] }
 → 200 { ok, track_id, lessons_created, lessons: [ { id, lesson_name, description } ] }
 → 422 unresolved_topic  // a topic outside the allow-set → fail-loud, NOTHING inserted (identical to generate_lessons)
 ```
@@ -1248,7 +1252,10 @@ Optional **`curator_note`** (nullable text) — CMS-reviewer curation provenance
 parent-facing, never AI-written — is accepted per-proposal and forwarded (migration 044; absent
 → NULL). **NOTE:** the CMS `acceptPayload` currently sends only the 6-field subset, so accepts
 *through the CMS* still default `safety_sensitive`/`band_rationale` until it forwards them; a
-direct caller (the bulk import) that sends the full proposal gets them persisted. The stale
+direct caller (the bulk import) that sends the full proposal gets them persisted. Optional
+**`internal_name`** (the curator catalog handle) is likewise accepted per-proposal and forwarded
+(migrations 0008/047); **absent → the RPC coalesces it to `lesson_name`**, so the column is never
+left NULL (it is a LABEL in this slice, not a key — no dedup/uniqueness). The stale
 `POST /lessons/generate` route is unrelated dead code (flagged for housekeeping, not used here).
 
 ---

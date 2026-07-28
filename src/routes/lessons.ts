@@ -195,7 +195,10 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
       // has carried these since 011). Optional so a caller still sending the old 6-field
       // subset keeps working: absent safety_sensitive coalesces false, absent band_rationale
       // inserts NULL. curator_note is human-supplied provenance (011/044) — absent = NULL.
+      // internal_name is the curator catalog handle (047) — absent → the RPC coalesces it to
+      // lesson_name, so the column is never left NULL.
       safety_sensitive?: boolean; band_rationale?: string; curator_note?: string;
+      internal_name?: string;
     }>;
   };
   if (!track_id) { apiError(res, 400, "missing_field", "track_id is required"); return; }
@@ -227,6 +230,7 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
       safety_sensitive: p.safety_sensitive,
       band_rationale: p.band_rationale,
       ...(p.curator_note ? { curator_note: p.curator_note } : {}),
+      ...(p.internal_name ? { internal_name: p.internal_name } : {}),
       ...(req.user?.id && { created_by: req.user.id }),
     };
   });

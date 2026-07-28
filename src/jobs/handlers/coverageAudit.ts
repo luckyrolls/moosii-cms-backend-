@@ -42,6 +42,8 @@ type CoverageAuditPromptRow = {
 // display-only fills_gap/rationale — so accept lands identically to an ideation stub.
 type Proposal = {
   lesson_name: string;
+  internal_name?: string;   // curator catalog handle (0008) — passes through to jobs.result;
+                            // the accept endpoint forwards it, the RPC coalesces to lesson_name
   description: string;
   min_child_age: number;
   max_child_age: number;

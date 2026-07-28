@@ -186,9 +186,10 @@ diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
   candidate/approve flow, non-destructive (candidates don't overwrite the live image
   until approved; prior images kept as history).
 - v1.5 (delivered): lesson generation — `generate_lessons` composes its prompt from
-  the DB (`prompts` row, `prompt_type='lesson'`) and emits the eight-field stub
-  contract (name, description, topic [resolved by name → topic_id], min/max child age,
-  priority via the 6-band 100–2000 rubric, band_rationale, safety_sensitive), inserting
+  the DB (`prompts` row, `prompt_type='lesson'`) and emits the nine-field stub
+  contract (name, internal_name, description, topic [resolved by name → topic_id],
+  min/max child age, priority via the 6-band 100–2000 rubric, band_rationale,
+  safety_sensitive; internal_name = curator catalog handle, migrations 0008/047), inserting
   lessons + their segments atomically via `create_lessons_with_segments`. (The old
   `prompts/lessons/generate.md` file is retired.)
 - v2 (delivered): sub-segment CONTENT + QUIZ — `generate_segment_content` /

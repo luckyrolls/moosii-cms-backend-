@@ -22,7 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current high-water: **046** (main) + **0007** (prompt track).)
+(Current APPLIED high-water: **046** (main) + **0007** (prompt track). Drafted, pending
+review + apply via the SQL editor: **047** (main), **0008** (prompt track) — bump this line
+to 047/0008 once Mark applies them.)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -36,6 +38,12 @@ Main track:
   and its `user_active_tracks` view twin gain `AND t.archived_at IS NULL`.
 - **046** — exclude ARCHIVED lessons from the MLP item pool: `mlp_item_pool`'s lesson arm
   gains `WHERE l.archived_at IS NULL`.
+- **047** — internal_name: **column + backfill + RPC** (the complete, idempotent record). Adds
+  `lessons.internal_name` (`ADD COLUMN IF NOT EXISTS`), backfills from `lesson_name`
+  (`WHERE internal_name IS NULL`), and teaches `create_lessons_with_segments` to persist it
+  (coalesce absent/empty → `lesson_name`; same `(p_lessons jsonb)` signature, no overload/DROP).
+  The DDL is already live ad-hoc on this DB, so the file's only effect here is the RPC.
+  **DRAFT — pending review + apply.**
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
@@ -43,6 +51,9 @@ Prompt track:
 - **0006** — `coverage_audit` prompt seed: the prompt behind the `coverage_audit` job.
 - **0007** — `coverage_audit` empty-band delta: one targeted edit to the `coverage_audit`
   prompt row's `system_message` (COVERAGE MAP section).
+- **0008** — `internal_name` in the `lesson` + `coverage_audit` prompts: output_schema gains
+  the property (properties + required, OpenAI-strict), system_message gains the two-names rule.
+  **DRAFT — pending review + apply.**
 
 ## Why this matters
 - A file existing here does **not** prove it was applied — confirm against the live

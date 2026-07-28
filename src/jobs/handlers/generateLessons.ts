@@ -30,6 +30,7 @@ type LessonPromptRow = {
 
 type GeneratedLesson = {
   lesson_name: string;
+  internal_name?: string;   // curator catalog handle (0008); RPC coalesces absent → lesson_name
   description: string;
   topic: string;
   min_child_age: number;
@@ -230,7 +231,8 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     );
   }
 
-  // Step 9 — full per-lesson rows (all eight contract fields)
+  // Step 9 — full per-lesson rows (the nine-field stub contract). internal_name is forwarded
+  // as-is; the RPC coalesces absent/empty → lesson_name (migration 047), so no row is left null.
   const lessonsToInsert = resolved.map(({ c, topic_id }) => ({
     lesson_name:      c.lesson_name,
     description:      c.description,
@@ -241,6 +243,7 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     topic_id,
     band_rationale:   c.band_rationale,
     safety_sensitive: c.safety_sensitive,
+    ...(c.internal_name?.trim() && { internal_name: c.internal_name.trim() }),
     ...(created_by && { created_by }),
   }));
 
