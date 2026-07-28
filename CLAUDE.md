@@ -12,6 +12,34 @@ concurrency, and hardening against untrusted users are explicitly NOT priorities
 Solo developer who leans on AI assistance and values control, visibility, and
 debuggability over managed convenience.
 
+## Invariants and traps
+Read this first. **Hard cap ~12 entries:** an invariant earns a slot ONLY if violating it
+breaks something across a surface boundary (CMS↔app, backend↔DB, provider↔caller) or
+corrupts data. Anything narrower belongs in `api-contract.md` or a code comment. If this
+section is full, one must be argued out before another goes in. Format is fixed: one line
+of rule, one line of file/line evidence.
+
+1. **The MLP algorithm is FROZEN** — flag any slice that touches it before writing code.
+   → `src/mlp/generateFullMLP.ts:1-12` (faithful BuildShip port: "logic kept IDENTICAL except deliberate changes").
+2. **`card_positions` = role-by-position** (first/body/takeaway derived from `sequence`), SHARED by every segment-gen prompt and the reviewer; card edits keep `sequence` contiguous 1..N; never pin a role per card.
+   → `card_positions_v1` block ("TAKEAWAY CARD — always the final card"); `src/jobs/handlers/generateSegmentContent.ts:160-164`; renumber in `src/routes/subSegments.ts` (DELETE).
+3. **No real users exist** — prefer structural safety (constraints/FKs/NOT NULL) over behavioral rules; wipe-and-rebuild usually beats careful migration.
+   → `migrations/045_archive_exclude_tracks_active_set.sql` ("no live users exist yet"); `ON DELETE RESTRICT` in 038/040 (raises 23001).
+4. **Shared infra breaks the OTHER consumer** — CMS and app share ONE Supabase project; name the second consumer before calling an auth/RLS/LLM-provider change done.
+   → `src/llm/index.ts` `providerForModel` (review 404: provider was chosen independently of the row's model); `migrations/037_user_active_tracks_fn.sql` (fn + view "must stay in sync").
+5. **Fresh-user landmines** — several bugs were paths only an aged, privileged account exercised; assume a brand-new user hits a different path.
+   → migration 034 (NULL questionnaire priority sorted recruiters to the bottom); the age gate was unwired until migration 041.
+6. **Archival is DERIVED, never stamped** — a lesson is archived if `lessons.archived_at IS NOT NULL` OR its track's is; archiving a track does not bulk-update lessons.
+   → `migrations/045_archive_exclude_tracks_active_set.sql` (header); `migrations/046_archive_exclude_lessons_item_pool.sql`.
+7. **Purge-order trap (P0001)** — remove the storage object BEFORE deleting `image_assets`, or the storage-delete trigger raises P0001.
+   → `src/storage/purgeImages.ts:11-20`.
+8. **Cascade fires on DELETE, not UPDATE** — single-card regen UPDATEs a card in place, so it must explicitly clear that card's `content_images` and `content_findings`.
+   → `src/jobs/handlers/regenSegmentContent.ts:252-259`.
+9. **Actor from the verified JWT, never the request body** — approvals and recompute take the user id from the token.
+   → `migrations/043_content_approvals.sql` (header); `src/routes/mlp.ts:76` (recompute user_id from token).
+10. **MLP selection converges on two objects** — `user_active_tracks_for_user` + `mlp_item_pool`; age gate, suppression, and archival all flow through them, so touching either touches every user's plan.
+    → `src/jobs/handlers/rebuildMlp.ts:369,415`; migrations 041/045/046.
+
 ## The founding rule: no BuildShip, ever
 The previous CMS used BuildShip (a visual workflow platform) for AI orchestration.
 It was abandoned because it was an opaque, hard-to-debug black box. NEVER suggest,
@@ -167,7 +195,8 @@ diffable. (This black-box recorder is the thing the BuildShip-era setup lacked.)
   `regen_segment_content` / `generate_quiz`, composed per-tone from the DB (see
   "Content prompt composition & tone management" below). NOT the critique pipeline yet.
 - NOT yet built: lesson/segment-level images; the generate→critique→revise pipeline.
-  MLP recompute is PARTIAL (`rebuild_mlp` handler exists — verification phase).
+  MLP recompute is DELIVERED (`rebuild_mlp` single + `scope:'all'`, cut over to production
+  `user_mlp`; app-facing `POST /mlp/recompute`) — see `docs/api-contract.md` §3.
 - Frontend: Vite + React SPA (separate repo). The backend API contract is defined
   in `docs/api-contract.md`. FlutterFlow transition is complete — the React SPA is
   the only frontend.
@@ -195,7 +224,11 @@ optional `generate_quiz` (quiz generation always REPLACES, never appends). A
 deterministic voice LINT (`voice_lint_rules` + `src/lib/voiceLint.ts`) flags AI-tells
 post-generation into `jobs.result.lint` (advisory; never blocks). These admin tables
 are reached via JWT routes; the backend reads/writes them with the service role
-(RLS bypassed), so the CMS manages them through the API, not direct Supabase writes.
+(RLS bypassed), so the CMS manages THESE tone/structure/size/lint admin tables through the
+API, not direct Supabase writes. (Sanctioned CMS-direct write paths DO exist elsewhere —
+`screen_help`, `sub_segments` title/content edits, `tracks.archived_at`; see
+`docs/rls-sweep.md`. Whether `sub_segments` INSERT is RLS-permitted is undetermined and
+parked with the consolidated RLS sweep.)
 
 ### Content generation is a BUNDLE, not a single text blob
 Generating a lesson also generates its QUIZ in the same act. A content-generation
@@ -249,13 +282,13 @@ before launch, not after a journalist asks. Not a backend concern, but it shapes
 what metadata content rows may need to carry (reviewer identity, review status).
 
 ## Auth
-- **SPA routes** (`/sub-segments`, `/segments`, `/content-images`, `/lessons`):
-  JWT auth — the browser sends the Supabase access token
-  (`Authorization: Bearer <jwt>`). Backend verifies via `supabase.auth.getUser()`
-  and checks `users_internal.role`. Implemented in `src/middleware/jwtAuth.ts`.
+- **SPA routes** (the CMS admin surface): Supabase **JWT** — the browser sends the access
+  token (`Authorization: Bearer <jwt>`); the backend verifies via `supabase.auth.getUser()`
+  and checks `users_internal.role` (`src/middleware/jwtAuth.ts`). The current route set
+  lives in `src/index.ts`; per-route detail in `docs/api-contract.md`. Not re-listed here —
+  a hardcoded route list drifts.
 - **Server-to-server** (`/jobs`): `INTERNAL_API_KEY` shared secret
-  (`Authorization: Bearer <key>`). Used for internal tooling and testing only;
-  never sent by the SPA.
+  (`Authorization: Bearer <key>`). Internal tooling/testing only; never sent by the SPA.
 - `/health` is unauthenticated.
 
 ## API conventions
@@ -297,167 +330,34 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   CONTENT prompts (lesson/segment/quiz/questionnaire) are DB-composed (`prompts` +
   `prompt_blocks` + `content_size_profiles`), managed via admin CRUD, not files.
 - Prefer minimal formatting and minimal dependencies. Keep it debuggable.
-- Database types (`src/types/database.types.ts`) are generated from the live schema
-  via PostgREST introspection. Regenerate when the schema changes.
+- Database types (`src/types/database.types.ts`) are generated from the live schema via
+  PostgREST introspection; regenerate after any schema migration and drop the temporary
+  `(supabase as any)` bridge in the same pass. **Known current gap:** missing `archived_at`
+  (045/046) and `curator_note` (044) — code bridges those with `(supabase as any)` until a
+  regen. (There is no clean "types through migration N" — it's a patchwork; don't cite one.)
 
-## Current status
-- [x] Schema: migrations 001–005 applied normally. Migrations 006–037 and the
-      `0001`–`0004` prompt track were applied via the Supabase SQL editor and are NOT
-      in `supabase_migrations.schema_migrations` — so neither `ls migrations/` nor
-      `schema_migrations` is a reliable high-water mark (files-vs-DB reconciliation).
-      See `migrations/README.md` for the "reconciliation list" definition + process
-      (high-water: 037).
-- [x] Express + TypeScript skeleton, `/health`, deployed to Render, auto-deploy
-      from GitHub `master`.
-- [x] Async job system: runner, stale-job reaper, registry, batch worker pool,
-      concurrency cap (BATCH_CONCURRENCY).
-- [x] Retry helper: exponential backoff + jitter, 6 attempts, ~62s budget,
-      handles HTTP 429/500/503 and network errors.
-- [x] Prompt assembly: base + overlay → instructions string. Versioned prompt
-      files. `instructions_override` path for per-job tuning.
-- [x] LLM clients: Gemini (default `gemini-2.5-flash` — stable; the provider honors a
-      per-prompt `model`, so callers can opt into others) and OpenAI (`gpt-4o`).
-      Structured output (responseSchema) supported on both.
-- [x] ImageGenerator: Gemini (`gemini-3.1-flash-image`). Imagen 4.0 provider
-      built but not active (IMAGE_GENERATOR=gemini).
-- [x] Storage upload helper. Supabase `lessons` bucket, path:
-      `illustrations/sub-segment-{id}/{imageId}.{ext}`.
-- [x] `generate_sub_segment_image` handler — full pipeline end-to-end verified.
-- [x] `POST /content-images/:id/approve` — atomic Postgres function, verified.
-- [x] `POST /content-images/:id/reject` — with approved-row guard.
-- [x] `POST /segments/:id/generate-images` — batch with concurrency cap,
-      modes: all / gaps / unapproved.
-- [x] `POST /sub-segments/:id/generate-image` — dedicated single-image route.
-- [x] `generate_lessons` — DB-composed prompt, eight-field stub contract
-      (topic/band_rationale/safety_sensitive), atomic lessons+segments insert
-      (`create_lessons_with_segments`). Count is COVERAGE-DRIVEN (model derives it,
-      cap-blind); `max_lessons` is a code-enforced hard cap with
-      `coverage_truncated`/`topics_dropped` surfaced (migration 028).
-- [x] Sub-segment CONTENT + QUIZ generation/regeneration — per-tone DB composition,
-      quiz always-replace, per-run regen overrides (prose / block / size).
-- [x] Tone management — voice/structure/size per tone, selected by stable id; admin
-      CRUD: `/tones`, `/structure-blocks`, `/size-profiles`, `/voice-lint-rules`.
-- [x] Voice lint — deterministic AI-tell detection, advisory hits in
-      `jobs.result.lint` (segment content/regen).
-- [x] JWT auth middleware + INTERNAL_API_KEY split (SPA vs server-to-server).
-- [x] Standardized error envelope `{ error: { code, message } }`.
-- [x] `POST /lessons/:id/approve` / `/unapprove` — BULK approve a lesson (content +
-      images + quiz) atomically so all three cross the app's gate together; adds the
-      previously-missing quiz approval (`quiz_questions.answer_status → 'approved'`) and
-      an image-linkable pre-check (409, not silent) — `approve_segment_bundle` (migration
-      029). Per-artifact primitives (`/segments/:id/approve`, `/content-images/:id/approve`)
-      unchanged. §1f.
-- [x] Content-regen refinements: `regen_segment_content` / `generate_quiz` accept a
-      `guidance` field (author/rejection feedback injected into the prompt to steer the
-      regen; §2c/§2d); standalone `POST /quiz/:segment_id/approve` / `/unapprove`
-      (service-role, bypasses the `quiz_questions` RLS wall — per-artifact counterpart to
-      the bulk approve); content regen PURGES the old cards' images (no storage bloat, see
-      Data model). Per-card tone persisted (`sub_segments.tone_id`, migration 030).
-- [x] Image regen invalidates segment approval: `generate_sub_segment_image`
-      (non-`auto_approve` path) resets `segments.seg_status`→`pending` + clears
-      `approved_by` when the segment was `complete` — mirroring content regen, so
-      regenerating an image on an approved lesson forces a re-publish (no stale
-      `approved` across an image swap). Whole-segment gate = re-gates content + quiz too;
-      scoped to `complete` segments (no-op for first-time/batch gen). Code-only, no migration.
-- [x] `generate_track_content` / `generate_track_images` — batch orchestrators over the
-      per-unit generators (content: fill_missing + replace with derivable resume; images:
-      fill_missing). Progress in `jobs.result`, content tables are the resume checkpoint,
-      bounded concurrency (`BATCH_CONCURRENCY`). §2f / §2g.
-- [x] `POST /classify-update` — parent-update classifier (JWT). Slices: enrich/propose
-      (1); apply → tracks (`user_mlp_mods`) + milestone facts (2, migrations 019–022);
-      SUPPRESS redundant questionnaires via `questionnaire.milestone_id` (3, migration
-      023). Mode switches on `user_id` PRESENCE (admin console vs self-scoped app parent;
-      `source` = `cms_test`/`app`/`app_internal`); `ack_message` from `response_templates`
-      (026) + `user_template_history` (027). §2j.
-- [x] Provisional DISTRESS — classifier distress tier (`none|strain|overwhelm|safety`),
-      `distress_responses` content + `distress_detections` audit (migrations 024–025).
-      Detection LIVE, content PROVISIONAL (clinical review pending —
-      `docs/provisional-clinical-decisions.md`); app-facing free-text input still gated.
-- [~] `database.types.ts` — regenerated as schema migrations land (current through 027;
-      028 is prompt-only, 029 adds functions). A few files keep scoped `(supabase as any)`
-      bridges for still-untyped MLP views / new rpcs.
-- [x] AI content review — slice 1 (mechanism). `review_lesson` job (`input:{lesson_id,
-      review_type}`): READ-ONLY reviewer that writes ONLY `content_findings` (migration
-      035) — never edits/approves/rejects, no verdict/score. Findings-or-silence (empty
-      list = nothing flagged, NOT endorsed). Two prompt-only types seeded in `prompts`
-      (`review_best_practices`, `review_factual_smell`); provider-parameterized
-      (`REVIEW_WRITER`), retry fix applies. Findings anchor to a card (`sub_segment_id`)
-      or lesson-level (NULL); re-run inserts new rows keyed by `correlation_id` (dedup =
-      slice 3). `src/jobs/handlers/reviewLesson.ts`, §2k. Slice 2 = doc-grounded proofing.
-      Content regen CLEARS a card's findings (stale-content guard): whole-segment regen +
-      first-time/batch generate delete+reinsert cards → `content_findings.sub_segment_id
-      ON DELETE CASCADE` handles it; single-card regen UPDATEs in place → deletes that
-      card's findings explicitly (same cascade trap as image purge). Lesson-level findings
-      (`sub_segment_id NULL`) are NOT cleared by regen.
-- [x] AI content review — slice 2 (doc-grounded). `review_lesson` gains `review_type:
-      'doc_grounded'`: proofs cards against the lesson's LINKED authority docs
-      (`source_documents` + `lesson_source_documents`, migration 036; paste-only ingestion,
-      admin routes `/source-documents`). THREE-WAY rule: supported/not-addressed say nothing;
-      only contradicted (issue), specific-but-unsupported (warning), cross-doc disagreement
-      (warning) become findings — consistency-with-source, never truth, never picks a winner.
-      Zero linked docs → fails legibly. Findings gain `finding_kind`, `claim_quote`,
-      `source_passage`, `source_document_id`, COPIED `source_version_label` (staleness).
-      `source_documents`/etc. on the new `docs/rls-sweep.md`. §2k-doc/§2l.
-- [x] Card-positions policy block + best_practices review rework. New `prompt_blocks`
-      `block_type='card_positions'` (per-position card rules: first/body/takeaway) SHARED by
-      generation and review: segment gen composes it as `## Card Positions` (between Structure
-      and Length; `prompts.card_positions_block_id`), review substitutes it into a
-      `{{card_positions}}` token (abort if token present but block missing — never send raw
-      token). Admin edit-only route `/card-positions` (GET+PATCH, `name` immutable, `used_by`
-      computed; §2i-cp). best_practices output_schema reworked to `{category, card_title, note,
-      quote}` (5-value category enum → `content_findings.category`, CHECK-constrained; unknown
-      category dropped+logged; `note`→finding, `quote`→claim_quote, `card_title`→sub_segment).
-      Review schema is unwrapped ({name,schema,strict}→bare) so the enum survives on Gemini.
-      Block IDs logged to `ai_generation_log.blocks` (jsonb). Gemini provider now honors
-      model/temperature/max_tokens (hardcode = fallback). NOTE: the review path now DERIVES its
-      provider from the row's `model` via `providerForModel()` (`src/llm/index.ts`) — the model
-      string selects the client (gemini* → gemini, gpt*/o[134]* → openai), so setting a review
-      row's `model` is sufficient to route it (no `REVIEW_WRITER` change needed; that env is only
-      the fallback when `model` is NULL). A NULL model falls back to `REVIEW_WRITER` (default
-      openai). Earlier folklore ("set the row to a Gemini model or NULL") was incomplete — a
-      gemini model with `REVIEW_WRITER` still openai used to 404 because provider and model were
-      chosen independently. Other handlers still hardcode their provider (consistent with their
-      gpt-* rows today); adopt `providerForModel` there too if any switches provider.
+## Status pointers
+- **Delivered work** — routes, jobs, payloads, semantics: `docs/api-contract.md` is canonical.
+- **Migration high-water** — `migrations/README.md`'s reconciliation list is the only reliable number (currently **046** main / **0007** prompt track).
+- This file is **architecture + invariants, not a slice ledger** — do NOT add per-slice `[x]` entries here (that ledger was deliberately removed).
+
+## Docs map
+- `docs/api-contract.md` — delivered routes/jobs/payloads/semantics (canonical delivered-work reference).
+- `migrations/README.md` — the reconciliation list + migration high-water (the only reliable high-water).
+- `docs/rls-sweep.md` — content-bearing tables needing RLS; sanctioned CMS-direct vs backend-only write paths.
+- `docs/provisional-clinical-decisions.md` — distress/clinical content decisions pending credentialed review.
+- `docs/questionnaire-evolution-roadmap.md` — forward plan for questionnaire mechanics.
+
+## Doc maintenance (part of DoD)
+Docs are updated **unprompted, in the same commit** as the change that necessitates them.
+- **`api-contract.md`** — every contract-touching change (route, payload, job type, semantics), plus the migration number that carried it.
+- **`migrations/README.md`** — every SQL-editor-applied migration gets a reconciliation entry AND the high-water bump; this is the only reliable high-water.
+- **`CLAUDE.md`** — ONLY when an architectural invariant, trap, or convention changes. Never per-slice. If unsure whether something is architectural, say so in the report/PR — do not write it in.
+- **`database.types.ts`** — regenerate after any schema migration; remove the temporary `(supabase as any)` bridge in the same pass.
+- Do not invent or update docs outside this repo.
+
+## Not yet built / parked
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
-- [x] MLP recompute — `rebuild_mlp` (single + `scope:'all'`) cut over to production
-      `user_mlp` (migration 017); old rows kept in `user_mlp_bs_backup`. App-facing
-      `POST /mlp/recompute` (end-user JWT, user-scoped) DELIVERED (`src/routes/mlp.ts`).
-      PERF: `loadUserMlpInputs` resolves active tracks via `user_active_tracks_for_user(uuid)`
-      (migration 037) — a per-user FUNCTION twin of the `user_active_tracks` view that filters
-      each arm by user_id up front (O(one user), not whole-user-base-then-filter). ADDITIVE:
-      the view is left in place; view + function hold the same logic and MUST stay in sync.
-      Verified byte-identical to the view for every user. VIEW RETAINED (not retired) — grep +
-      pg_depend audit: `user_active_tracks_with_reason` (the CMS User-MLP-Inspector's
-      reason-decorated view; extra columns the function doesn't provide) is BUILT ON the bare
-      view and is live in the CMS, so the bare view stays underneath it. Bare-view readers:
-      recompute → the function (this change); CMS `classify.ts` → the function (repointed);
-      `apply_classification` RPC → still the bare view via a whole-user-base EXISTS (repoint to
-      the function if that path ever gets hot). The APP reads `user_mlp_not_completed`, not the
-      view. The function stays executable by `authenticated` (the CMS calls it directly) — do
-      NOT lock it to service_role.
-- [x] MLP preview inspector — `GET /mlp/:user_id/preview?age_months&include_completed`
-      (ADMIN JWT). Recomputes the path with overridden inputs (a chosen age; including
-      completed items) WITHOUT persisting — read-only, no `user_mlp` writes. REUSES the
-      rebuild's compute core: `rebuildOneUser` and the preview both call the shared
-      `computeUserMlp(userId, overrides)` (extraction is byte-identical for the real-age /
-      normal case — proven). `include_completed` bypasses ONLY the completed-exclusion; age
-      gate + suppression still apply. Age override feeds both the pool age gate and bracket
-      weighting (`src/mlp/mlpPreview.ts`, §3b).
-- [x] Questionnaire status inspector — `GET /mlp/:user_id/questionnaire-status` (ADMIN
-      JWT). Per-user questionnaire lifecycle for the CMS user-MLP inspector: status
-      (never_answered/answered_one_shot/answered_awaiting/due_now/suppressed) + latest
-      answer/score, matched recurring band, computed due_at, and suppressing milestone
-      fact. Read-only; REUSES the rebuild's pool (`loadUserMlpInputs`), due math
-      (`matchRecurringBand`/`isQuestionnaireDue`), and suppression
-      (`computeMilestoneSuppressionDetail`) — same universe + verdicts as the MLP, no
-      parallel logic (`src/mlp/questionnaireStatus.ts`, §3a). Suppression trumps due.
-- [x] Questionnaire priority default + backfill — `generate_questionnaire` stamps
-      `questionnaire.priority` from the TARGET track's priority (COPIED value; NULL target
-      → constant `500`, NEVER NULL). NULL was the MLP pool item priority → sorted every
-      recruiter to the bottom of its host track. Migration 034 backfills the 11 existing
-      rows (inherit via add-rule target, `500` fallback). Editing priority = separate CMS
-      slice. Scale note: track priorities (~10–850) and lesson item priorities (~100–220)
-      share scale/direction, so inheriting a track priority into the item slot is sound.
 - [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).
 - [~] PARKED (2026-07-25, until a large real content set exists): **multi-age MLP
@@ -482,5 +382,3 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
       content exists, which is why it's parked. `track_type` is otherwise vestigial
       (free-text, ~15 inconsistent values incl. test junk; `'milestone'` drives only a CMS
       badge).
-
-Update this status section as steps complete.
