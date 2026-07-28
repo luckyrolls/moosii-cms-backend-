@@ -353,6 +353,7 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 Docs are updated **unprompted, in the same commit** as the change that necessitates them.
 - **`api-contract.md`** — every contract-touching change (route, payload, job type, semantics), plus the migration number that carried it.
 - **`migrations/README.md`** — every SQL-editor-applied migration gets a reconciliation entry AND the high-water bump; this is the only reliable high-water.
+- **SQL-editor migration apply gate** — a migration file is committed as **DRAFT (pending apply)**; its reconciliation entry + the high-water bump flip to **applied ONLY on Mark's confirmation he ran it**. Confirming an apply is its own step and its own commit — never assumed from the file existing (these migrations have no code commit to ride along with, since Mark applies them later).
 - **`CLAUDE.md`** — ONLY when an architectural invariant, trap, or convention changes. Never per-slice. If unsure whether something is architectural, say so in the report/PR — do not write it in.
 - **`database.types.ts`** — regenerate after any schema migration; remove the temporary `(supabase as any)` bridge in the same pass.
 - Do not invent or update docs outside this repo.
