@@ -12,7 +12,7 @@ that.
 ## The two tracks
 - **001–005** — applied through the normal runner; **present** in
   `schema_migrations`. Trustworthy high-water mark for this range.
-- **006–043 + the `0001`–`0004` prompt track** — applied **by hand via the Supabase
+- **006–046 + the `0001`–`0007` prompt track** — applied **by hand via the Supabase
   SQL editor**; **NOT** in `schema_migrations`. This is the reconciliation list.
   (Note: `032` is reserved for the `user_track_matches`/column-drop migration, tracked
   separately — the list may temporarily have that hole. `008` is a BACKFILLED RECORD of
@@ -21,7 +21,28 @@ that.
 
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
-high-water number is bumped as migrations are added. (Current high-water: **043**.)
+high-water number is bumped as migrations are added.
+(Current high-water: **046** (main) + **0007** (prompt track).)
+
+## Reconciliation entries — enumerated (044+ / 0005+)
+The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
+**0005** (prompt track) on, each hand-applied migration is listed here (per the standing
+doc-maintenance rule in `CLAUDE.md`). Sourced from each file's own header:
+
+Main track:
+- **044** — persist `curator_note` in `create_lessons_with_segments` (adds the column to
+  the RPC's insert + select list).
+- **045** — exclude ARCHIVED tracks from the active-track set: `user_active_tracks_for_user()`
+  and its `user_active_tracks` view twin gain `AND t.archived_at IS NULL`.
+- **046** — exclude ARCHIVED lessons from the MLP item pool: `mlp_item_pool`'s lesson arm
+  gains `WHERE l.archived_at IS NULL`.
+
+Prompt track:
+- **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
+  from a file-based prompt to a DB-composed one.
+- **0006** — `coverage_audit` prompt seed: the prompt behind the `coverage_audit` job.
+- **0007** — `coverage_audit` empty-band delta: one targeted edit to the `coverage_audit`
+  prompt row's `system_message` (COVERAGE MAP section).
 
 ## Why this matters
 - A file existing here does **not** prove it was applied — confirm against the live
