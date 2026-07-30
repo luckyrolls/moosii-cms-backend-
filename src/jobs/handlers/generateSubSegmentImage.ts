@@ -5,6 +5,7 @@ import { getLLMClient } from "../../llm";
 import { getImageGenerator } from "../../imagegen";
 import { uploadImage } from "../../storage/upload";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
+import { reGateSegmentIfComplete } from "../../lib/reGateSegment";
 import type { Job } from "../registry";
 
 type Input = {
@@ -287,18 +288,13 @@ export async function generateSubSegmentImage(
     finalStatus = "approved";
   } else {
     // A new candidate means this segment is no longer fully reviewed: knock it out of
-    // 'approved' so it must be re-published — mirroring content regen, which resets
-    // seg_status/approved_by (regenSegmentContent.ts). seg_status is the segment-wide
-    // content gate, so regenerating one image re-gates the WHOLE segment (content + quiz
-    // too) — the intended policy. Scoped to currently-'complete' segments, so this is a
-    // true no-op for first-time / batch generation on un-approved segments (no needless
-    // updated_at churn). auto_approve is an explicit "approve this now" and is never set
-    // by the CMS regen paths, so it correctly skips the invalidation.
-    await supabase
-      .from("segments")
-      .update({ seg_status: "pending", approved_by: null })
-      .eq("id", subSeg.seg_id!) // loadContext threw already if seg_id was null
-      .eq("seg_status", "complete");
+    // 'approved' so it must be re-published — mirroring content regen. seg_status is the
+    // segment-wide content gate, so a new image re-gates the WHOLE segment (content + quiz
+    // too) — the intended policy, scoped to 'complete' segments (a no-op otherwise).
+    // auto_approve is an explicit "approve this now" and is never set by the CMS regen
+    // paths, so it correctly skips the invalidation. Shared helper (also used by manual
+    // upload) — one implementation of the policy.
+    await reGateSegmentIfComplete(subSeg.seg_id!); // loadContext threw already if seg_id was null
   }
 
   return {

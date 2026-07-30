@@ -177,6 +177,52 @@ bundle with an opaque FK error. `unapprove` is the full reverse (content/quiz �
 Per-artifact approval stays available as the lower-level primitives
 (`/segments/:id/approve`, `/content-images/:id/approve`); bulk is the one-click path.
 
+### 1g. Upload an image for one card — DELIVERED
+```
+POST /sub-segments/:id/upload-image
+Authorization: Bearer <jwt>                 // admin (SPA JWT)
+Content-Type: image/png | image/jpeg | image/webp
+Body: RAW image bytes (NOT multipart, NOT base64, no JSON wrapper)
+→ 201 {
+    ok: true, content_image_id, sub_segment_id, seg_id,
+    status: "candidate", source: "uploaded",
+    public_url, storage_path, width, height, bytes,   // width/height/bytes = the STORED WebP
+    approval_reset: boolean
+  }
+→ 404 not_found          // no such sub_segment
+→ 400 invalid_image      // body empty or not a parseable image
+→ 400 image_out_of_spec  // fails the accept policy (message states actual dims + which rule)
+→ 413                    // body over the 10 MB raw-body limit (middleware, not a crash)
+→ 500 asset_not_registered  // stored file has no image_assets row (cleaned up)
+→ 500 insert_failed         // content_images insert failed (file cleaned up, no orphan)
+```
+A human uploads one image for a card; it lands as a `content_images` **candidate**
+(`source='uploaded'`). Approval is unchanged — the existing `POST /content-images/:id/approve`
+writes the `sub_segments.image` pointer; **this route writes no pointer.**
+
+**Synchronous 201, NOT the 202+poll job pattern** — an upload is not an LLM call, so there is
+nothing to poll (the same deliberate deviation as §2j's classify route). The re-encode is a
+fast in-process `sharp` call, not queued work.
+
+**Raw body, scoped middleware.** `express.raw({ type: [image/png,image/jpeg,image/webp],
+limit: '10mb' })` is mounted **on this route only**. The global `express.json()` 100 kB limit is
+untouched — it ignores non-JSON content types, so an `image/*` body passes through it and is
+parsed here into a Buffer.
+
+**Accept policy — reject, never crop, never pad.** Cards are 1200×655 (~1.83:1); an upload is
+rejected (`image_out_of_spec`) unless both hold: **aspect `width/height` ∈ [1.6, 2.1]** and
+**`max(width, height) ≥ 1200`**. The message states the actual dimensions/aspect and which rule
+failed (both, if both), so the CMS can show something actionable. A conforming file is stored via
+the shared `uploadImage` helper (WebP, ≤1200 long edge, `illustrations/sub-segment-{id}/{imageId}.webp`).
+
+**Stamping + re-gate.** `uploaded_by` is taken from the **verified JWT (`req.user.id`), never the
+body** (same rule as `content_approvals`). The three provenance fields
+(`final_prompt`/`image_prompt`/`image_generator_name`) plus `scene` are NULL — allowed by the
+migration's CHECK (`source<>'generated'`). If the segment was `complete`, it is re-gated to
+`pending` + `approved_by=null` (shared helper with `generate_sub_segment_image`; `approval_reset`
+reports whether it fired). On a post-upload failure the stored object is removed so no orphan file
+or `image_assets` row is left.
+
 ---
 
 ## 2. Content / lesson / quiz endpoints — DELIVERED
