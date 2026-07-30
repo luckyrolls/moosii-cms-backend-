@@ -1427,17 +1427,29 @@ Verifies **any** signed-in Supabase user (not the admin gate), recomputes only
 the `jobs` table under its RLS anyway).
 
 **Dependency (corrected):** questionnaire routing is **DERIVED, not externally
-written.** `questionnaire_responses_tracks` is a VIEW — `completed_items ⨝
-questionnaire_response ON questionnaire_id`, filtered to bands where the answer
-`score BETWEEN score_min_range AND score_max_range` — and `user_active_tracks`'s
-questionnaire arm is `DISTINCT ON (user_id, track_id) ORDER BY action_at DESC` over
-it (latest answer wins per track). So nothing "applies the routing result": writing
-the **answer** (`completed_items` row, app-side) is what makes routing appear, and a
-repeat answer landing in a different band flips the track automatically through the
-view chain. The only ordering requirement is therefore: **the answer's
-`completed_items` row must be written before `/mlp/recompute`**, or the recompute
-won't see the new answer. (Earlier notes described an external routing writer; there
-is none — this supersedes them.)
+written.** `questionnaire_responses_tracks` is a VIEW with two UNION arms, and
+`user_active_tracks`'s questionnaire arm is `DISTINCT ON (user_id, track_id) ORDER BY
+action_at DESC` over it (latest answer wins per track):
+- **Diagnostic arm** — `completed_items ⨝ questionnaire_response ON questionnaire_id`,
+  filtered to bands where the summed answer `score BETWEEN score_min_range AND
+  score_max_range`. Carries a real `add` boolean (a band may add or remove).
+- **Check-in arm (migration 048)** — `questionnaire_user_answers ⨝
+  questionnaire_answer_actions ON answer_id`, where `action_type IN
+  ('add_track','add_tag')`; the chosen answer's action grants that track/tag with
+  `action_at = the answer's created_at`. **Asymmetry:** the check-in action vocabulary
+  has no removal, so this arm hardcodes **`add = true`** (check-ins can only ADD).
+  `record_milestone` (and any other action_type) is excluded → produces **no routing
+  row**. An `add_tag` row expands to tracks through the same `track_tag_map` arm the
+  diagnostic path uses.
+
+Both arms emit the identical 10-column contract, so `user_active_tracks` and its
+byte-identical function twin `user_active_tracks_for_user` (migration 037) are
+**unchanged**. Nothing "applies the routing result": writing the **answer** (the
+`completed_items` row for diagnostics, or the `questionnaire_user_answers` row for
+check-ins — both app-side) is what makes routing appear, and a repeat answer flips the
+track automatically through the view chain. The only ordering requirement is: **the
+answer row must be written before `/mlp/recompute`**, or the recompute won't see it.
+(Earlier notes described an external routing writer; there is none — this supersedes them.)
 
 **Recurrence — score-band intervals (migration 033).** A questionnaire is normally
 one-shot: any `completed_items` row for it excludes it from the pool. With
