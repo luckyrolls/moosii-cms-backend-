@@ -289,7 +289,7 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
       track_id:          host_track_id,   // HOST track — placement/visibility
       priority:          target.priority ?? QUESTIONNAIRE_DEFAULT_PRIORITY, // COPIED from TARGET track; never NULL
       topic_id:          topic_id ?? null,
-      is_score_based:    true,            // required: routing only computes a score when true
+      kind:              "diagnostic",    // generation produces diagnostics only; check-in authoring is a later slice
       is_published:      false,           // draft; publishing is the human approve
       age:               age_months,      // single age gate (months)
       onboarding_text:   atom.intro_text,

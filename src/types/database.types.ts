@@ -791,11 +791,11 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           created_at: string
-          final_prompt: string
+          final_prompt: string | null
           id: string
-          image_generator_name: string
+          image_generator_name: string | null
           image_generator_version: string | null
-          image_prompt: string
+          image_prompt: string | null
           instruction_version_base: string | null
           instruction_version_overlay: string | null
           job_id: string | null
@@ -805,21 +805,23 @@ export type Database = {
           prompt_writer_version: string | null
           scene: string | null
           segment_id: string | null
+          source: string
           status: string
           storage_path: string
           sub_segment_id: string | null
           tags: string[]
           topic_name: string | null
+          uploaded_by: string | null
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
-          final_prompt: string
+          final_prompt?: string | null
           id?: string
-          image_generator_name: string
+          image_generator_name?: string | null
           image_generator_version?: string | null
-          image_prompt: string
+          image_prompt?: string | null
           instruction_version_base?: string | null
           instruction_version_overlay?: string | null
           job_id?: string | null
@@ -829,21 +831,23 @@ export type Database = {
           prompt_writer_version?: string | null
           scene?: string | null
           segment_id?: string | null
+          source?: string
           status?: string
           storage_path: string
           sub_segment_id?: string | null
           tags?: string[]
           topic_name?: string | null
+          uploaded_by?: string | null
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
-          final_prompt?: string
+          final_prompt?: string | null
           id?: string
-          image_generator_name?: string
+          image_generator_name?: string | null
           image_generator_version?: string | null
-          image_prompt?: string
+          image_prompt?: string | null
           instruction_version_base?: string | null
           instruction_version_overlay?: string | null
           job_id?: string | null
@@ -853,11 +857,13 @@ export type Database = {
           prompt_writer_version?: string | null
           scene?: string | null
           segment_id?: string | null
+          source?: string
           status?: string
           storage_path?: string
           sub_segment_id?: string | null
           tags?: string[]
           topic_name?: string | null
+          uploaded_by?: string | null
         }
         Relationships: [
           {
@@ -1803,13 +1809,16 @@ export type Database = {
       lessons: {
         Row: {
           abbreviated_title: string
+          archived_at: string | null
           article: string | null
           band_rationale: string | null
           created_at: string
           created_by: string | null
+          curator_note: string | null
           description: string | null
           id: string
           image_url: string | null
+          internal_name: string | null
           is_published: boolean | null
           lesson_name: string | null
           max_child_age: number | null
@@ -1834,13 +1843,16 @@ export type Database = {
         }
         Insert: {
           abbreviated_title?: string
+          archived_at?: string | null
           article?: string | null
           band_rationale?: string | null
           created_at?: string
           created_by?: string | null
+          curator_note?: string | null
           description?: string | null
           id?: string
           image_url?: string | null
+          internal_name?: string | null
           is_published?: boolean | null
           lesson_name?: string | null
           max_child_age?: number | null
@@ -1865,13 +1877,16 @@ export type Database = {
         }
         Update: {
           abbreviated_title?: string
+          archived_at?: string | null
           article?: string | null
           band_rationale?: string | null
           created_at?: string
           created_by?: string | null
+          curator_note?: string | null
           description?: string | null
           id?: string
           image_url?: string | null
+          internal_name?: string | null
           is_published?: boolean | null
           lesson_name?: string | null
           max_child_age?: number | null
@@ -2483,7 +2498,7 @@ export type Database = {
           description: string | null
           id: string
           is_published: boolean | null
-          is_score_based: boolean | null
+          kind: string
           milestone_id: string | null
           onboarding_image: string
           onboarding_text: string
@@ -2504,7 +2519,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_published?: boolean | null
-          is_score_based?: boolean | null
+          kind?: string
           milestone_id?: string | null
           onboarding_image?: string
           onboarding_text?: string
@@ -2525,7 +2540,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_published?: boolean | null
-          is_score_based?: boolean | null
+          kind?: string
           milestone_id?: string | null
           onboarding_image?: string
           onboarding_text?: string
@@ -2583,6 +2598,85 @@ export type Database = {
           },
         ]
       }
+      questionnaire_answer_actions: {
+        Row: {
+          action_type: string
+          answer_id: string
+          created_at: string
+          id: string
+          milestone_id: string | null
+          repeat_after_days: number | null
+          tag_id: string | null
+          track_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          action_type: string
+          answer_id: string
+          created_at?: string
+          id?: string
+          milestone_id?: string | null
+          repeat_after_days?: number | null
+          tag_id?: string | null
+          track_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string
+          answer_id?: string
+          created_at?: string
+          id?: string
+          milestone_id?: string | null
+          repeat_after_days?: number | null
+          tag_id?: string | null
+          track_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questionnaire_answer_actions_answer_id_fkey"
+            columns: ["answer_id"]
+            isOneToOne: false
+            referencedRelation: "questionnaire_answers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_answer_actions_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "milestones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_answer_actions_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_answer_actions_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_tag_details"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "questionnaire_answer_actions_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionnaire_answer_actions_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+        ]
+      }
       questionnaire_answers: {
         Row: {
           answer_text: string | null
@@ -2626,6 +2720,7 @@ export type Database = {
           answer_status: string | null
           created_at: string
           image_url: string | null
+          milestone_id: string | null
           question_id: string
           question_text: string | null
           questionnaire_id: string | null
@@ -2636,6 +2731,7 @@ export type Database = {
           answer_status?: string | null
           created_at?: string
           image_url?: string | null
+          milestone_id?: string | null
           question_id?: string
           question_text?: string | null
           questionnaire_id?: string | null
@@ -2646,6 +2742,7 @@ export type Database = {
           answer_status?: string | null
           created_at?: string
           image_url?: string | null
+          milestone_id?: string | null
           question_id?: string
           question_text?: string | null
           questionnaire_id?: string | null
@@ -2653,6 +2750,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "questionnaire_questions_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "milestones"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "questionnaire_questions_questionnaire_id_fkey"
             columns: ["questionnaire_id"]
@@ -2761,8 +2865,6 @@ export type Database = {
           id: string
           question_id: string
           questionnaire_id: string
-          score: number | null
-          updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -2771,8 +2873,6 @@ export type Database = {
           id?: string
           question_id: string
           questionnaire_id: string
-          score?: number | null
-          updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -2781,8 +2881,6 @@ export type Database = {
           id?: string
           question_id?: string
           questionnaire_id?: string
-          score?: number | null
-          updated_at?: string | null
           user_id?: string
         }
         Relationships: [
@@ -2790,22 +2888,15 @@ export type Database = {
             foreignKeyName: "questionnaire_user_answers_answer_id_fkey"
             columns: ["answer_id"]
             isOneToOne: false
-            referencedRelation: "answers_legacy"
+            referencedRelation: "questionnaire_answers"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "questionnaire_user_answers_question_id_fkey"
             columns: ["question_id"]
             isOneToOne: false
-            referencedRelation: "lesson_questions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_user_answers_question_id_fkey"
-            columns: ["question_id"]
-            isOneToOne: false
-            referencedRelation: "questions_legacy"
-            referencedColumns: ["id"]
+            referencedRelation: "questionnaire_questions"
+            referencedColumns: ["question_id"]
           },
           {
             foreignKeyName: "questionnaire_user_answers_questionnaire_id_fkey"
@@ -4021,6 +4112,7 @@ export type Database = {
       }
       tracks: {
         Row: {
+          archived_at: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -4034,6 +4126,7 @@ export type Database = {
           weight: number | null
         }
         Insert: {
+          archived_at?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -4047,6 +4140,7 @@ export type Database = {
           weight?: number | null
         }
         Update: {
+          archived_at?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -5887,7 +5981,7 @@ export type Database = {
           description: string | null
           id: string | null
           is_published: boolean | null
-          is_score_based: boolean | null
+          kind: string | null
           priority: number | null
           questionnaire_name: string | null
           track_id: string | null

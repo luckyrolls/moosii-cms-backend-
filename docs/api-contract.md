@@ -1725,7 +1725,8 @@ backend must preserve and the frontend leans on:
   `question_id`, `answer_text`, `is_correct`, `response`, `score`). Separate rows,
   not jsonb. See §7 for the legacy tables these replace.
 - **Questionnaire atom tables (§2e):** `questionnaire` (`id`, `track_id` = HOST
-  track, `age` = single age gate in months, `is_published`, `is_score_based`,
+  track, `age` = single age gate in months, `is_published`, `kind`
+  (`diagnostic`|`checkin`; generation writes `diagnostic`),
   `intro_text`), `questionnaire_questions` (`answer_status` `pending`/`approved`),
   `questionnaire_answers` (each carries a `score`), and `questionnaire_response`
   (the routing rule — `score_min_range`, `score_max_range`, `track_id` = TARGET
