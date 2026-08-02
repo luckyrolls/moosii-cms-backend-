@@ -41,6 +41,16 @@ Main track:
   (`WHERE internal_name IS NULL`), and teaches `create_lessons_with_segments` to persist it
   (coalesce absent/empty → `lesson_name`; same `(p_lessons jsonb)` signature, no overload/DROP).
   The DDL is already live ad-hoc on this DB, so the file's only effect here is the RPC.
+- **047a** — APPLIED (live; **NOT RUNNABLE** — rebuild record only): `checkins_foundation`
+  — wipe questionnaires; drop `is_score_based`; add `questionnaire.kind` (NOT NULL default
+  `'diagnostic'`); rebuild `questionnaire_user_answers` against the atom tables; create
+  `questionnaire_answer_actions` (+ `qaa_payload_matches_type`); add
+  `questionnaire_questions.milestone_id`; recreate `questionnaire_with_track_name` /
+  `questionnaire_user_score`. Applied manually via the SQL editor and never filed until
+  now. **Logical position: after 047, before 048** (048 reads the tables it creates), hence
+  the `047a` sort key. The file carries an ALREADY-APPLIED/DO-NOT-RUN banner and is a
+  faithful-but-incomplete reconstruction (the two view bodies in §7 are a flagged gap for
+  Mark to fill from `pg_get_viewdef`). Do not execute it against the live DB.
 - **049** — DRAFT (pending apply): scope the check-in routing arm to `kind='checkin'`
   (`CREATE OR REPLACE VIEW questionnaire_responses_tracks`, adds `JOIN questionnaire q` +
   `AND q.kind='checkin'`). Closes the Claim-1 hazard; 10-col contract unchanged so the
