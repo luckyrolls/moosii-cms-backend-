@@ -25,14 +25,15 @@
 -- ============================================================================
 -- FIDELITY NOTE — READ BEFORE TRUSTING ANY LINE BELOW
 -- ============================================================================
--- Only ONE part of this file is TRANSCRIBED from the confirmed live constraint text:
--- the `qaa_payload_matches_type` CHECK and the enumerated constraint list on
--- questionnaire_answer_actions. EVERYTHING ELSE is RECONSTRUCTED from the resulting
--- live column shapes (src/types/database.types.ts) and the change description — the
--- exact DDL statements that ran were not captured. Every reconstructed section is
--- marked `-- RECONSTRUCTED`. Two view bodies could NOT be reconstructed at all and are
--- left as explicit gaps for Mark to fill from pg_get_viewdef (see §7). A reconstructed
--- line is an honest best-effort at WHAT ran, not a byte record of it.
+-- The CONSTRAINTS, CHECKS, and VIEW BODIES here are all TRANSCRIBED from confirmed live
+-- text: `qaa_payload_matches_type` + the questionnaire_answer_actions constraint list,
+-- the `questionnaire_kind_valid` CHECK (§2), all six questionnaire_user_answers
+-- constraints (§3), the two view bodies (§7), and the no-trigger finding (§5). What
+-- remains RECONSTRUCTED is only the DDL STATEMENT FORM (whether prod used drop/recreate
+-- vs alter-in-place; the exact wipe/cascade phrasing) and a few column-DEFAULT
+-- expressions — the resulting live schema SHAPE is fully confirmed. Reconstructed lines
+-- are marked `-- RECONSTRUCTED`; they are an honest best-effort at HOW it ran, not a byte
+-- record. The §7 view gap and all three earlier FLAG-FOR-MARK items are now CLOSED.
 -- ============================================================================
 
 
@@ -55,47 +56,49 @@ DELETE FROM questionnaire;   -- RECONSTRUCTED (cascade via live FKs; exact form 
 -- RECONSTRUCTED statements; the COLUMN OUTCOMES are confirmed from the live schema
 -- (types show `kind` present, `is_score_based` absent) and from the change description
 -- (NOT NULL, default 'diagnostic').
-ALTER TABLE questionnaire DROP COLUMN is_score_based;                        -- RECONSTRUCTED
-ALTER TABLE questionnaire ADD COLUMN kind text NOT NULL DEFAULT 'diagnostic'; -- RECONSTRUCTED
--- UNCERTAIN / FLAG FOR MARK: whether a CHECK constrains kind to a fixed set
--- (e.g. ('diagnostic','checkin')) is NOT known — the live types expose `kind` only as
--- `text`. Routing uses kind='checkin'; generation writes 'diagnostic'. If a CHECK
--- exists in prod, it is NOT reflected here. Confirm via:
---   SELECT pg_get_constraintdef(oid) FROM pg_constraint
---   WHERE conrelid = 'questionnaire'::regclass AND contype = 'c';
+ALTER TABLE questionnaire DROP COLUMN is_score_based;                        -- RECONSTRUCTED (statement form; column removal confirmed live)
+ALTER TABLE questionnaire ADD COLUMN kind text NOT NULL DEFAULT 'diagnostic'; -- RECONSTRUCTED (statement form; column confirmed live)
+-- kind value constraint — TRANSCRIBED from live (confirmed structural; the two-value
+-- vocabulary that migration 049's routing filter and generation both rely on):
+ALTER TABLE questionnaire
+  ADD CONSTRAINT questionnaire_kind_valid
+  CHECK ((kind = ANY (ARRAY['diagnostic'::text, 'checkin'::text])));
 
 
 -- ============================================================================
 -- §3. Rebuild questionnaire_user_answers against the ATOM tables
 -- ============================================================================
--- RECONSTRUCTED. The pre-rebuild shape is not captured; the change re-pointed this
--- table's FKs at the atom tables (answer_id → questionnaire_answers.id, question_id →
--- questionnaire_questions.question_id). Final column set is confirmed from the live
--- types: (id, user_id, questionnaire_id, question_id, answer_id, created_at). Shown as
--- DROP + CREATE; whether prod actually did ALTER-in-place vs drop/recreate is unknown.
-DROP TABLE IF EXISTS questionnaire_user_answers;   -- RECONSTRUCTED (form uncaptured)
-CREATE TABLE questionnaire_user_answers (          -- RECONSTRUCTED
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),   -- RECONSTRUCTED (PK/default inferred)
-  user_id         uuid NOT NULL,                                -- RECONSTRUCTED
-  questionnaire_id uuid NOT NULL,                               -- RECONSTRUCTED
-  question_id     uuid NOT NULL,                                -- RECONSTRUCTED
-  answer_id       uuid NOT NULL,                                -- RECONSTRUCTED
-  created_at      timestamptz NOT NULL DEFAULT now(),           -- RECONSTRUCTED
-  -- The two ATOM-table FK re-points are the POINT of this rebuild (per the change
-  -- description); the referenced columns are confirmed, the ON DELETE actions are NOT:
+-- The change re-pointed this table's FKs at the atom tables (answer_id →
+-- questionnaire_answers.id, question_id → questionnaire_questions.question_id). Column set
+-- AND all six constraints are now CONFIRMED from live; only the STATEMENT FORM (shown as
+-- DROP + CREATE — prod may have done ALTER-in-place) and the id/created_at default
+-- EXPRESSIONS remain reconstructed.
+DROP TABLE IF EXISTS questionnaire_user_answers;   -- RECONSTRUCTED (statement form uncaptured)
+CREATE TABLE questionnaire_user_answers (          -- RECONSTRUCTED (statement form; shape below confirmed)
+  id              uuid NOT NULL DEFAULT gen_random_uuid(),   -- default expr RECONSTRUCTED; PK below is confirmed
+  user_id         uuid NOT NULL,
+  questionnaire_id uuid NOT NULL,
+  question_id     uuid NOT NULL,
+  answer_id       uuid NOT NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),        -- default expr RECONSTRUCTED
+  -- Constraints — ALL SIX confirmed from live (targets, ON DELETE actions, and the UNIQUE):
+  CONSTRAINT questionnaire_user_answers_pkey PRIMARY KEY (id),
   CONSTRAINT questionnaire_user_answers_answer_id_fkey
-    FOREIGN KEY (answer_id) REFERENCES questionnaire_answers (id),          -- RECONSTRUCTED (ON DELETE unknown)
+    FOREIGN KEY (answer_id) REFERENCES questionnaire_answers (id) ON DELETE CASCADE,
   CONSTRAINT questionnaire_user_answers_question_id_fkey
-    FOREIGN KEY (question_id) REFERENCES questionnaire_questions (question_id), -- RECONSTRUCTED (ON DELETE unknown)
+    FOREIGN KEY (question_id) REFERENCES questionnaire_questions (question_id) ON DELETE CASCADE,
   CONSTRAINT questionnaire_user_answers_questionnaire_id_fkey
-    FOREIGN KEY (questionnaire_id) REFERENCES questionnaire (id),           -- RECONSTRUCTED (ON DELETE unknown)
+    FOREIGN KEY (questionnaire_id) REFERENCES questionnaire (id) ON DELETE CASCADE,
   CONSTRAINT questionnaire_user_answers_user_id_fkey
-    FOREIGN KEY (user_id) REFERENCES "user" (id)                           -- RECONSTRUCTED (target table + ON DELETE unknown)
+    FOREIGN KEY (user_id) REFERENCES "user" (id) ON DELETE CASCADE,
+  -- DELIBERATE — do NOT "fix" this by dropping created_at. Including created_at makes the
+  -- key a near-no-op (two answers to the same question differ by microseconds, so BOTH
+  -- insert), and that is exactly the point: a recurring check-in must ACCUMULATE answer
+  -- history, and qua.created_at is the `action_at` the check-in routing arm orders by
+  -- (DISTINCT ON ... action_at DESC = latest-answer-wins). Drop created_at from this key
+  -- and recurring check-ins can no longer re-answer — recurrence breaks.
+  UNIQUE (user_id, questionnaire_id, question_id, created_at)   -- columns confirmed; constraint NAME auto-generated (not captured)
 );
--- FLAG FOR MARK: the user_id FK target table name ("user" vs users vs auth.users) and
--- ALL ON DELETE actions above are reconstructed guesses. Settle from:
---   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
---   WHERE conrelid = 'questionnaire_user_answers'::regclass;
 
 
 -- ============================================================================
@@ -159,9 +162,10 @@ CREATE TABLE questionnaire_answer_actions (
   CONSTRAINT questionnaire_answer_actions_track_id_fkey
     FOREIGN KEY (track_id) REFERENCES tracks (id) ON DELETE RESTRICT
 );
--- FLAG FOR MARK (minor): an updated_at auto-touch TRIGGER is common on this DB's tables
--- but is NOT captured here — the change description gave only the column default. If one
--- exists on questionnaire_answer_actions in prod, it is not recorded in this file.
+-- CONFIRMED (positive finding, not an open question): questionnaire_answer_actions has
+-- ZERO non-internal triggers. `updated_at` gets now() on INSERT and is NEVER updated — it
+-- is effectively a created_at duplicate. This is the intended live state; do NOT add an
+-- updated_at touch trigger "to fix" it — there is nothing to fix.
 
 
 -- ============================================================================
@@ -176,16 +180,35 @@ CREATE TABLE questionnaire_answer_actions (
 -- ============================================================================
 -- §7. Recreate questionnaire_with_track_name / questionnaire_user_score
 -- ============================================================================
--- GAP — NOT RECONSTRUCTED. Both views were recreated as part of this change (they
--- reference questionnaire columns that §2 altered, so they had to be dropped/recreated),
--- but their BODIES are not recoverable from the types or the change description. Do NOT
--- invent them. Their live definitions must be pulled from prod and pasted here to make
--- this record complete:
---   SELECT pg_get_viewdef('questionnaire_with_track_name'::regclass, true);
---   SELECT pg_get_viewdef('questionnaire_user_score'::regclass, true);
--- Until then this file is a FAITHFUL-BUT-INCOMPLETE record: §7 is a known hole.
--- (Leaving them absent is correct per the fidelity rule — a guessed view body would be
---  worse than an honest gap.)
+-- TRANSCRIBED VERBATIM from live (the §7 gap is now CLOSED). Both views were recreated as
+-- part of this change (they read questionnaire columns that §2 altered).
+
+CREATE OR REPLACE VIEW questionnaire_user_score AS
+ SELECT qua.user_id,
+    qua.questionnaire_id,
+    sum(COALESCE(qa.score::integer, 0)) AS total_score,
+    max(qua.created_at) AS calculated_at
+   FROM questionnaire_user_answers qua
+     JOIN questionnaire_answers qa ON qa.id = qua.answer_id
+  GROUP BY qua.user_id, qua.questionnaire_id;
+-- OBSERVATION (not a defect): questionnaire_user_score has NO `kind` filter, so it also
+-- computes a total_score for CHECK-INS — summed from catalog answer scores that are
+-- meaningless for a check-in (COALESCE folds absent/NULL scores to 0). This is consistent
+-- with the completed_items score-sentinel that migration 050 addresses. Whether anything
+-- READS this view for check-ins is an open grep, not settled here.
+
+CREATE OR REPLACE VIEW questionnaire_with_track_name AS
+ SELECT q.id,
+    q.questionnaire_name,
+    q.description,
+    q.track_id,
+    t.track_name,
+    q.is_published,
+    q.kind,
+    q.priority,
+    q.created_at
+   FROM questionnaire q
+     LEFT JOIN tracks t ON t.id = q.track_id;
 
 -- ============================================================================
 -- END REBUILD RECORD — DO NOT RUN.

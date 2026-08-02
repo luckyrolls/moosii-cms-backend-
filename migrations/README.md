@@ -48,9 +48,11 @@ Main track:
   `questionnaire_questions.milestone_id`; recreate `questionnaire_with_track_name` /
   `questionnaire_user_score`. Applied manually via the SQL editor and never filed until
   now. **Logical position: after 047, before 048** (048 reads the tables it creates), hence
-  the `047a` sort key. The file carries an ALREADY-APPLIED/DO-NOT-RUN banner and is a
-  faithful-but-incomplete reconstruction (the two view bodies in §7 are a flagged gap for
-  Mark to fill from `pg_get_viewdef`). Do not execute it against the live DB.
+  the `047a` sort key. It is a COMPLETE record — the §7 view bodies
+  (`questionnaire_with_track_name` / `questionnaire_user_score`) and all three earlier
+  FLAG-FOR-MARK items are resolved from live and transcribed; only DDL statement form and a
+  couple column defaults remain reconstructed (schema shape fully confirmed). Carries an
+  ALREADY-APPLIED/DO-NOT-RUN banner — do not execute it against the live DB.
 - **049** — DRAFT (pending apply): scope the check-in routing arm to `kind='checkin'`
   (`CREATE OR REPLACE VIEW questionnaire_responses_tracks`, adds `JOIN questionnaire q` +
   `AND q.kind='checkin'`). Closes the Claim-1 hazard; 10-col contract unchanged so the
