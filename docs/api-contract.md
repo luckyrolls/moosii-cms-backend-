@@ -1062,7 +1062,9 @@ on one **structural** rule (no toggle):
   answer-dependent and safety-sensitive (a "no, not yet" answer must not record the
   milestone), and completion is app-side today (`completed_items`, no backend
   trigger). When built, it READS `questionnaire.milestone_id` (one link, two
-  directions) — do not add a parallel mapping.
+  directions) — do not add a parallel mapping. The CMS can now author a
+  `record_milestone` action per answer (migration 048); the WRITE path remains
+  unbuilt — an authored action is inert.
 
 **Slice B — PROVISIONAL DELIVERED** (DISTRESS, migrations 024–025): detection is
 LIVE, response content is PROVISIONAL, app delivery is slice 4 (still gated). The
@@ -1440,7 +1442,7 @@ action_at DESC` over it (latest answer wins per track):
   has no removal, so this arm hardcodes **`add = true`** (check-ins can only ADD).
   `record_milestone` (and any other action_type) is excluded → produces **no routing
   row**. An `add_tag` row expands to tracks through the same `track_tag_map` arm the
-  diagnostic path uses.
+  diagnostic path uses. Scoped to `kind='checkin'` by migration 049.
 
 Both arms emit the identical 10-column contract, so `user_active_tracks` and its
 byte-identical function twin `user_active_tracks_for_user` (migration 037) are
@@ -1451,7 +1453,8 @@ track automatically through the view chain. The only ordering requirement is: **
 answer row must be written before `/mlp/recompute`**, or the recompute won't see it.
 (Earlier notes described an external routing writer; there is none — this supersedes them.)
 
-**Recurrence — score-band intervals (migration 033).** A questionnaire is normally
+**Recurrence — score-band intervals (migration 033).** This mechanism is
+diagnostic-only; check-in recurrence is unbuilt. A questionnaire is normally
 one-shot: any `completed_items` row for it excludes it from the pool. With
 `questionnaire_response.repeat_after_days` set on a band, that exclusion becomes a
 **"not yet due"** check. Per (user, questionnaire), the rebuild takes the LATEST

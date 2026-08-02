@@ -41,6 +41,19 @@ Main track:
   (`WHERE internal_name IS NULL`), and teaches `create_lessons_with_segments` to persist it
   (coalesce absent/empty → `lesson_name`; same `(p_lessons jsonb)` signature, no overload/DROP).
   The DDL is already live ad-hoc on this DB, so the file's only effect here is the RPC.
+- **049** — DRAFT (pending apply): scope the check-in routing arm to `kind='checkin'`
+  (`CREATE OR REPLACE VIEW questionnaire_responses_tracks`, adds `JOIN questionnaire q` +
+  `AND q.kind='checkin'`). Closes the Claim-1 hazard; 10-col contract unchanged so the
+  frozen `user_active_tracks` pair needs no change.
+- **050** — DRAFT (pending apply): `completed_items.score DROP NOT NULL` — a check-in has
+  no score; permits the app to write NULL instead of a matchable 0 sentinel (app change is
+  a separate app-repo slice).
+- **051** — DRAFT (pending apply): partial unique index `qaa_one_milestone_per_answer` on
+  `questionnaire_answer_actions (answer_id) WHERE action_type='record_milestone'` — ≤1
+  milestone assertion per answer, without capping add_track/add_tag fan-out.
+- **Apply order for 049–051:** all three are mutually INDEPENDENT and may be applied in any
+  order; each is trivial at zero rows. (They post-date 048 and its still-unfiled
+  `checkins_foundation` predecessor.)
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
