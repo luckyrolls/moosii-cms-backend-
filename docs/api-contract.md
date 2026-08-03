@@ -1520,8 +1520,9 @@ track automatically through the view chain. The only ordering requirement is: **
 answer row must be written before `/mlp/recompute`**, or the recompute won't see it.
 (Earlier notes described an external routing writer; there is none — this supersedes them.)
 
-**Recurrence — score-band intervals (migration 033).** This mechanism is
-diagnostic-only; check-in recurrence is unbuilt. A questionnaire is normally
+**Recurrence — two interval sources.** DIAGNOSTICS use score-band intervals
+(migration 033); CHECK-INS use per-answer intervals (migration 053) — see the check-in
+paragraph below. A questionnaire is normally
 one-shot: any `completed_items` row for it excludes it from the pool. With
 `questionnaire_response.repeat_after_days` set on a band, that exclusion becomes a
 **"not yet due"** check. Per (user, questionnaire), the rebuild takes the LATEST
@@ -1537,6 +1538,25 @@ is still independently excluded (no coupling). Band matching is independent of `
 state table — so a recurring questionnaire only re-surfaces when a recompute runs
 (today's onboarding/answer triggers; a due-moment trigger like on-open recompute is
 app-side, out of scope here).
+
+**Recurrence — check-in per-answer intervals (migration 053).** A `kind='checkin'`
+questionnaire has NO score and NO `questionnaire_response` bands, so its cadence comes
+from the ANSWER the parent gave, not a band. Per (user, questionnaire): the rebuild
+takes the LATEST completion (`completed_items`, as above), resolves that ask's answers
+(`completed_items → questionnaire_user_answers → questionnaire_answers.repeat_after_days`),
+and uses the **MAX** of their non-null intervals — each answer's interval is authored
+separately, and check-ins never go quiet (no age ceiling, no attempt cap), so MAX errs
+toward under-asking rather than nagging forever. The questionnaire RE-INCLUDES once
+`now() - created_at >= interval`. All-NULL (or no authored interval) → one-shot. This
+feeds `decideQuestionnaire` in the same `bandIntervalDays` slot as the diagnostic path,
+so **suppression still trumps due-ness** — a check-in whose milestone fact was recorded
+(the writer, §Slice 3) stays excluded even with an elapsed interval. That ordering is
+what makes "retire on Yes, repeat on No" need no branch. Fail-safe: any error loading
+the answer interval → the check-in falls back to one-shot (never wrongly re-surfaced).
+Only `computeQuestionnaireDecisions` gained this branch (gated on `kind='checkin'`); the
+diagnostic band path is byte-identical. (The questionnaire-status inspector still reads
+only bands, so it under-reports check-in `due_at` until similarly updated — display-only,
+the rebuild re-surfaces correctly.)
 
 **Topic-mention deferral (migration 042).** Opt-in per questionnaire via
 `questionnaire.defer_topic` (uuid → `tracks.id`) + `defer_days` (int > 0); both NULL =

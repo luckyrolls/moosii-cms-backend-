@@ -278,15 +278,95 @@ export async function loadLatestMentionByTrack(
   return byTrack;
 }
 
+// Check-in recurrence interval per questionnaire (kind='checkin'). Diagnostics get their
+// cadence from score-bands (matchRecurringBand); check-ins have NO score and NO bands, so
+// the interval comes from the ANSWER the parent gave at the LATEST completion:
+//   completed_items (latest, via latestByQ) → questionnaire_user_answers (that ask's
+//   answers) → questionnaire_answers.repeat_after_days.
+// A check-in may hold several answers (multi-question). Each answer's interval is authored
+// SEPARATELY by the clinical owner, so we take the MAX non-null interval — never let one
+// answer's short cadence silently override another's longer authored one. Check-ins never go
+// quiet (no age ceiling / no attempt cap), so over-asking would compound forever; MAX errs
+// toward under-asking, the safe direction. All-NULL → no entry → the caller falls back to
+// the band path → one-shot.
+// NEVER THROWS: any query failure returns an EMPTY map, so check-ins fall back to one-shot
+// (today's behaviour) — preserving "a bug here can only fail to re-surface, never wrongly hide".
+export async function loadCheckinRecurrenceIntervals(
+  userId: string,
+  latestByQ: Map<string, { score: number | null; createdAt: number }>
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  try {
+    if (latestByQ.size === 0) return out;
+
+    // 1. Which of the answered questionnaires are check-ins.
+    const { data: kindRows, error: kErr } = await db
+      .from("questionnaire").select("id").eq("kind", "checkin").in("id", [...latestByQ.keys()]);
+    if (kErr) throw new Error(kErr.message);
+    const checkinIds = ((kindRows ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (checkinIds.length === 0) return out;
+
+    // 2. The user's answers on those check-ins.
+    const { data: quaRows, error: qErr } = await db
+      .from("questionnaire_user_answers")
+      .select("questionnaire_id, answer_id, created_at")
+      .eq("user_id", userId).in("questionnaire_id", checkinIds);
+    if (qErr) throw new Error(qErr.message);
+    const qua = (quaRows ?? []) as Array<{ questionnaire_id: string; answer_id: string; created_at: string }>;
+    if (qua.length === 0) return out;
+
+    // 3. The LATEST ask's answers per q: those at-or-after the latest completion time (the
+    //    app writes the completion row + its answers together), so earlier asks are excluded.
+    //    Fall back to the single most-recent answer if clock skew leaves that set empty.
+    const answerIdsByQ = new Map<string, string[]>();
+    const allAnswerIds = new Set<string>();
+    for (const qid of checkinIds) {
+      const rows = qua.filter((r) => r.questionnaire_id === qid);
+      if (rows.length === 0) continue;
+      const anchor = latestByQ.get(qid)?.createdAt ?? 0;
+      let ask = rows.filter((r) => new Date(r.created_at).getTime() >= anchor);
+      if (ask.length === 0) {
+        const maxT = Math.max(...rows.map((r) => new Date(r.created_at).getTime()));
+        ask = rows.filter((r) => new Date(r.created_at).getTime() === maxT);
+      }
+      const ids = ask.map((r) => r.answer_id);
+      answerIdsByQ.set(qid, ids);
+      ids.forEach((i) => allAnswerIds.add(i));
+    }
+    if (allAnswerIds.size === 0) return out;
+
+    // 4. repeat_after_days per answer (migration 053).
+    const { data: ansRows, error: aErr } = await db
+      .from("questionnaire_answers").select("id, repeat_after_days").in("id", [...allAnswerIds]);
+    if (aErr) throw new Error(aErr.message);
+    const intervalByAnswer = new Map<string, number | null>(
+      ((ansRows ?? []) as Array<{ id: string; repeat_after_days: number | null }>).map((a) => [a.id, num(a.repeat_after_days)])
+    );
+
+    // 5. MAX non-null interval among the latest ask's answers. All-NULL → no entry (one-shot).
+    for (const [qid, ids] of answerIdsByQ) {
+      const vals = ids.map((i) => intervalByAnswer.get(i) ?? null).filter((v): v is number => v !== null);
+      if (vals.length > 0) out.set(qid, Math.max(...vals));
+    }
+    return out;
+  } catch (e) {
+    console.warn(`[rebuild_mlp] check-in recurrence interval load failed; treating check-ins as one-shot: ${e instanceof Error ? e.message : String(e)}`);
+    return new Map();
+  }
+}
+
 // Per-user DUE + DEFERRED sets for questionnaires, computed through the single
 // decideQuestionnaire above (no logic split between pivot and filter). Sibling to
-// computeMilestoneSuppression. Gathers the three inputs the decision needs — latest answer
-// (completedRows in hand), matched recurring-band interval (questionnaire_response), and
-// deferral config + latest topic mention (questionnaire + user_update_signals ⨝
-// user_update_events) — then classifies every answered-OR-configured questionnaire.
+// computeMilestoneSuppression. Gathers the inputs the decision needs — latest answer
+// (completedRows in hand), matched recurring-band interval (questionnaire_response) for
+// DIAGNOSTICS or the answer interval (questionnaire_answers.repeat_after_days) for
+// CHECK-INS, and deferral config + latest topic mention (questionnaire + user_update_signals
+// ⨝ user_update_events) — then classifies every answered-OR-configured questionnaire.
 //
 // FAIL DIRECTIONS are per-input so one failing query can't over-hide:
 //   • band load fails → treat as one-shot (no re-surface) = today's recurrence fail-safe.
+//   • check-in interval load fails → check-ins fall back to the band path (null score →
+//     null → one-shot); same "fail to re-surface, never wrongly hide" direction.
 //   • defer/mention load fails → NO active mention anywhere (no deferral, no mention-due) —
 //     deferral can only ever HIDE, so its failure must read as "asked normally", never
 //     "silently hidden". Mention persistence is apply-only, so previews record none.
@@ -331,6 +411,11 @@ export async function computeQuestionnaireDecisions(
     }
   }
 
+  // Check-in recurrence intervals (kind='checkin'; MAX of the latest completion's answer
+  // intervals). Present ONLY for check-ins that carry a real interval; empty on any failure
+  // (→ check-ins fall back to the band path → one-shot). Diagnostics are never queried here.
+  const checkinIntervalByQ = await loadCheckinRecurrenceIntervals(userId, latestByQ);
+
   // Deferral config + latest topic mention per track, via the SHARED helpers (the
   // questionnaire-status inspector reuses the exact same two queries — no copy). Either
   // helper failing yields empty → decideQuestionnaire sees no active mention → band-only
@@ -344,7 +429,12 @@ export async function computeQuestionnaireDecisions(
   const allQ = new Set<string>([...latestByQ.keys(), ...configByQ.keys()]);
   for (const qid of allQ) {
     const latest = latestByQ.get(qid) ?? null;
-    const bandInterval = latest ? matchRecurringBand(latest.score, bandsByQ.get(qid) ?? [])?.days ?? null : null;
+    // Check-ins with a real interval use the ANSWER interval; EVERYTHING else (diagnostics,
+    // and check-ins with no authored interval) takes the unchanged score-band path.
+    const checkinInterval = checkinIntervalByQ.get(qid);
+    const bandInterval = checkinInterval !== undefined
+      ? checkinInterval
+      : (latest ? matchRecurringBand(latest.score, bandsByQ.get(qid) ?? [])?.days ?? null : null);
     const cfg = configByQ.get(qid);
     const mentionT = cfg ? mentionByTrack.get(cfg.track) ?? null : null;
     const decision = decideQuestionnaire(latest?.createdAt ?? null, mentionT, cfg?.days ?? null, bandInterval, now);
