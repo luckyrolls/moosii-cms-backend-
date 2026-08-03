@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **047** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **051** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -53,19 +53,23 @@ Main track:
   FLAG-FOR-MARK items are resolved from live and transcribed; only DDL statement form and a
   couple column defaults remain reconstructed (schema shape fully confirmed). Carries an
   ALREADY-APPLIED/DO-NOT-RUN banner — do not execute it against the live DB.
-- **049** — DRAFT (pending apply): scope the check-in routing arm to `kind='checkin'`
+- **048** — APPLIED: add a CHECK-IN routing arm to the `questionnaire_responses_tracks`
+  view (`UNION ALL` a per-answer `questionnaire_user_answers ⨝ questionnaire_answer_actions`
+  arm onto the diagnostic arm). 10-col contract preserved byte-for-byte, so the frozen
+  `user_active_tracks` + `user_active_tracks_for_user` pair are untouched.
+- **049** — APPLIED: scope the check-in routing arm to `kind='checkin'`
   (`CREATE OR REPLACE VIEW questionnaire_responses_tracks`, adds `JOIN questionnaire q` +
   `AND q.kind='checkin'`). Closes the Claim-1 hazard; 10-col contract unchanged so the
   frozen `user_active_tracks` pair needs no change.
-- **050** — DRAFT (pending apply): `completed_items.score DROP NOT NULL` — a check-in has
+- **050** — APPLIED: `completed_items.score DROP NOT NULL` — a check-in has
   no score; permits the app to write NULL instead of a matchable 0 sentinel (app change is
   a separate app-repo slice).
-- **051** — DRAFT (pending apply): partial unique index `qaa_one_milestone_per_answer` on
+- **051** — APPLIED: partial unique index `qaa_one_milestone_per_answer` on
   `questionnaire_answer_actions (answer_id) WHERE action_type='record_milestone'` — ≤1
   milestone assertion per answer, without capping add_track/add_tag fan-out.
-- **Apply order for 049–051:** all three are mutually INDEPENDENT and may be applied in any
-  order; each is trivial at zero rows. (They post-date 048 and its still-unfiled
-  `checkins_foundation` predecessor.)
+- **Apply order for 049–051:** all three are mutually INDEPENDENT and were applied in any
+  order; each was trivial at zero rows. (They post-date 048 and its `checkins_foundation`
+  predecessor — now filed as 047a.)
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

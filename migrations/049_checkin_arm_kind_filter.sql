@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Migration 049: scope the check-in routing arm to kind='checkin' (DRAFT)
 -- ============================================================================
--- DRAFT — NOT applied by the agent. APPLY VIA THE SUPABASE SQL EDITOR after review;
--- on the 008..049 reconciliation list. Independent of 050/051 (any apply order).
+-- APPLIED via the Supabase SQL editor (2026-08-03). On the 008..049 reconciliation list.
+-- Independent of 050/051 (any apply order). Idempotent (CREATE OR REPLACE) if re-run.
 --
 -- WHY. Closes the Claim-1 hazard: the check-in arm added in 048 joined only
 -- questionnaire_user_answers ⨝ questionnaire_answer_actions with no `kind` predicate,

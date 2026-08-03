@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Migration 050: completed_items.score DROP NOT NULL (DRAFT)
 -- ============================================================================
--- DRAFT — NOT applied by the agent. APPLY VIA THE SUPABASE SQL EDITOR after review;
--- on the 008..050 reconciliation list. Independent of 049/051 (any apply order).
+-- APPLIED via the Supabase SQL editor (2026-08-03). On the 008..050 reconciliation list.
+-- Independent of 049/051 (any apply order). Re-running DROP NOT NULL is a safe no-op.
 --
 -- WHY. `score` is a property of a DIAGNOSTIC questionnaire; a check-in has no score.
 -- The app currently writes a hardcoded 0 to satisfy NOT NULL — a sentinel that is also

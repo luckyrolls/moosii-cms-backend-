@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Migration 051: at most one record_milestone action per answer (DRAFT)
 -- ============================================================================
--- DRAFT — NOT applied by the agent. APPLY VIA THE SUPABASE SQL EDITOR after review;
--- on the 008..051 reconciliation list. Independent of 049/050 (any apply order).
+-- APPLIED via the Supabase SQL editor (2026-08-03). On the 008..051 reconciliation list.
+-- Independent of 049/050 (any apply order).
 --
 -- WHY. A table-wide UNIQUE(answer_id, action_type) would wrongly forbid one answer
 -- granting two tracks (add_track ×2) or two tags (add_tag ×2) — both legitimate. But one
