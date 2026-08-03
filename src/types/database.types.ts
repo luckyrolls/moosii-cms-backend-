@@ -479,7 +479,7 @@ export type Database = {
           item_type: string | null
           lesson_id: string | null
           questionnaire_id: string | null
-          score: number
+          score: number | null
           task_image: string | null
           updated_at: string | null
           user_id: string
@@ -495,7 +495,7 @@ export type Database = {
           item_type?: string | null
           lesson_id?: string | null
           questionnaire_id?: string | null
-          score?: number
+          score?: number | null
           task_image?: string | null
           updated_at?: string | null
           user_id: string
@@ -511,7 +511,7 @@ export type Database = {
           item_type?: string | null
           lesson_id?: string | null
           questionnaire_id?: string | null
-          score?: number
+          score?: number | null
           task_image?: string | null
           updated_at?: string | null
           user_id?: string
@@ -2492,6 +2492,7 @@ export type Database = {
       questionnaire: {
         Row: {
           age: number | null
+          age_max: number | null
           created_at: string
           defer_days: number | null
           defer_topic: string | null
@@ -2513,6 +2514,7 @@ export type Database = {
         }
         Insert: {
           age?: number | null
+          age_max?: number | null
           created_at?: string
           defer_days?: number | null
           defer_topic?: string | null
@@ -2534,6 +2536,7 @@ export type Database = {
         }
         Update: {
           age?: number | null
+          age_max?: number | null
           created_at?: string
           defer_days?: number | null
           defer_topic?: string | null
@@ -2605,7 +2608,6 @@ export type Database = {
           created_at: string
           id: string
           milestone_id: string | null
-          repeat_after_days: number | null
           tag_id: string | null
           track_id: string | null
           updated_at: string
@@ -2616,7 +2618,6 @@ export type Database = {
           created_at?: string
           id?: string
           milestone_id?: string | null
-          repeat_after_days?: number | null
           tag_id?: string | null
           track_id?: string | null
           updated_at?: string
@@ -2627,7 +2628,6 @@ export type Database = {
           created_at?: string
           id?: string
           milestone_id?: string | null
-          repeat_after_days?: number | null
           tag_id?: string | null
           track_id?: string | null
           updated_at?: string
@@ -2683,6 +2683,7 @@ export type Database = {
           created_at: string
           id: string
           question_id: string | null
+          repeat_after_days: number | null
           response: string | null
           score: number | null
           updated_at: string | null
@@ -2692,6 +2693,7 @@ export type Database = {
           created_at?: string
           id?: string
           question_id?: string | null
+          repeat_after_days?: number | null
           response?: string | null
           score?: number | null
           updated_at?: string | null
@@ -2701,6 +2703,7 @@ export type Database = {
           created_at?: string
           id?: string
           question_id?: string | null
+          repeat_after_days?: number | null
           response?: string | null
           score?: number | null
           updated_at?: string | null
@@ -5864,71 +5867,7 @@ export type Database = {
           track_id: string | null
           user_id: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "suggested_groups"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "completed_items_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_mlp_data"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
-            columns: ["questionnaire_id"]
-            isOneToOne: false
-            referencedRelation: "questionnaire"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_questionnaire_id_fkey"
-            columns: ["questionnaire_id"]
-            isOneToOne: false
-            referencedRelation: "questionnaire_with_track_name"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_tag_id_fkey"
-            columns: ["tag_id"]
-            isOneToOne: false
-            referencedRelation: "tags"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_tag_id_fkey"
-            columns: ["tag_id"]
-            isOneToOne: false
-            referencedRelation: "v_lesson_tag_details"
-            referencedColumns: ["tag_id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questionnaire_response_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "v_lesson_details"
-            referencedColumns: ["track_id"]
-          },
-        ]
+        Relationships: []
       }
       questionnaire_user_score: {
         Row: {
