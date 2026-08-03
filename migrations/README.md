@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **051** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **053** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -70,6 +70,16 @@ Main track:
 - **Apply order for 049–051:** all three are mutually INDEPENDENT and were applied in any
   order; each was trivial at zero rows. (They post-date 048 and its `checkins_foundation`
   predecessor — now filed as 047a.)
+- **052** — APPLIED: questionnaire age CEILING — `questionnaire.age_max` column + CHECK
+  `questionnaire_age_max_valid (age_max IS NULL OR age IS NULL OR age_max > age)`. NULL =
+  no ceiling (byte-identical to today). Column + CHECK only; wiring `q.age_max` into the
+  mlp_item_pool view's `max_child_age` is a separate slice. Filed idempotent
+  (already live).
+- **053** — APPLIED: check-in cadence moves ACTION → ANSWER —
+  `questionnaire_answers.repeat_after_days` + CHECK `qa_repeat_positive (repeat_after_days
+  IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.
+  Lets a consequence-free "Not yet" answer carry a cadence. No reader consumed the action
+  column; no data migration. Filed idempotent (already live).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
