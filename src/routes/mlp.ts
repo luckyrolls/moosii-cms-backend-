@@ -6,6 +6,7 @@ import { enqueueRebuildAllIfIdle } from "../jobs/runner";
 import { jwtAuthMiddleware } from "../middleware/jwtAuth";
 import { assembleQuestionnaireStatus } from "../mlp/questionnaireStatus";
 import { assembleMlpPreview, parseAgeMonthsParam } from "../mlp/mlpPreview";
+import { recordCheckinMilestones } from "../mlp/recordCheckinMilestones";
 
 const router = Router();
 
@@ -96,6 +97,11 @@ router.post("/recompute", async (req: Request, res: Response): Promise<void> => 
   }
 
   try {
+    // Record any completed check-in milestone facts BEFORE the rebuild, so a just-written
+    // fact drives milestone suppression in this SAME rebuild — the check-in retires in one
+    // recompute call. Never throws (single-child gated, failure-isolated): a missed write
+    // just re-asks next time, so the rebuild always proceeds.
+    await recordCheckinMilestones(userId);
     const result = await rebuildOneUser(userId);
     res.json({ ok: true, user_id: userId, items_written: result.items_written });
   } catch (e) {

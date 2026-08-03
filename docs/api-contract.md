@@ -1056,15 +1056,36 @@ on one **structural** rule (no toggle):
 - **`redundant_questionnaires` in the response** reports the questionnaires this
   update makes redundant (mapped to a milestone it resolves). `apply=true` → those
   milestones are now facts; `apply=false` → PROJECTED from proposed facts, no writes.
-- **DEFERRED (on record, not forgotten):** the WRITE direction — a questionnaire
-  COMPLETION recording its milestone fact (`source='questionnaire'`) — is the
-  answer-level `record_milestone` build. It is NOT in this slice because it is
-  answer-dependent and safety-sensitive (a "no, not yet" answer must not record the
-  milestone), and completion is app-side today (`completed_items`, no backend
-  trigger). When built, it READS `questionnaire.milestone_id` (one link, two
-  directions) — do not add a parallel mapping. The CMS can now author a
-  `record_milestone` action per answer (migration 048); the WRITE path remains
-  unbuilt — an authored action is inert.
+- **WRITE direction — DELIVERED (the check-in milestone writer).** When a parent
+  COMPLETES a `kind='checkin'` questionnaire and a chosen answer carries a
+  `record_milestone` action, the fact is written to `child_milestones`
+  (`source='questionnaire'`, `source_ref = questionnaire_user_answers.id` — the answer
+  row; `confidence` NULL, as it is an explicit answer, not the classifier's inference).
+  This is the keystone that RETIRES a check-in: fact → milestone suppression → the
+  check-in drops from the plan permanently. Mechanics (`src/mlp/recordCheckinMilestones.ts`,
+  wired into `POST /mlp/recompute`):
+  - **Placement:** runs INSIDE the recompute, BEFORE `rebuildOneUser`, so the just-written
+    fact drives suppression in the SAME rebuild — a check-in retires in one recompute call.
+    No new endpoint (the app already calls recompute after a completed questionnaire), and
+    no permanent-miss window: the write rides the same call as the rebuild.
+  - **Three gates:** COMPLETION (a `completed_items` row for the questionnaire — a bare
+    answer row is not enough; "finished and submitted" is structural, so a future
+    partial-save/resume can't stamp a permanent fact off an abandoned session), KIND
+    (`q.kind='checkin'`, defense-in-depth like view 049), and ACTION
+    (`action_type='record_milestone'`; migration 051 caps it at one per answer).
+  - **STRICT single-child:** writes only when the user has EXACTLY ONE child (a count, not
+    a resolver). Zero or 2+ children → writes nothing and logs a structured skip
+    (`user, questionnaire, milestone, child_count`). Rationale: the fact is permanent and
+    monotonic with no un-record path, so a skipped write (re-asks — annoying, honest) beats
+    a wrong write (unrecoverable).
+  - **Idempotent:** `ON CONFLICT (child_id, milestone_id) DO NOTHING` — re-running a
+    recompute neither duplicates nor errors, and a fact the classifier already recorded is
+    left untouched (first-reach-wins).
+  - **Failure-isolated:** the writer NEVER breaks the recompute — any error logs and the
+    rebuild proceeds (default-to-surface: a missed write just re-asks next time).
+  - Suppression still READS `questionnaire.milestone_id` (the questionnaire→milestone link,
+    one link two directions) — the writer's `record_milestone.milestone_id` should match it;
+    no parallel mapping was added.
 
 **Slice B — PROVISIONAL DELIVERED** (DISTRESS, migrations 024–025): detection is
 LIVE, response content is PROVISIONAL, app delivery is slice 4 (still gated). The
