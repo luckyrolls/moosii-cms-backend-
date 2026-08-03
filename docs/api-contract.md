@@ -706,6 +706,52 @@ contract). A blank `system_message` is ignored (can't blank the prompt).
 
 ---
 
+### 2e-del. Delete a lesson / questionnaire (full teardown) — DELIVERED
+Admin JWT (same `jwtAuthMiddleware` admin gate as the rest of `/lessons` and
+`/questionnaires`). The content tree is **CASCADE all the way down**, so the DB work is
+ONE delete; the real work is the image purge, which is why deletion is an **endpoint, not
+CMS-direct SQL** — a raw row delete does NOT fire the `storage.objects` triggers, so it
+would silently orphan the storage files + `image_assets` rows.
+
+```
+DELETE /lessons/:id            → 200 { ok, lesson_id, deleted: {…counts}, images_purged }
+DELETE /lessons/:id?dry_run=true
+                               → 200 { dry_run: true, lesson_id, would_delete: {…counts}, sub_segments_to_purge }
+DELETE /questionnaires/:id     → 200 { ok, questionnaire_id, kind, deleted: {…counts} }
+DELETE /questionnaires/:id?dry_run=true
+                               → 200 { dry_run: true, questionnaire_id, kind, would_delete: {…counts} }
+```
+
+- **`404 not_found`** if the id is unknown.
+- **`dry_run=true`** returns real per-table counts (what the CMS confirm modal renders) and
+  deletes nothing — but still runs the refusal check so the modal can surface it.
+- **Lesson:** enumerates `lessons → segments → sub_segments` and runs
+  `purgeImagesForSubSegments` on every card **before** the row delete (storage ordering;
+  `sub_segments.image → image_assets.url` is `ON DELETE RESTRICT`, so a wrong order would
+  BLOCK, not corrupt). Then `DELETE lessons` cascades segments, sub_segments, quiz_questions
+  /quiz_answers, content_images (cards), content_findings, lesson_tags,
+  lesson_source_documents, and the per-user rows (completed_items, starred_items,
+  user_lesson_progress, quiz_response/quiz_user_progress, questions_legacy). A coalesced
+  MLP rebuild is fired (fire-and-forget) since the pool changed.
+  - **REFUSAL — `409 unpurgeable_images`:** if any `content_images` for the lesson has
+    `lesson_id` or `segment_id` set with `sub_segment_id` NULL (lesson-/segment-level
+    images). `purgeImagesForSubSegments` filters `sub_segment_id` only, so those would
+    orphan their storage files. **None exist today** (only card images are built); the
+    refusal turns a future silent leak into a loud, early error. Checked in dry-run too.
+- **Questionnaire:** no images. `DELETE questionnaire` cascades questionnaire_questions,
+  questionnaire_answers, questionnaire_answer_actions, questionnaire_response,
+  questionnaire_user_answers, user_questionnaire_progress, completed_items, starred_items.
+  Works **identically for `kind='checkin'` and `kind='diagnostic'`** (no kind branch).
+  - **Milestone facts SURVIVE.** `child_milestones.source_ref` is plain TEXT with **no FK**,
+    so recorded facts are NOT touched by a check-in delete. This is deliberate — milestone
+    facts are monotonic, with no un-record path.
+
+**Not in scope (deliberate):** track delete (tracks stay archive-only — the migration-040
+`ON DELETE RESTRICT` wall blocks a track with any lesson/questionnaire/rule with `23001`);
+segment/card delete (card delete is §1a-del); bulk/multi-entity teardown.
+
+---
+
 ### 2f. Manage voice-lint rules (admin CRUD) — DELIVERED
 JWT-protected CRUD over the `voice_lint_rules` table — the editable phrase list
 the deterministic voice lint (§2b `lint`) runs against. Edits take effect on the

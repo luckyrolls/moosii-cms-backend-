@@ -3,6 +3,8 @@ import { supabase } from "../supabase";
 import { createAndStartJob, enqueueRebuildAllIfIdle } from "../jobs/runner";
 import { apiError } from "../lib/errors";
 import { logApproval } from "../lib/approvalLog";
+import { purgeImagesForSubSegments } from "../storage/purgeImages";
+import { planLessonDelete } from "../lib/contentTeardown";
 
 const router = Router();
 const BUCKET = "lessons";
@@ -245,6 +247,54 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
   const { data: created, error: rpcErr } = await db.rpc("create_lessons_with_segments", { p_lessons: rows });
   if (rpcErr || !created) { apiError(res, 500, "insert_failed", rpcErr?.message ?? "insert failed"); return; }
   res.json({ ok: true, track_id, lessons_created: (created as unknown[]).length, lessons: created });
+});
+
+// DELETE /lessons/:id — full teardown. The content tree is CASCADE all the way down
+// (segments → sub_segments → quiz_*, content_images, content_findings, lesson_tags,
+// progress/starred/completed rows), so the DB work is ONE delete. The real work is the
+// IMAGE PURGE, which must run BEFORE the row delete: a raw row delete does NOT fire the
+// storage.objects triggers, so it would silently orphan the storage files + image_assets.
+// This is exactly why deletion is an endpoint, not CMS-direct SQL.
+//
+// ?dry_run=true → returns the counts the CMS confirm modal renders; deletes nothing (but
+// still runs the refusal check so the modal can surface it).
+router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
+  const id = req.params.id;
+  const dryRun = req.query.dry_run === "true";
+
+  const plan = await planLessonDelete(id);
+  if (!plan.found) { apiError(res, 404, "not_found", `lesson ${id} not found`); return; }
+
+  // REFUSE if any lesson-/segment-level content_images exist (sub_segment_id NULL):
+  // purgeImagesForSubSegments filters sub_segment_id only, so those files would orphan.
+  // None exist today — refusing turns a future silent leak into a loud, early error.
+  if (plan.orphanImageCount > 0) {
+    apiError(
+      res, 409, "unpurgeable_images",
+      `Lesson has ${plan.orphanImageCount} lesson- or segment-level content_images (sub_segment_id NULL) ` +
+      `that the per-card image purge does not cover; deleting now would orphan their storage files. ` +
+      `Remove those images first, then retry.`
+    );
+    return;
+  }
+
+  if (dryRun) {
+    res.json({ dry_run: true, lesson_id: id, would_delete: plan.counts, sub_segments_to_purge: plan.subSegmentIds.length });
+    return;
+  }
+
+  // Purge the cards' images BEFORE deleting the row (storage ordering; sub_segments.image →
+  // image_assets.url is ON DELETE RESTRICT, so a wrong order would BLOCK, not corrupt).
+  const images_purged = await purgeImagesForSubSegments(plan.subSegmentIds);
+
+  const { error: delErr } = await supabase.from("lessons").delete().eq("id", id);
+  if (delErr) { apiError(res, 500, "delete_failed", delErr.message); return; }
+
+  // The pool changed → propagate to users via a coalesced rebuild (fire-and-forget, same as
+  // publish/unpublish). Never blocks or fails the delete.
+  void enqueueRebuildAllIfIdle({ reason: "lesson_delete", correlationId: id });
+
+  res.json({ ok: true, lesson_id: id, deleted: plan.counts, images_purged });
 });
 
 export default router;
