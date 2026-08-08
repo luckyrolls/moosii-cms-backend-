@@ -106,6 +106,37 @@ contiguous `1..N` by `sequence` — **mandatory**, since a gap breaks single-car
 the segment (`segments.seg_status → 'pending'`, `approved_by → null`) because the structure
 changed — same posture as content regen. Returns the renumbered survivor list.
 
+### 1a-edit. Edit a card's text (sub-segment) — DELIVERED (migration 054)
+```
+PATCH /sub-segments/:id
+Authorization: Bearer <jwt>            // admin
+Body: { title?: string, content?: string }        // the ONLY editable fields
+→ 200 { ok, sub_segment_id, changed: string[], approval_reset }        // fields that changed
+→ 200 { ok, sub_segment_id, changed: [], approval_reset: false, noop: true }   // nothing changed
+→ 400 no_fields | invalid_field     // no editable field given / non-string value
+→ 404 not_found
+```
+The **approval-integrity path** for human card edits. It replaces the CMS's old
+Supabase-direct `sub_segments` text write, which stamped/logged/re-gated **nothing** — so an
+approved segment stayed `seg_status='complete'` after its content changed, with no timestamp
+and no actor. In one place the route: (1) **stamps** `updated_at = now()`, `updated_by =`
+the JWT user (`sub_segments` gained `updated_at`/`updated_by`/`created_by` in 054); (2)
+appends one **`content_edits`** audit row (`entity_type='sub_segment'`, `entity_id`,
+`actor_id`, `actor_role`, `fields` = which fields changed — append-only, **no before/after
+values**); (3) **re-gates** the segment via `reGateSegmentIfComplete` (an approved segment
+drops to `'pending'`). **Actor is ALWAYS the verified JWT, never the body** (same rule as
+`content_approvals`) — a client-supplied `actor_id`/`actor_role` is structurally ignored. A
+true **no-op** (submitted values equal the current ones) writes/logs/re-gates nothing.
+Editable fields are `title` and `content` only; image, `sequence`, and tone have their own
+routes. `created_by` is nullable and **NULL = AI-generated** (no `'ai'` sentinel); backend
+generate/regen inserts leave it NULL.
+
+> **DEPRECATED:** CMS-direct Supabase writes to `sub_segments` **text** (`title`/`content`)
+> are deprecated — they bypass stamping, the `content_edits` audit, and the re-gate, and
+> re-introduce the approval-integrity bug. Card text edits must go through this route. (The
+> CMS still owns non-text structural writes with their own re-gate: card add/reorder — a
+> separate CMS slice folds those in.)
+
 ### 1b. Batch generate for a segment
 ```
 POST /segments/:id/generate-images

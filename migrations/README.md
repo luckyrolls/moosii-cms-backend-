@@ -75,6 +75,12 @@ Main track:
   no ceiling (byte-identical to today). Column + CHECK only; wiring `q.age_max` into the
   mlp_item_pool view's `max_child_age` is a separate slice. Filed idempotent
   (already live).
+- **054** — DRAFT (pending apply): card edit attribution + edit log + dead-column drops.
+  Adds `sub_segments.updated_at/updated_by/created_by` (actor cols NO FK; `created_by` NULL =
+  AI-generated); creates append-only `content_edits` (`entity_type` CHECK `('sub_segment')`,
+  no FKs, `fields text[]`, no before/after values); DROPs three confirmed-dead columns
+  (`segments.edited`, `lessons.status`, `lessons.segment_status` — unwritten + unread in both
+  repos). Backs `PATCH /sub-segments/:id`. Apply after 053.
 - **053** — APPLIED: check-in cadence moves ACTION → ANSWER —
   `questionnaire_answers.repeat_after_days` + CHECK `qa_repeat_positive (repeat_after_days
   IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.

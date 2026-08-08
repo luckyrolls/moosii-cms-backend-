@@ -43,6 +43,85 @@ router.post("/:id/generate-image", async (req: Request, res: Response): Promise<
   }
 });
 
+// PATCH /sub-segments/:id — edit a card's human-authored TEXT (title/content). This is the
+// APPROVAL-INTEGRITY path: it replaces the CMS's old Supabase-direct sub_segments text write,
+// which stamped/logged/re-gated NOTHING (an approved segment stayed 'complete' after its
+// content changed). In ONE place it stamps updated_at/updated_by, appends a content_edits
+// audit row, and re-gates the segment. A behavioural "remember to re-gate after saving" rule
+// is not acceptable on the approval-integrity path — this is structural, so text edits MUST
+// route through here (CMS-direct sub_segments text writes are deprecated by this route).
+//
+// Editable fields = title, content — the EXACT set the CMS edits today (its `patch:{title?,
+// content?}`). image/sequence/tone have their own paths and are NOT accepted here. Actor is
+// ALWAYS the verified JWT, never the body. A true no-op (nothing changed) writes/logs/re-gates
+// nothing.
+router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
+  const id = req.params.id;
+
+  // JWT-STAMPING RULE: actor comes ONLY from the verified token (jwtAuthMiddleware set
+  // req.user), never the request body — a client-supplied actor cannot reach the log.
+  const actorId = req.user?.id;
+  const actorRole = req.user?.role;
+  if (!actorId || !actorRole) { apiError(res, 401, "unauthorized", "No JWT actor"); return; }
+
+  // Accept ONLY the editable text fields; ignore everything else in the body (incl. any actor).
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const EDITABLE = ["title", "content"] as const;
+  const incoming: Partial<Record<(typeof EDITABLE)[number], string>> = {};
+  for (const f of EDITABLE) {
+    if (f in body) {
+      if (typeof body[f] !== "string") { apiError(res, 400, "invalid_field", `${f} must be a string`); return; }
+      incoming[f] = body[f] as string;
+    }
+  }
+  if (Object.keys(incoming).length === 0) {
+    apiError(res, 400, "no_fields", "Provide at least one editable field (title, content)."); return;
+  }
+
+  // Load the current card (existence + no-op comparison).
+  const { data: card, error: cardErr } = await supabase
+    .from("sub_segments").select("id, seg_id, title, content").eq("id", id).maybeSingle();
+  if (cardErr) { apiError(res, 500, "db_error", cardErr.message); return; }
+  if (!card) { apiError(res, 404, "not_found", `sub_segment ${id} not found`); return; }
+
+  // No-op detection: keep only fields whose value ACTUALLY changes. Nothing changed → full
+  // no-op (no updated_at churn, no log, no re-gate).
+  const changed: string[] = [];
+  const patch: Record<string, unknown> = {};
+  for (const f of EDITABLE) {
+    if (incoming[f] !== undefined && incoming[f] !== (card as Record<string, unknown>)[f]) {
+      changed.push(f);
+      patch[f] = incoming[f];
+    }
+  }
+  if (changed.length === 0) {
+    res.json({ ok: true, sub_segment_id: id, changed: [], approval_reset: false, noop: true });
+    return;
+  }
+
+  // 1. Stamp the edit. updated_at / updated_by are migration-054 columns not yet in the
+  //    generated types → written via the untyped bridge (drop after a types regen).
+  patch.updated_at = new Date().toISOString();
+  patch.updated_by = actorId;
+  const { error: upErr } = await db.from("sub_segments").update(patch).eq("id", id);
+  if (upErr) { apiError(res, 500, "update_failed", upErr.message); return; }
+
+  // 2. Append the audit row (append-only; actor from the JWT only). Best-effort — an audit
+  //    failure must never block the edit or the re-gate (mirrors logApproval).
+  const { error: logErr } = await db.from("content_edits").insert({
+    entity_type: "sub_segment", entity_id: id, actor_id: actorId, actor_role: actorRole, fields: changed,
+  });
+  if (logErr) console.error(`[card-edit] content_edits insert failed for ${id}: ${logErr.message}`);
+
+  // 3. Re-gate: an approved segment drops to 'pending' now its content changed (shared policy,
+  //    same helper regen/image/delete use). A no-op on a non-'complete' segment.
+  const { approval_reset } = card.seg_id
+    ? await reGateSegmentIfComplete(card.seg_id)
+    : { approval_reset: false };
+
+  res.json({ ok: true, sub_segment_id: id, changed, approval_reset });
+});
+
 // DELETE /sub-segments/:id — delete a card. NOT a direct CMS write: image cleanup has a
 // strict ordered purge (storage trigger enforces clear-pointer → delete content_images →
 // remove file → drop image_assets, else P0001), owned by purgeImagesForSubSegments
