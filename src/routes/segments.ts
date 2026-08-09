@@ -3,6 +3,8 @@ import { supabase } from "../supabase";
 import { createJob, startJobsBatch } from "../jobs/runner";
 import { apiError } from "../lib/errors";
 import { logApproval } from "../lib/approvalLog";
+import { hasCapability } from "../middleware/jwtAuth";
+import { setCardsReviewState, recomputeSegStatus } from "../lib/cardReview";
 import { loadSegmentPromptRowById, loadBlock } from "../jobs/handlers/generateSegmentContent";
 
 const router = Router();
@@ -161,40 +163,72 @@ router.get("/:id/generation-log", async (req: Request, res: Response): Promise<v
   res.json({ found: !!data, log: data ?? null });
 });
 
-// POST /segments/:id/approve — content approval. Goes through the backend
-// (service-role) so it bypasses the segments RLS wall that blocks a direct
-// browser UPDATE. Mirrors the image-approve / questionnaire-publish pattern.
-router.post("/:id/approve", async (req: Request, res: Response): Promise<void> => {
-  // Actor is the verified JWT user ONLY — client-supplied approver retired (the CMS used
-  // to send the session email into this uuid column; see migration 043).
-  const { data, error } = await supabase
-    .from("segments")
-    .update({
-      seg_status: "complete",
-      approved_by: req.user?.id ?? null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", req.params.id)
-    .select("id, seg_status, approved_by")
-    .maybeSingle();
-  if (error) { apiError(res, 500, "db_error", error.message); return; }
-  if (!data) { apiError(res, 404, "not_found", "segment not found"); return; }
-  await logApproval("segment", req.params.id, "approve", req);
-  res.json({ segment: data });
+// ── Card-level review (migration 056). seg_status is DERIVED from the cards — these routes
+// transition cards and let recompute_seg_status set the gate; NONE writes seg_status directly.
+// Role controls what you SEE; CAPABILITY controls what you can SIGN. Actor is ALWAYS the
+// verified JWT (never the body). Optional body.card_ids = surgical (one/some cards); omit =
+// BULK (every card in the segment) — the normal case.
+
+async function segmentExists(id: string): Promise<boolean> {
+  const { data } = await supabase.from("segments").select("id").eq("id", id).maybeSingle();
+  return !!data;
+}
+
+// POST /segments/:id/editorial-approve — cap: editorial. draft → editorial_reviewed.
+router.post("/:id/editorial-approve", async (req: Request, res: Response): Promise<void> => {
+  if (!hasCapability(req.user, "editorial")) { apiError(res, 403, "forbidden", "Requires editorial capability"); return; }
+  if (!(await segmentExists(req.params.id))) { apiError(res, 404, "not_found", "segment not found"); return; }
+  const cardIds = Array.isArray((req.body ?? {}).card_ids) ? (req.body.card_ids as string[]) : null;
+  try {
+    const r = await setCardsReviewState(req.params.id, cardIds, "editorial_reviewed", "draft", null);
+    await logApproval("segment", req.params.id, "editorial_approve", req);
+    res.json({ ok: true, ...r });
+  } catch (e) { apiError(res, 500, "transition_failed", e instanceof Error ? e.message : String(e)); }
 });
 
-// POST /segments/:id/unapprove — revert content approval to pending.
-router.post("/:id/unapprove", async (req: Request, res: Response): Promise<void> => {
-  const { data, error } = await supabase
-    .from("segments")
-    .update({ seg_status: "pending", approved_by: null, updated_at: new Date().toISOString() })
-    .eq("id", req.params.id)
-    .select("id, seg_status, approved_by")
-    .maybeSingle();
-  if (error) { apiError(res, 500, "db_error", error.message); return; }
-  if (!data) { apiError(res, 404, "not_found", "segment not found"); return; }
-  await logApproval("segment", req.params.id, "unapprove", req);
-  res.json({ segment: data });
+// POST /segments/:id/clinical-approve — cap: CLINICAL. editorial_reviewed → clinically_approved.
+// This is the health sign-off: Mark (no clinical capability) is structurally 403 here, and
+// the actor stamped as approved_by is the verified token, so his id can never sign clinically.
+router.post("/:id/clinical-approve", async (req: Request, res: Response): Promise<void> => {
+  if (!hasCapability(req.user, "clinical")) { apiError(res, 403, "forbidden", "Requires clinical capability"); return; }
+  if (!(await segmentExists(req.params.id))) { apiError(res, 404, "not_found", "segment not found"); return; }
+  const cardIds = Array.isArray((req.body ?? {}).card_ids) ? (req.body.card_ids as string[]) : null;
+  try {
+    const r = await setCardsReviewState(req.params.id, cardIds, "clinically_approved", "editorial_reviewed", req.user!.id);
+    await logApproval("segment", req.params.id, "clinical_approve", req);
+    res.json({ ok: true, ...r });
+  } catch (e) { apiError(res, 500, "transition_failed", e instanceof Error ? e.message : String(e)); }
+});
+
+// POST /segments/:id/reject — go back ONE step, carrying a reason. Body: { stage:
+// 'clinical'|'editorial', reason?, card_ids? }. clinical reject: clinically_approved →
+// editorial_reviewed (cap clinical). editorial reject: editorial_reviewed → draft (cap
+// editorial). No separate 'rejected' state.
+router.post("/:id/reject", async (req: Request, res: Response): Promise<void> => {
+  const { stage, reason, card_ids } = (req.body ?? {}) as { stage?: string; reason?: string; card_ids?: string[] };
+  const cap: "editorial" | "clinical" | null = stage === "clinical" ? "clinical" : stage === "editorial" ? "editorial" : null;
+  if (!cap) { apiError(res, 400, "invalid_stage", "stage must be 'editorial' or 'clinical'"); return; }
+  if (!hasCapability(req.user, cap)) { apiError(res, 403, "forbidden", `Requires ${cap} capability`); return; }
+  if (!(await segmentExists(req.params.id))) { apiError(res, 404, "not_found", "segment not found"); return; }
+  const from = cap === "clinical" ? "clinically_approved" : "editorial_reviewed";
+  const to = cap === "clinical" ? "editorial_reviewed" : "draft";
+  const cardIds = Array.isArray(card_ids) ? card_ids : null;
+  try {
+    const r = await setCardsReviewState(req.params.id, cardIds, to, from, null);
+    await logApproval("segment", req.params.id, "reject", req, typeof reason === "string" ? reason : null);
+    res.json({ ok: true, ...r });
+  } catch (e) { apiError(res, 500, "transition_failed", e instanceof Error ? e.message : String(e)); }
+});
+
+// POST /segments/:id/recompute-status — derive seg_status from the cards (no transition).
+// The CONTRACT the CMS slice targets: call this after a card add/reorder instead of writing
+// seg_status directly. Any admin (no capability needed — it only reflects card truth).
+router.post("/:id/recompute-status", async (req: Request, res: Response): Promise<void> => {
+  if (!(await segmentExists(req.params.id))) { apiError(res, 404, "not_found", "segment not found"); return; }
+  try {
+    const seg_status = await recomputeSegStatus(req.params.id);
+    res.json({ ok: true, segment_id: req.params.id, seg_status });
+  } catch (e) { apiError(res, 500, "recompute_failed", e instanceof Error ? e.message : String(e)); }
 });
 
 export default router;

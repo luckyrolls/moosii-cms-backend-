@@ -90,6 +90,19 @@ Main track:
   `lesson_segment_counts_with_track`) without those columns, since a bare DROP COLUMN would
   fail on the view dependency (the original draft missed this; DB view defs aren't in either
   repo's source). Backs `PATCH /sub-segments/:id`. Apply after 054.
+- **056** — DRAFT (pending apply): card-level review state + capabilities + DERIVED seg_status.
+  Adds `sub_segments.review_state` (draft|editorial_reviewed|clinically_approved, backfill all
+  → draft); `user.can_review_editorial/can_approve_clinical`; `content_approvals` CHECK +
+  sub_segment / editorial_approve / clinical_approve / reject + `reason`. `recompute_seg_status`
+  (locks segment; derives `seg_status` = complete iff ≥1 card & all clinically_approved) and
+  `set_card_review_state`, both **SECURITY DEFINER**, EXECUTE `service_role`-only; the 029
+  approve/unapprove bundles are rewritten to transition cards (no direct `seg_status` write).
+  Apply after 055.
+- **GUARD_seg_status_revoke.DRAFT.sql** — UN-NUMBERED, **DO NOT APPLY until the CMS is cut over**.
+  `REVOKE UPDATE(seg_status)` + re-grant every other segments column; makes a stray direct
+  `seg_status` write a permission error. Number + apply as a follow-up AFTER the CMS repoints its
+  direct write to `POST /segments/:id/recompute-status`. Carries the column list + "a blanket
+  GRANT ALL silently undoes this" warning.
 - **053** — APPLIED: check-in cadence moves ACTION → ANSWER —
   `questionnaire_answers.repeat_after_days` + CHECK `qa_repeat_positive (repeat_after_days
   IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.

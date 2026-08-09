@@ -10,7 +10,21 @@ export function isAdminRole(role: string | null | undefined): boolean {
   return !!role && ADMIN_ROLES.includes(role);
 }
 
-export type CmsUser = Pick<Tables<"user">, "id" | "email" | "role">;
+// Capabilities (migration 056) are SEPARATE from role: role controls what you SEE, capability
+// controls what you can SIGN. They ride on req.user so routes can gate without an extra query.
+export type CmsUser = Pick<Tables<"user">, "id" | "email" | "role"> & {
+  can_review_editorial: boolean;
+  can_approve_clinical: boolean;
+};
+
+export type Capability = "editorial" | "clinical";
+
+// Capability check for a route. Fail-closed: no user / missing capability → false. The actor
+// is ALWAYS req.user (the verified token), never the body — so a client cannot self-grant.
+export function hasCapability(user: CmsUser | undefined, cap: Capability): boolean {
+  if (!user) return false;
+  return cap === "editorial" ? user.can_review_editorial : user.can_approve_clinical;
+}
 
 // Any authenticated Supabase user (app parent OR admin). Identity is the auth uid;
 // role is nullable because an app parent may have no `user` profile row at all
@@ -80,7 +94,23 @@ export async function verifyAdminJwt(token: string): Promise<AdminAuthResult> {
     return { ok: false, status: 403, code: "forbidden", message: "Requires admin role" };
   }
 
-  return { ok: true, user: profile };
+  // Capabilities (migration 056). Best-effort + FAIL CLOSED: if the columns aren't live yet
+  // (pre-apply) or the lookup errors, both default false — nobody can sign, the safe
+  // direction. Collapse into the profile SELECT above once types are regenerated post-056.
+  let can_review_editorial = false;
+  let can_approve_clinical = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: caps, error: capErr } = await (supabase as any)
+    .from("user")
+    .select("can_review_editorial, can_approve_clinical")
+    .eq("id", authUser.id)
+    .single();
+  if (!capErr && caps) {
+    can_review_editorial = !!caps.can_review_editorial;
+    can_approve_clinical = !!caps.can_approve_clinical;
+  }
+
+  return { ok: true, user: { ...profile, can_review_editorial, can_approve_clinical } };
 }
 
 export async function jwtAuthMiddleware(

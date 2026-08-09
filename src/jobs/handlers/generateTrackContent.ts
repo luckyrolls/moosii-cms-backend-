@@ -2,6 +2,7 @@ import { supabase } from "../../supabase";
 import type { Job } from "../registry";
 import { generateSegmentContent } from "./generateSegmentContent";
 import { generateQuiz } from "./generateQuiz";
+import { recomputeSegStatus } from "../../lib/cardReview";
 
 // ---------------------------------------------------------------------------
 // generate_track_content — ORCHESTRATOR over the existing per-unit generators.
@@ -165,9 +166,10 @@ export type RunUnit = (unit: Unit, tone_id: string, correlationId: string) => Pr
 const realRunUnit: RunUnit = async (unit, tone_id, correlationId) => {
   if (unit.type === "content") {
     await generateSegmentContent({ seg_id: unit.seg_id, tone_id, generate_quiz: false, correlationId });
-    // Regenerated content is unapproved — reset (mirrors regenSegmentContent) so an
-    // include_approved regen can never remain marked approved.
-    await supabase.from("segments").update({ seg_status: "pending", approved_by: null }).eq("id", unit.seg_id);
+    // Freshly-(re)generated cards default to review_state='draft' (migration 056); recompute
+    // derives seg_status='pending' so an include_approved regen can never stay approved.
+    // seg_status is never written directly.
+    await recomputeSegStatus(unit.seg_id);
   } else {
     await generateQuiz({ seg_id: unit.seg_id, correlationId, isRegen: true });
   }

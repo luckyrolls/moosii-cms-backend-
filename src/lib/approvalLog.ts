@@ -1,8 +1,11 @@
 import type { Request } from "express";
 import { supabase } from "../supabase";
 
-export type ApprovalEntityType = "segment" | "image" | "quiz" | "questionnaire" | "lesson";
-export type ApprovalAction = "approve" | "unapprove" | "publish" | "unpublish";
+export type ApprovalEntityType = "segment" | "image" | "quiz" | "questionnaire" | "lesson" | "sub_segment";
+export type ApprovalAction =
+  | "approve" | "unapprove" | "publish" | "unpublish"
+  // migration 056 — card review stages
+  | "editorial_approve" | "clinical_approve" | "reject";
 
 // Append ONE content_approvals row (migration 043) for an approve/unapprove/publish/
 // unpublish transition. The actor is ALWAYS taken from the verified JWT (req.user) —
@@ -15,7 +18,8 @@ export async function logApproval(
   entityType: ApprovalEntityType,
   entityId: string,
   action: ApprovalAction,
-  req: Request
+  req: Request,
+  reason: string | null = null   // migration 056 — carried by 'reject'
 ): Promise<void> {
   try {
     const actorId = req.user?.id;
@@ -32,6 +36,7 @@ export async function logApproval(
       action,
       actor_id: actorId,
       actor_role: req.user?.role ?? null,
+      ...(reason != null ? { reason } : {}),
     });
     if (error) {
       console.error(`[approval-log] insert failed (${action} ${entityType}:${entityId}): ${error.message}`);

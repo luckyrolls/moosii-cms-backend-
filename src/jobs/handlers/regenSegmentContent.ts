@@ -9,6 +9,7 @@ import {
 } from "./generateSegmentContent";
 import { generateQuiz } from "./generateQuiz";
 import { purgeImagesForSubSegments } from "../../storage/purgeImages";
+import { recomputeSegStatus, resetCardsToDraft } from "../../lib/cardReview";
 import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { SizeNumbers } from "../../lib/sizeProfile";
 import type { Job } from "../registry";
@@ -217,11 +218,9 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       throw new Error(`Failed to insert new sub_segments for seg ${seg_id}: ${insertErr?.message}`);
     }
 
-    // Reset content-approval: the new content is un-reviewed
-    await supabase
-      .from("segments")
-      .update({ seg_status: "pending", approved_by: null })
-      .eq("id", seg_id);
+    // Reset content-approval: the freshly-inserted cards default to review_state='draft'
+    // (migration 056), so recompute derives seg_status='pending'. Never write it directly.
+    await recomputeSegStatus(seg_id);
 
     // Optional: regenerate the quiz (replaces existing), sharing the correlationId.
     const quizResult = alsoGenerateQuiz
@@ -273,11 +272,9 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     throw new Error(`Failed to update sub_segment ${card_id}: ${updateErr.message}`);
   }
 
-  // Reset content-approval for the segment
-  await supabase
-    .from("segments")
-    .update({ seg_status: "pending", approved_by: null })
-    .eq("id", seg_id);
+  // Retoning this card invalidates its review → reset THIS card to 'draft' and recompute the
+  // segment's derived gate (migration 056). seg_status is never written directly.
+  await resetCardsToDraft(seg_id, [card_id!]);
 
   // Optional: regenerate the quiz (replaces existing), sharing the correlationId.
   const quizResult = alsoGenerateQuiz

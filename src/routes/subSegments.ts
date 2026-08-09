@@ -5,7 +5,7 @@ import { supabase } from "../supabase";
 import { createAndStartJob } from "../jobs/runner";
 import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { uploadImage } from "../storage/upload";
-import { reGateSegmentIfComplete } from "../lib/reGateSegment";
+import { resetCardsAndReport, recomputeSegStatus } from "../lib/cardReview";
 import { apiError } from "../lib/errors";
 
 // content_images.source / uploaded_by postdate database.types.ts (migration applied, types
@@ -113,10 +113,11 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   });
   if (logErr) console.error(`[card-edit] content_edits insert failed for ${id}: ${logErr.message}`);
 
-  // 3. Re-gate: an approved segment drops to 'pending' now its content changed (shared policy,
-  //    same helper regen/image/delete use). A no-op on a non-'complete' segment.
+  // 3. Editing a card sends THAT card back to 'draft' (migration 056); the segment's
+  //    seg_status is then recomputed (→ 'pending', since a draft card now exists). seg_status
+  //    is derived — never written directly here.
   const { approval_reset } = card.seg_id
-    ? await reGateSegmentIfComplete(card.seg_id)
+    ? await resetCardsAndReport(card.seg_id, [id])
     : { approval_reset: false };
 
   res.json({ ok: true, sub_segment_id: id, changed, approval_reset });
@@ -164,10 +165,12 @@ router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
     }
   }
 
-  // 4. Re-gate the segment: structure changed → force a re-review/re-publish.
-  const { error: gateErr } = await supabase
-    .from("segments").update({ seg_status: "pending", approved_by: null }).eq("id", segId!);
-  if (gateErr) { apiError(res, 500, "regate_failed", gateErr.message); return; }
+  // 4. Recompute the segment's gate: the card set changed. seg_status is derived (migration
+  //    056) — never written directly. With a card removed, recompute reflects the remaining
+  //    cards (cardless → 'pending' by the new EXISTS(>=1 card) rule).
+  try {
+    await recomputeSegStatus(segId!);
+  } catch (e) { apiError(res, 500, "regate_failed", e instanceof Error ? e.message : String(e)); return; }
 
   res.json({
     ok: true,
@@ -266,8 +269,9 @@ router.post(
       apiError(res, 500, "insert_failed", ciErr?.message ?? "content_images insert failed"); return;
     }
 
-    // 9. Re-gate the segment (shared helper). No-op + approval_reset:false when not 'complete'.
-    const { approval_reset } = await reGateSegmentIfComplete(segId!);
+    // 9. A new image for this card invalidates its review → reset THAT card to 'draft' and
+    //    recompute (migration 056). seg_status is derived, never written here.
+    const { approval_reset } = await resetCardsAndReport(segId!, [subSegmentId]);
 
     res.status(201).json({
       ok: true,

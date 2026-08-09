@@ -205,8 +205,39 @@ card(s) and approves NOTHING (regenerate the image). This never silently approve
 missing an image it was meant to have, and keeps a stray image from failing the atomic
 bundle with an opaque FK error. `unapprove` is the full reverse (content/quiz → `pending`, approved images →
 `candidate`, `sub_segments.image` cleared) — nothing regenerated, fully reversible.
-Per-artifact approval stays available as the lower-level primitives
-(`/segments/:id/approve`, `/content-images/:id/approve`); bulk is the one-click path.
+
+**Migration 056 — this is now the bulk CLINICAL approve.** `POST /lessons/:id/approve` requires
+**clinical capability** (moves cards `editorial_reviewed → clinically_approved`), so a lesson
+must be editorial-approved first; `seg_status` is derived by recompute, not written. Pair with
+`POST /lessons/:id/editorial-approve` (**editorial capability**; `draft → editorial_reviewed`
+across the lesson) — the two-stage bulk flow is two actions for a whole lesson, not 34 clicks.
+
+### 1f-review. Card review states + capability gating — DELIVERED (migration 056)
+`seg_status` is derived from `sub_segments.review_state` (`draft` → `editorial_reviewed` →
+`clinically_approved`). **Role controls what you SEE; capability controls what you can SIGN**
+(`user.can_review_editorial` / `can_approve_clinical`). Actor is always the verified JWT.
+Optional `card_ids` in the body = surgical (one/some cards); omit = BULK (all cards in the
+segment). Each transition recomputes `seg_status` atomically (segment-locked RPC).
+```
+POST /segments/:id/editorial-approve   // cap: editorial   draft → editorial_reviewed
+POST /segments/:id/clinical-approve     // cap: clinical    editorial_reviewed → clinically_approved
+POST /segments/:id/reject               // Body: { stage: 'editorial'|'clinical', reason?, card_ids? }
+                                        //   clinical reject → editorial_reviewed (cap clinical)
+                                        //   editorial reject → draft (cap editorial); logs reason
+POST /segments/:id/recompute-status     // any admin; derive seg_status from cards (no transition)
+  → 200 { ok, segment_id, seg_status }
+All → 200 { ok, segment_id, cards_updated, seg_status } | 403 forbidden | 404 not_found
+```
+- **Capability is enforced in the route** (403 without it); the transition RPC is `service_role`-
+  only so a direct call can't bypass it. A `super_admin` with no clinical capability (e.g. Mark)
+  is structurally 403 on `clinical-approve` and never lands on a clinical sign-off.
+- `reject` logs `content_approvals(action='reject', reason)` and steps the card back one state —
+  no separate `'rejected'` state.
+- **`POST /segments/:id/recompute-status` is the CONTRACT the CMS slice targets:** call it after a
+  card add/reorder instead of writing `seg_status` directly (a newly-added card is `draft`, so it
+  derives `'pending'`; a reorder changes no state, so it's a safe no-op). The old
+  `/segments/:id/approve` + `/unapprove` are **replaced** by `clinical-approve` / `editorial-approve`
+  / `reject`.
 
 ### 1g. Upload an image for one card — DELIVERED
 ```
@@ -1847,12 +1878,26 @@ backend must preserve and the frontend leans on:
   `image_generator_name/version`, `instruction_version_base/overlay`,
   `topic_name`) record which models + prompt versions produced a candidate — the
   backend populates these on generation.
-- **Segment content approval:** `segments.seg_status` (`'pending'` / `'complete'`)
-  and `segments.approved_by`. CONTENT regen resets both to un-reviewed. **IMAGE
-  (re)generation ALSO resets them** (`generate_sub_segment_image`, non-`auto_approve`
-  path): a new image candidate re-gates the WHOLE segment, so an approved lesson drops
-  out of `'complete'` until re-published — no stale "approved" across an image swap.
-  Scoped to currently-`'complete'` segments (a no-op for first-time / batch gen).
+- **Segment content approval — `segments.seg_status` is DERIVED from the cards (migration
+  056).** Cards (`sub_segments.review_state`: `'draft'` → `'editorial_reviewed'` →
+  `'clinically_approved'`) hold the review truth. `seg_status` keeps its exact shape
+  (`'pending'` / `'complete'`) and app meaning, but is now computed by `recompute_seg_status()`:
+  `'complete'` iff the segment has **≥1 card AND every card is `clinically_approved'`, else
+  `'pending'`. The `≥1 card` clause is a NEW guard (there was no card-count rule before), so a
+  cardless segment can no longer be `'complete'`. Any content/image change resets the affected
+  card(s) to `'draft'` and recomputes; approve/regen/image/delete all flow through this — none
+  writes `seg_status` directly.
+  > ⚠️ **`seg_status` is NOT directly writable.** A follow-up privilege guard
+  > (`GUARD_seg_status_revoke`) will `REVOKE UPDATE(seg_status)` from all caller roles and grant
+  > it only to the definer RPC. **When you add a new `segments` column, add it to the
+  > `GRANT UPDATE (...)` list in that guard migration, or backend writes to it will fail with
+  > "permission denied".** Never `GRANT ALL`/`GRANT UPDATE` table-wide on `segments` — it
+  > silently undoes the guard.
+- **Capabilities (migration 056) — separate from role.** `user.can_review_editorial` /
+  `user.can_approve_clinical` (booleans). Role controls what you SEE; capability controls what
+  you can SIGN. They ride on `req.user` (verifyAdminJwt select). Enforced in the route, actor
+  always from the JWT — so someone with `super_admin` role but no clinical capability is
+  structurally 403 on a clinical approval and can never appear on a clinical sign-off.
 - **Quiz tables:** `quiz_questions` (`question_id`, `question_text`, `type`,
   `segment_id`, `lesson_id`, `answer_status`) and `quiz_answers` (`id`,
   `question_id`, `answer_text`, `is_correct`, `response`, `score`). Separate rows,
