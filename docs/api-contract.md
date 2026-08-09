@@ -106,7 +106,7 @@ contiguous `1..N` by `sequence` — **mandatory**, since a gap breaks single-car
 the segment (`segments.seg_status → 'pending'`, `approved_by → null`) because the structure
 changed — same posture as content regen. Returns the renumbered survivor list.
 
-### 1a-edit. Edit a card's text (sub-segment) — DELIVERED (migration 054)
+### 1a-edit. Edit a card's text (sub-segment) — DELIVERED (migration 055)
 ```
 PATCH /sub-segments/:id
 Authorization: Bearer <jwt>            // admin
@@ -120,7 +120,7 @@ The **approval-integrity path** for human card edits. It replaces the CMS's old
 Supabase-direct `sub_segments` text write, which stamped/logged/re-gated **nothing** — so an
 approved segment stayed `seg_status='complete'` after its content changed, with no timestamp
 and no actor. In one place the route: (1) **stamps** `updated_at = now()`, `updated_by =`
-the JWT user (`sub_segments` gained `updated_at`/`updated_by`/`created_by` in 054); (2)
+the JWT user (`sub_segments` gained `updated_at`/`updated_by`/`created_by` in 055); (2)
 appends one **`content_edits`** audit row (`entity_type='sub_segment'`, `entity_id`,
 `actor_id`, `actor_role`, `fields` = which fields changed — append-only, **no before/after
 values**); (3) **re-gates** the segment via `reGateSegmentIfComplete` (an approved segment

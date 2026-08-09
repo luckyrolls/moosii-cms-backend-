@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **054** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **055** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -75,12 +75,21 @@ Main track:
   no ceiling (byte-identical to today). Column + CHECK only; wiring `q.age_max` into the
   mlp_item_pool view's `max_child_age` is a separate slice. Filed idempotent
   (already live).
-- **054** — APPLIED: card edit attribution + edit log + dead-column drops.
+- **054** — APPLIED (Mark-authored; **rebuild record — DO NOT RUN**): drop the P0001 storage
+  trigger, keep the permissive twin. `storage.objects` carried two AFTER-DELETE triggers that
+  were NOT duplicates — `delete_image_asset_when_storage_deleted` (illustrations/% only,
+  RAISED P0001 on a missing `image_assets` row) ran first and won, aborting any such delete;
+  `delete_image_assets_on_storage_delete` (whole `lessons` bucket, deletes quietly) is kept.
+  DROPs the strict trigger + its function. Resolves the flagged duplicate-trigger finding.
+- **055** — APPLIED: card edit attribution + edit log + dead-column drops (corrected).
   Adds `sub_segments.updated_at/updated_by/created_by` (actor cols NO FK; `created_by` NULL =
   AI-generated); creates append-only `content_edits` (`entity_type` CHECK `('sub_segment')`,
-  no FKs, `fields text[]`, no before/after values); DROPs three confirmed-dead columns
-  (`segments.edited`, `lessons.status`, `lessons.segment_status` — unwritten + unread in both
-  repos). Backs `PATCH /sub-segments/:id`. Apply after 053.
+  no FKs, `fields text[]`, no before/after values); DROPs three dead columns
+  (`segments.edited`, `lessons.status`, `lessons.segment_status`) — but FIRST DROP+CREATEs the
+  three views that referenced them (`lessons_with_track_name`, `v_lesson_details`,
+  `lesson_segment_counts_with_track`) without those columns, since a bare DROP COLUMN would
+  fail on the view dependency (the original draft missed this; DB view defs aren't in either
+  repo's source). Backs `PATCH /sub-segments/:id`. Apply after 054.
 - **053** — APPLIED: check-in cadence moves ACTION → ANSWER —
   `questionnaire_answers.repeat_after_days` + CHECK `qa_repeat_positive (repeat_after_days
   IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.

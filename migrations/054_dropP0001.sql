@@ -1,0 +1,67 @@
+-- ============================================================================
+-- Migration 054: drop the P0001 storage trigger; keep the permissive twin
+-- ============================================================================
+-- ██ ALREADY APPLIED — DO NOT RUN ██
+--
+-- Applied manually via the Supabase SQL editor before this file existed.
+-- Filed retroactively as a rebuild record so migrations/ reflects real
+-- schema history. Running it again is harmless (IF EXISTS) but pointless.
+--
+-- ----------------------------------------------------------------------------
+-- WHY. storage.objects carried TWO AFTER DELETE triggers. They were NOT
+-- duplicates:
+--
+--   delete_image_asset_when_storage_deleted   (DROPPED here)
+--     - scoped to illustrations/% only
+--     - matched on path alone
+--     - RAISED an exception when no image_assets row was found ("optional
+--       safety" per its own comment) — this is the P0001 that
+--       purgeImages.ts was built to avoid
+--
+--   delete_image_assets_on_storage_delete     (KEPT)
+--     - covers the whole 'lessons' bucket
+--     - matches on bucket + path (verified: all 401 image_assets rows
+--       carry bucket='lessons')
+--     - deletes quietly, never raises
+--
+-- Both fired on every delete; the strict one ran FIRST (alphabetical by
+-- trigger name) and won, making the permissive one a lifelong no-op. Any
+-- storage delete under illustrations/ whose image_assets row was already
+-- gone would abort the whole statement.
+--
+-- VERIFIED AFTER APPLYING: five non-internal triggers remain on
+-- storage.objects, and deleting a lesson with images correctly dropped the
+-- image_assets count — the surviving trigger does the work.
+--
+-- ----------------------------------------------------------------------------
+-- FOR THE RECORD — none of the storage triggers were ever filed in
+-- migrations/; they were created directly in Supabase. The survivors:
+--
+--   trg_delete_image_assets_on_storage_delete
+--     AFTER DELETE ON storage.objects FOR EACH ROW
+--     EXECUTE FUNCTION delete_image_assets_on_storage_delete()
+--
+--   trg_sync_image_assets_from_storage_ins
+--     AFTER INSERT ON storage.objects FOR EACH ROW
+--     EXECUTE FUNCTION sync_image_assets_from_storage()
+--
+--   trg_sync_image_assets_from_storage_upd
+--     AFTER UPDATE OF name, bucket_id ON storage.objects FOR EACH ROW
+--     EXECUTE FUNCTION sync_image_assets_from_storage()
+--
+--   (plus Supabase's own protect_objects_delete and update_objects_updated_at)
+--
+-- The kept function body, for reference:
+--   CREATE OR REPLACE FUNCTION public.delete_image_assets_on_storage_delete()
+--     RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+--   begin
+--     if old.bucket_id <> 'lessons' then return old; end if;
+--     delete from public.image_assets
+--       where bucket = old.bucket_id and path = old.name;
+--     return old;
+--   end;
+--   $$;
+-- ============================================================================
+
+DROP TRIGGER IF EXISTS trg_delete_image_asset_when_storage_deleted ON storage.objects;
+DROP FUNCTION IF EXISTS public.delete_image_asset_when_storage_deleted();

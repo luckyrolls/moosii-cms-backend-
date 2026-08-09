@@ -99,7 +99,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // 1. Stamp the edit. updated_at / updated_by are migration-054 columns not yet in the
+  // 1. Stamp the edit. updated_at / updated_by are migration-055 columns not yet in the
   //    generated types → written via the untyped bridge (drop after a types regen).
   patch.updated_at = new Date().toISOString();
   patch.updated_by = actorId;
