@@ -174,6 +174,17 @@ async function segmentExists(id: string): Promise<boolean> {
   return !!data;
 }
 
+// Count cards in scope (all in the segment, or the given card_ids) still awaiting editorial
+// review (review_state='draft'). Used by the clinical editorial-gate. null on a DB error.
+async function countDraftInScope(segId: string, cardIds: string[] | null): Promise<number | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q = (supabase as any).from("sub_segments").select("id", { count: "exact", head: true })
+    .eq("seg_id", segId).eq("review_state", "draft");
+  if (cardIds) q = q.in("id", cardIds);
+  const { count, error } = await q;
+  return error ? null : (count ?? 0);
+}
+
 // POST /segments/:id/editorial-approve — cap: editorial. draft → editorial_reviewed.
 router.post("/:id/editorial-approve", async (req: Request, res: Response): Promise<void> => {
   if (!hasCapability(req.user, "editorial")) { apiError(res, 403, "forbidden", "Requires editorial capability"); return; }
@@ -193,6 +204,16 @@ router.post("/:id/clinical-approve", async (req: Request, res: Response): Promis
   if (!hasCapability(req.user, "clinical")) { apiError(res, 403, "forbidden", "Requires clinical capability"); return; }
   if (!(await segmentExists(req.params.id))) { apiError(res, 404, "not_found", "segment not found"); return; }
   const cardIds = Array.isArray((req.body ?? {}).card_ids) ? (req.body.card_ids as string[]) : null;
+  // EDITORIAL GATE: refuse if any in-scope card is still 'draft' (awaiting editorial review).
+  // Approve NOTHING — partial success (promote only the editorial_reviewed cards, leave drafts)
+  // is exactly the trap being removed. Editorial comes before clinical.
+  const draft = await countDraftInScope(req.params.id, cardIds);
+  if (draft === null) { apiError(res, 500, "db_error", "failed to check editorial state"); return; }
+  if (draft > 0) {
+    apiError(res, 409, "editorial_review_required",
+      `${draft} card(s) await editorial review — clinical approval refused; nothing was approved. Editorial-approve first.`);
+    return;
+  }
   try {
     const r = await setCardsReviewState(req.params.id, cardIds, "clinically_approved", "editorial_reviewed", req.user!.id);
     await logApproval("segment", req.params.id, "clinical_approve", req);

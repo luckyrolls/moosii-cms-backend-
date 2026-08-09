@@ -69,6 +69,22 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
   if (segErr) { apiError(res, 500, "db_error", segErr.message); return; }
   if (!segs || segs.length === 0) { apiError(res, 404, "no_segments", "lesson has no segments to approve"); return; }
 
+  // EDITORIAL GATE (bulk clinical): refuse if ANY card across the lesson is still 'draft'
+  // (awaiting editorial review). Approve NOTHING — not quiz, not images, not cards. This runs
+  // BEFORE any approve_segment_bundle, so a refused lesson is entirely untouched. Post the 056
+  // backfill (all cards → draft) this catches the first-approve-approves-nothing trap: the
+  // clinical caller must editorial-approve the lesson first.
+  const segIds = segs.map((s) => s.id);
+  const { count: draftCount, error: draftErr } = await (supabase as unknown as { from: (t: string) => any })
+    .from("sub_segments").select("id", { count: "exact", head: true }).in("seg_id", segIds).eq("review_state", "draft");
+  if (draftErr) { apiError(res, 500, "db_error", draftErr.message); return; }
+  if ((draftCount ?? 0) > 0) {
+    apiError(res, 409, "editorial_review_required",
+      `${draftCount} card(s) across this lesson await editorial review — clinical approval refused; nothing was ` +
+      `approved (not quiz, not images, not cards). Editorial-approve the lesson first.`);
+    return;
+  }
+
   const results: unknown[] = [];
   for (const seg of segs) {
     const { data: subs } = await supabase.from("sub_segments").select("id").eq("seg_id", seg.id);

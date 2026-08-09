@@ -213,6 +213,19 @@ must be editorial-approved first; `seg_status` is derived by recompute, not writ
 across the lesson) — the two-stage bulk flow is two actions for a whole lesson, not 34 clicks.
 
 ### 1f-review. Card review states + capability gating — DELIVERED (migration 056)
+
+> **⚠️ BREAKING CHANGES (migration 056) — the CMS must be updated:**
+> 1. **`POST /segments/:id/approve` and `POST /segments/:id/unapprove` are REMOVED → `404`.**
+>    Replaced by `/clinical-approve`, `/editorial-approve`, and `/reject`.
+> 2. **`POST /lessons/:id/approve` now requires CLINICAL capability → `403`** for any caller
+>    without it (previously `200` for any admin). It is now the bulk *clinical* sign-off.
+> 3. **`POST /lessons/:id/approve` and `POST /segments/:id/clinical-approve` now return
+>    `409 editorial_review_required`** (naming the count of cards awaiting editorial review)
+>    when any in-scope card is still `draft`, and **approve NOTHING** — not quiz, not images,
+>    not cards. Post-backfill every card is `draft`, so the FIRST clinical approve of every
+>    existing lesson 409s until it is editorial-approved. Do NOT read `200` as "approved" —
+>    read `seg_status`. The CMS must call `editorial-approve` before `clinical-approve`.
+
 `seg_status` is derived from `sub_segments.review_state` (`draft` → `editorial_reviewed` →
 `clinically_approved`). **Role controls what you SEE; capability controls what you can SIGN**
 (`user.can_review_editorial` / `can_approve_clinical`). Actor is always the verified JWT.
@@ -221,6 +234,7 @@ segment). Each transition recomputes `seg_status` atomically (segment-locked RPC
 ```
 POST /segments/:id/editorial-approve   // cap: editorial   draft → editorial_reviewed
 POST /segments/:id/clinical-approve     // cap: clinical    editorial_reviewed → clinically_approved
+                                        //   409 editorial_review_required if any in-scope card is draft
 POST /segments/:id/reject               // Body: { stage: 'editorial'|'clinical', reason?, card_ids? }
                                         //   clinical reject → editorial_reviewed (cap clinical)
                                         //   editorial reject → draft (cap editorial); logs reason
@@ -231,6 +245,9 @@ All → 200 { ok, segment_id, cards_updated, seg_status } | 403 forbidden | 404 
 - **Capability is enforced in the route** (403 without it); the transition RPC is `service_role`-
   only so a direct call can't bypass it. A `super_admin` with no clinical capability (e.g. Mark)
   is structurally 403 on `clinical-approve` and never lands on a clinical sign-off.
+- **`clinical-approve` (and bulk `/lessons/:id/approve`) refuse with `409 editorial_review_required`
+  and approve NOTHING** when any in-scope card is still `draft` — editorial must precede clinical,
+  and partial success (some cards promoted, drafts left) is structurally impossible.
 - `reject` logs `content_approvals(action='reject', reason)` and steps the card back one state —
   no separate `'rejected'` state.
 - **`POST /segments/:id/recompute-status` is the CONTRACT the CMS slice targets:** call it after a
