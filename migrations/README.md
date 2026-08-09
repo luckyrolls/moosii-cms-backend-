@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **053** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **054** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -75,7 +75,7 @@ Main track:
   no ceiling (byte-identical to today). Column + CHECK only; wiring `q.age_max` into the
   mlp_item_pool view's `max_child_age` is a separate slice. Filed idempotent
   (already live).
-- **054** — DRAFT (pending apply): card edit attribution + edit log + dead-column drops.
+- **054** — APPLIED: card edit attribution + edit log + dead-column drops.
   Adds `sub_segments.updated_at/updated_by/created_by` (actor cols NO FK; `created_by` NULL =
   AI-generated); creates append-only `content_edits` (`entity_type` CHECK `('sub_segment')`,
   no FKs, `fields text[]`, no before/after values); DROPs three confirmed-dead columns
