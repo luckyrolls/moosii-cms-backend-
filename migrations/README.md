@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **055** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **056** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -90,7 +90,7 @@ Main track:
   `lesson_segment_counts_with_track`) without those columns, since a bare DROP COLUMN would
   fail on the view dependency (the original draft missed this; DB view defs aren't in either
   repo's source). Backs `PATCH /sub-segments/:id`. Apply after 054.
-- **056** — DRAFT (pending apply): card-level review state + capabilities + DERIVED seg_status.
+- **056** — APPLIED: card-level review state + capabilities + DERIVED seg_status.
   Adds `sub_segments.review_state` (draft|editorial_reviewed|clinically_approved, backfill all
   → draft); `user.can_review_editorial/can_approve_clinical`; `content_approvals` CHECK +
   sub_segment / editorial_approve / clinical_approve / reject + `reason`. `recompute_seg_status`

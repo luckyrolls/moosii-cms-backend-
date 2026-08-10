@@ -635,6 +635,7 @@ export type Database = {
           entity_id: string
           entity_type: string
           id: string
+          reason: string | null
         }
         Insert: {
           action: string
@@ -644,6 +645,7 @@ export type Database = {
           entity_id: string
           entity_type: string
           id?: string
+          reason?: string | null
         }
         Update: {
           action?: string
@@ -652,6 +654,37 @@ export type Database = {
           created_at?: string
           entity_id?: string
           entity_type?: string
+          id?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
+      content_edits: {
+        Row: {
+          actor_id: string
+          actor_role: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          fields: string[]
+          id: string
+        }
+        Insert: {
+          actor_id: string
+          actor_role: string
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          fields: string[]
+          id?: string
+        }
+        Update: {
+          actor_id?: string
+          actor_role?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          fields?: string[]
           id?: string
         }
         Relationships: []
@@ -1831,8 +1864,6 @@ export type Database = {
           quiz_onboarding_image: string
           quiz_onboarding_text: string
           safety_sensitive: boolean
-          segment_status: string | null
-          status: string | null
           task_image: string | null
           time: number | null
           topic_id: string | null
@@ -1865,8 +1896,6 @@ export type Database = {
           quiz_onboarding_image?: string
           quiz_onboarding_text?: string
           safety_sensitive?: boolean
-          segment_status?: string | null
-          status?: string | null
           task_image?: string | null
           time?: number | null
           topic_id?: string | null
@@ -1899,8 +1928,6 @@ export type Database = {
           quiz_onboarding_image?: string
           quiz_onboarding_text?: string
           safety_sensitive?: boolean
-          segment_status?: string | null
-          status?: string | null
           task_image?: string | null
           time?: number | null
           topic_id?: string | null
@@ -3535,7 +3562,6 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
-          edited: boolean | null
           full_prompt: string | null
           id: string
           image_prompt: string | null
@@ -3561,7 +3587,6 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
-          edited?: boolean | null
           full_prompt?: string | null
           id?: string
           image_prompt?: string | null
@@ -3587,7 +3612,6 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
-          edited?: boolean | null
           full_prompt?: string | null
           id?: string
           image_prompt?: string | null
@@ -3802,41 +3826,53 @@ export type Database = {
         Row: {
           content: string | null
           created_at: string
+          created_by: string | null
           id: string
           image: string | null
           image_path: string | null
           image_prompt: string | null
           layout_top: string | null
+          review_state: string
           seg_id: string | null
           sequence: number | null
           title: string | null
           tone_id: string | null
+          updated_at: string | null
+          updated_by: string | null
         }
         Insert: {
           content?: string | null
           created_at?: string
+          created_by?: string | null
           id?: string
           image?: string | null
           image_path?: string | null
           image_prompt?: string | null
           layout_top?: string | null
+          review_state?: string
           seg_id?: string | null
           sequence?: number | null
           title?: string | null
           tone_id?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Update: {
           content?: string | null
           created_at?: string
+          created_by?: string | null
           id?: string
           image?: string | null
           image_path?: string | null
           image_prompt?: string | null
           layout_top?: string | null
+          review_state?: string
           seg_id?: string | null
           sequence?: number | null
           title?: string | null
           tone_id?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Relationships: [
           {
@@ -4239,6 +4275,8 @@ export type Database = {
           birth_date: string
           birth_month: number | null
           birth_year: number | null
+          can_approve_clinical: boolean
+          can_review_editorial: boolean
           chats_in_app_notifications: boolean
           chats_push_notifications: boolean
           comments_in_app_notifications: boolean
@@ -4285,6 +4323,8 @@ export type Database = {
           birth_date?: string
           birth_month?: number | null
           birth_year?: number | null
+          can_approve_clinical?: boolean
+          can_review_editorial?: boolean
           chats_in_app_notifications?: boolean
           chats_push_notifications?: boolean
           comments_in_app_notifications?: boolean
@@ -4331,6 +4371,8 @@ export type Database = {
           birth_date?: string
           birth_month?: number | null
           birth_year?: number | null
+          can_approve_clinical?: boolean
+          can_review_editorial?: boolean
           chats_in_app_notifications?: boolean
           chats_push_notifications?: boolean
           comments_in_app_notifications?: boolean
@@ -5711,8 +5753,6 @@ export type Database = {
           min_questionnaire_score_range: number | null
           priority: number | null
           segment_count: number | null
-          segment_status: string | null
-          status: string | null
           time: number | null
           track_id: string | null
           track_name: string | null
@@ -5749,8 +5789,6 @@ export type Database = {
           min_child_age: number | null
           min_questionnaire_score_range: number | null
           priority: number | null
-          segment_status: string | null
-          status: string | null
           time: number | null
           track_id: string | null
           track_name: string | null
@@ -6431,7 +6469,6 @@ export type Database = {
           lesson_name: string | null
           max_child_age: number | null
           min_child_age: number | null
-          status: string | null
           tags: string | null
           time: number | null
           track_id: string | null
@@ -6591,6 +6628,7 @@ export type Database = {
         Args: { p_items: Json; p_user_id: string }
         Returns: number
       }
+      recompute_seg_status: { Args: { p_seg_id: string }; Returns: string }
       renumber_track_priorities: {
         Args: { p_ordered_ids: string[]; p_track_id: string }
         Returns: undefined
@@ -6598,6 +6636,16 @@ export type Database = {
       renumber_track_priority_order: {
         Args: { p_ordered_ids: string[] }
         Returns: undefined
+      }
+      set_card_review_state: {
+        Args: {
+          p_actor: string
+          p_card_ids: string[]
+          p_from_state: string
+          p_new_state: string
+          p_seg_id: string
+        }
+        Returns: Json
       }
       unapprove_segment_bundle: { Args: { p_seg_id: string }; Returns: Json }
       user_active_tracks_for_user: {
