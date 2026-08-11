@@ -98,11 +98,13 @@ Main track:
   `set_card_review_state`, both **SECURITY DEFINER**, EXECUTE `service_role`-only; the 029
   approve/unapprove bundles are rewritten to transition cards (no direct `seg_status` write).
   Apply after 055.
-- **GUARD_seg_status_revoke.DRAFT.sql** — UN-NUMBERED, **DO NOT APPLY until the CMS is cut over**.
-  `REVOKE UPDATE(seg_status)` + re-grant every other segments column; makes a stray direct
-  `seg_status` write a permission error. Number + apply as a follow-up AFTER the CMS repoints its
-  direct write to `POST /segments/:id/recompute-status`. Carries the column list + "a blanket
-  GRANT ALL silently undoes this" warning.
+- **057** — DRAFT (pending apply): structural guard — `seg_status` writable ONLY by the
+  recompute RPC. `REVOKE UPDATE ON segments` from service_role/authenticated/anon, then
+  `GRANT UPDATE` on every column EXCEPT `seg_status` (22 cols, verified live 2026-08-11).
+  Makes a stray direct `seg_status` write a permission error (fail-closed; no trigger). **NO
+  backend code change** — the recompute/transition RPCs are already SECURITY DEFINER.
+  **Precondition MET:** CMS slice 3 deployed (regateSegment → recompute-status). Header carries
+  the column-list maintenance warning + "a blanket GRANT ALL silently undoes this". Apply after 056.
 - **053** — APPLIED: check-in cadence moves ACTION → ANSWER —
   `questionnaire_answers.repeat_after_days` + CHECK `qa_repeat_positive (repeat_after_days
   IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.

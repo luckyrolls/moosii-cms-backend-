@@ -1904,12 +1904,13 @@ backend must preserve and the frontend leans on:
   cardless segment can no longer be `'complete'`. Any content/image change resets the affected
   card(s) to `'draft'` and recomputes; approve/regen/image/delete all flow through this — none
   writes `seg_status` directly.
-  > ⚠️ **`seg_status` is NOT directly writable.** A follow-up privilege guard
-  > (`GUARD_seg_status_revoke`) will `REVOKE UPDATE(seg_status)` from all caller roles and grant
-  > it only to the definer RPC. **When you add a new `segments` column, add it to the
-  > `GRANT UPDATE (...)` list in that guard migration, or backend writes to it will fail with
-  > "permission denied".** Never `GRANT ALL`/`GRANT UPDATE` table-wide on `segments` — it
-  > silently undoes the guard.
+  > ⚠️ **`seg_status` is privilege-protected — NOT directly writable (migration 057).**
+  > `UPDATE(seg_status)` is `REVOKE`d from `service_role`/`authenticated`/`anon`; only
+  > `recompute_seg_status()` (SECURITY DEFINER) can write it, so a stray direct write fails with
+  > "permission denied" (fail-closed, no trigger). **When you add a new `segments` column, add it
+  > to the `GRANT UPDATE (...)` list in migration 057 (or a follow-up), or backend writes to it
+  > will fail with "permission denied".** Never `GRANT ALL`/`GRANT UPDATE` table-wide on
+  > `segments` — it silently undoes the guard.
 - **Capabilities (migration 056) — separate from role.** `user.can_review_editorial` /
   `user.can_approve_clinical` (booleans). Role controls what you SEE; capability controls what
   you can SIGN. They ride on `req.user` (verifyAdminJwt select). Enforced in the route, actor
