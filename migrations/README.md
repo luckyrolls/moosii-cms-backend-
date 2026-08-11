@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **056** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **057** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -98,7 +98,7 @@ Main track:
   `set_card_review_state`, both **SECURITY DEFINER**, EXECUTE `service_role`-only; the 029
   approve/unapprove bundles are rewritten to transition cards (no direct `seg_status` write).
   Apply after 055.
-- **057** — DRAFT (pending apply): structural guard — `seg_status` writable ONLY by the
+- **057** — APPLIED: structural guard — `seg_status` writable ONLY by the
   recompute RPC. `REVOKE UPDATE ON segments` from service_role/authenticated/anon, then
   `GRANT UPDATE` on every column EXCEPT `seg_status` (22 cols, verified live 2026-08-11).
   Makes a stray direct `seg_status` write a permission error (fail-closed; no trigger). **NO
