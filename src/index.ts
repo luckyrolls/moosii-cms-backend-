@@ -1,4 +1,7 @@
 import "dotenv/config";
+// DOMAIN is validated at import and exits the process if unset/unknown — keep this the
+// first import after dotenv so a mislabelled deploy fails before anything else boots.
+import { DOMAIN } from "./lib/domain";
 import express from "express";
 import { jobsAuthMiddleware } from "./auth";
 import { corsMiddleware } from "./middleware/cors";
@@ -39,8 +42,10 @@ app.get("/health", (_req, res) => {
 
 // Unauthenticated — reports the commit this instance is running so "what's deployed?"
 // is a one-line curl, not a dashboard hunt. Low sensitivity (a git SHA), like /health.
+// Also carries `domain` (src/lib/domain.ts): the CMS reads it at bootstrap and refuses to
+// render against a backend whose domain differs from its own build-time one.
 app.get("/version", (_req, res) => {
-  res.status(200).json(getVersionInfo());
+  res.status(200).json({ ...getVersionInfo(), domain: DOMAIN });
 });
 
 // SPA routes — JWT auth (Supabase access token)

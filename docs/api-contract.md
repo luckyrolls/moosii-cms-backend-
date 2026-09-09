@@ -55,10 +55,19 @@ generation have been ported and are delivered.
 - **Health check — DELIVERED:** `GET /health → 200 { status: "ok" }`, **no
   auth**. Use for a "backend reachable?" indicator (the two halves deploy
   separately).
-- **Version — DELIVERED:** `GET /version → 200 { commit, short, branch, source }`,
+- **Version — DELIVERED:** `GET /version → 200 { commit, short, branch, source, domain }`,
   **no auth**. Reports the commit the running instance is on — `source:"render"`
   (from `RENDER_GIT_COMMIT`) in prod, `source:"git"` locally. Answers "what's
   deployed?" without opening the Render dashboard.
+- **Domain — DELIVERED:** `domain: "moosii" | "financial"` on `GET /version`, from the
+  **required** `DOMAIN` env (`src/lib/domain.ts`). Validated at boot against that enum
+  with **no default** — unset or unknown → the process exits with a clear message, so a
+  mislabelled deploy fails on Render (the previous deploy stays live) rather than running.
+  One codebase, one Supabase project per domain. The CMS reads `domain` at bootstrap and
+  must **fail loud** if it is missing or differs from its own build-time domain — a CMS
+  pointed at the wrong backend must never silently edit the other domain's content. Adding
+  a domain = add it to the enum here AND in `src/lib/domain.ts`. Set `DOMAIN` on every
+  Render service before deploying this change.
 
 ---
 
