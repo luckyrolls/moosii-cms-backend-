@@ -30,6 +30,9 @@ router.get("/:user_id/preview", jwtAuthMiddleware, async (req: Request, res: Res
     const preview = await assembleMlpPreview(userId, { ageMonthsOverride, includeCompleted });
     res.json(preview);
   } catch (e) {
+    // Logged 500, never a hang: MlpInvalidWeights (CHANGE 4) and any other compute error
+    // land here with the message; the user_id is in the log line for the operator.
+    console.error(`[mlp_preview] failed for ${userId}: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
     apiError(res, 500, "mlp_preview_failed", e instanceof Error ? e.message : String(e));
   }
 });
@@ -105,6 +108,8 @@ router.post("/recompute", async (req: Request, res: Response): Promise<void> => 
     const result = await rebuildOneUser(userId);
     res.json({ ok: true, user_id: userId, items_written: result.items_written });
   } catch (e) {
+    // Logged 500, never a hang (see MlpInvalidWeights, CHANGE 4 in generateFullMLP).
+    console.error(`[mlp_recompute] failed for ${userId}: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
     apiError(res, 500, "recompute_failed", e instanceof Error ? e.message : String(e));
   }
 });

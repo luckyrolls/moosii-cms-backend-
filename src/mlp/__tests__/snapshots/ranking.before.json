@@ -1,0 +1,973 @@
+{
+  "normal_user_6m": {
+    "finalMLP": [
+      {
+        "item_id": "slp-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 150,
+        "track_weight": 2,
+        "position": 1,
+        "item_name": "How is sleep going?",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "age-02",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": 20,
+        "track_weight": 0.5,
+        "position": 2,
+        "item_name": "Four to six months",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 2
+      },
+      {
+        "item_id": "fed-01",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 5,
+        "track_weight": 1,
+        "position": 3,
+        "item_name": "Feeding cues",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 3
+      },
+      {
+        "item_id": "dev-02",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 2,
+        "track_weight": 5,
+        "position": 4,
+        "item_name": "Sitting up",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 4
+      },
+      {
+        "item_id": "mod-02",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 1,
+        "track_weight": 1,
+        "position": 5,
+        "item_name": "Asking for help",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "slp-02",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 200,
+        "track_weight": 2,
+        "position": 6,
+        "item_name": "Night wakings",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 1
+      },
+      {
+        "item_id": "fed-02",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 6,
+        "track_weight": 1,
+        "position": 7,
+        "item_name": "Untitled",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      },
+      {
+        "item_id": "dev-03",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 3,
+        "track_weight": 5,
+        "position": 8,
+        "item_name": "Crawling",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 4
+      },
+      {
+        "item_id": "mod-01",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 2,
+        "track_weight": 1,
+        "position": 9,
+        "item_name": "Baby blues vs PPD",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "slp-03",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 200,
+        "track_weight": 2,
+        "position": 10,
+        "item_name": "Naps (tie on priority)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "dev-05",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 5,
+        "track_weight": 5,
+        "position": 11,
+        "item_name": "Babbling",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "dev-06",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 6,
+        "track_weight": 5,
+        "position": 12,
+        "item_name": "Object permanence",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "age-03",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": 30,
+        "track_weight": 0.5,
+        "position": 13,
+        "item_name": "Starting solids",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 2
+      },
+      {
+        "item_id": "mod-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 3,
+        "track_weight": 1,
+        "position": 14,
+        "item_name": "EPDS (never suppressible)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "age-05",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": null,
+        "track_weight": 0.5,
+        "position": 15,
+        "item_name": "Any age: play",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 2
+      }
+    ],
+    "debug": {
+      "itemsSelected": 15,
+      "trackWeights": {
+        "T_age": 0.5,
+        "T_sleep": 2,
+        "T_feed": 1,
+        "T_dev": 5,
+        "T_mood": 1
+      },
+      "poolSize": 25,
+      "filteredPoolSize": 16,
+      "completedItems": 3,
+      "selectedCountByTrack": {
+        "T_sleep": 3,
+        "T_age": 3,
+        "T_feed": 2,
+        "T_dev": 4,
+        "T_mood": 3
+      },
+      "weightedSequence": [
+        "T_sleep",
+        "T_age",
+        "T_feed",
+        "T_dev",
+        "T_mood",
+        "T_sleep",
+        "T_feed",
+        "T_dev",
+        "T_mood",
+        "T_sleep",
+        "T_dev",
+        "T_sleep",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev"
+      ],
+      "ageBracketDebug": {
+        "inputAges": [
+          6
+        ],
+        "matchedBrackets": [
+          "infant"
+        ],
+        "bracketWeights": {
+          "infant": 2
+        },
+        "totalAgeWeight": 2
+      },
+      "ageFilter": {
+        "youngestAgeMonths": 6,
+        "removedByAge": 5
+      },
+      "milestoneSuppression": {
+        "removed": 1,
+        "keys": [
+          "questionnaire:dev-q1"
+        ]
+      }
+    }
+  },
+  "normal_user_2m": {
+    "finalMLP": [
+      {
+        "item_id": "slp-01",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 100,
+        "track_weight": 2,
+        "position": 1,
+        "item_name": "Bedtime routine",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 1
+      },
+      {
+        "item_id": "age-01",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": 10,
+        "track_weight": 1,
+        "position": 2,
+        "item_name": "Newborn sleep basics",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 2
+      },
+      {
+        "item_id": "fed-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 1,
+        "track_weight": 1,
+        "position": 3,
+        "item_name": "Feeding check-in",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      },
+      {
+        "item_id": "dev-06",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 6,
+        "track_weight": 5,
+        "position": 4,
+        "item_name": "Object permanence",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "mod-02",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 1,
+        "track_weight": 1,
+        "position": 5,
+        "item_name": "Asking for help",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "slp-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 150,
+        "track_weight": 2,
+        "position": 6,
+        "item_name": "How is sleep going?",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "slp-03",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 200,
+        "track_weight": 2,
+        "position": 7,
+        "item_name": "Naps (tie on priority)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "age-05",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": null,
+        "track_weight": 1,
+        "position": 8,
+        "item_name": "Any age: play",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 2
+      },
+      {
+        "item_id": "fed-01",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 5,
+        "track_weight": 1,
+        "position": 9,
+        "item_name": "Feeding cues",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 3
+      },
+      {
+        "item_id": "mod-01",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 2,
+        "track_weight": 1,
+        "position": 10,
+        "item_name": "Baby blues vs PPD",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "fed-02",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 6,
+        "track_weight": 1,
+        "position": 11,
+        "item_name": "Untitled",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      },
+      {
+        "item_id": "mod-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 3,
+        "track_weight": 1,
+        "position": 12,
+        "item_name": "EPDS (never suppressible)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      }
+    ],
+    "debug": {
+      "itemsSelected": 12,
+      "trackWeights": {
+        "T_age": 1,
+        "T_sleep": 2,
+        "T_feed": 1,
+        "T_dev": 5,
+        "T_mood": 1
+      },
+      "poolSize": 25,
+      "filteredPoolSize": 13,
+      "completedItems": 0,
+      "selectedCountByTrack": {
+        "T_sleep": 3,
+        "T_age": 2,
+        "T_feed": 3,
+        "T_dev": 1,
+        "T_mood": 3
+      },
+      "weightedSequence": [
+        "T_sleep",
+        "T_age",
+        "T_feed",
+        "T_dev",
+        "T_mood",
+        "T_sleep",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev"
+      ],
+      "ageBracketDebug": {
+        "inputAges": [
+          2
+        ],
+        "matchedBrackets": [
+          "newborn"
+        ],
+        "bracketWeights": {
+          "newborn": 4
+        },
+        "totalAgeWeight": 4
+      },
+      "ageFilter": {
+        "youngestAgeMonths": 2,
+        "removedByAge": 12
+      },
+      "milestoneSuppression": {
+        "removed": 0,
+        "keys": []
+      }
+    }
+  },
+  "normal_user_two_ages": {
+    "finalMLP": [
+      {
+        "item_id": "slp-01",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 100,
+        "track_weight": 2,
+        "position": 1,
+        "item_name": "Bedtime routine",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 1
+      },
+      {
+        "item_id": "age-01",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": 10,
+        "track_weight": 1.5,
+        "position": 2,
+        "item_name": "Newborn sleep basics",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 2
+      },
+      {
+        "item_id": "fed-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 1,
+        "track_weight": 1,
+        "position": 3,
+        "item_name": "Feeding check-in",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      },
+      {
+        "item_id": "dev-06",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 6,
+        "track_weight": 5,
+        "position": 4,
+        "item_name": "Object permanence",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "mod-01",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 2,
+        "track_weight": 1,
+        "position": 5,
+        "item_name": "Baby blues vs PPD",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "slp-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 150,
+        "track_weight": 2,
+        "position": 6,
+        "item_name": "How is sleep going?",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "age-05",
+        "item_type": "lesson",
+        "track_id": "T_age",
+        "track_name": "Age",
+        "item_priority": null,
+        "track_weight": 1.5,
+        "position": 7,
+        "item_name": "Any age: play",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 2
+      },
+      {
+        "item_id": "slp-03",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 200,
+        "track_weight": 2,
+        "position": 8,
+        "item_name": "Naps (tie on priority)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "fed-01",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 5,
+        "track_weight": 1,
+        "position": 9,
+        "item_name": "Feeding cues",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 3
+      },
+      {
+        "item_id": "mod-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 3,
+        "track_weight": 1,
+        "position": 10,
+        "item_name": "EPDS (never suppressible)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "fed-02",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 6,
+        "track_weight": 1,
+        "position": 11,
+        "item_name": "Untitled",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      }
+    ],
+    "debug": {
+      "itemsSelected": 11,
+      "trackWeights": {
+        "T_age": 1.5,
+        "T_sleep": 2,
+        "T_feed": 1,
+        "T_dev": 5,
+        "T_mood": 1
+      },
+      "poolSize": 25,
+      "filteredPoolSize": 12,
+      "completedItems": 1,
+      "selectedCountByTrack": {
+        "T_sleep": 3,
+        "T_age": 2,
+        "T_feed": 3,
+        "T_dev": 1,
+        "T_mood": 2
+      },
+      "weightedSequence": [
+        "T_sleep",
+        "T_age",
+        "T_feed",
+        "T_dev",
+        "T_mood",
+        "T_sleep",
+        "T_age",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev"
+      ],
+      "ageBracketDebug": {
+        "inputAges": [
+          2,
+          "14"
+        ],
+        "matchedBrackets": [
+          "newborn",
+          "toddler"
+        ],
+        "bracketWeights": {
+          "newborn": 4,
+          "toddler": 2
+        },
+        "totalAgeWeight": 6
+      },
+      "ageFilter": {
+        "youngestAgeMonths": 2,
+        "removedByAge": 12
+      },
+      "milestoneSuppression": {
+        "removed": 0,
+        "keys": []
+      }
+    }
+  },
+  "no_age_track_empty_ages": {
+    "finalMLP": [
+      {
+        "item_id": "slp-01",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 100,
+        "track_weight": 2,
+        "position": 1,
+        "item_name": "Bedtime routine",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 1
+      },
+      {
+        "item_id": "fed-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 1,
+        "track_weight": 1,
+        "position": 2,
+        "item_name": "Feeding check-in",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      },
+      {
+        "item_id": "dev-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 0,
+        "track_weight": 5,
+        "position": 3,
+        "item_name": "Rolling milestone check (suppressed)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "mod-02",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 1,
+        "track_weight": 1,
+        "position": 4,
+        "item_name": "Asking for help",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "slp-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 150,
+        "track_weight": 2,
+        "position": 5,
+        "item_name": "How is sleep going?",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "dev-01",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 1,
+        "track_weight": 5,
+        "position": 6,
+        "item_name": "Rolling over",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 4
+      },
+      {
+        "item_id": "dev-02",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 2,
+        "track_weight": 5,
+        "position": 7,
+        "item_name": "Sitting up",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 4
+      },
+      {
+        "item_id": "dev-03",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 3,
+        "track_weight": 5,
+        "position": 8,
+        "item_name": "Crawling",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 4
+      },
+      {
+        "item_id": "dev-04",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 4,
+        "track_weight": 5,
+        "position": 9,
+        "item_name": "Walking (out of age)",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 4
+      },
+      {
+        "item_id": "slp-q2",
+        "item_type": "questionnaire",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 160,
+        "track_weight": 2,
+        "position": 10,
+        "item_name": "Sleep training readiness (gated ≥ 12m)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "fed-01",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 5,
+        "track_weight": 1,
+        "position": 11,
+        "item_name": "Feeding cues",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 3
+      },
+      {
+        "item_id": "dev-05",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 5,
+        "track_weight": 5,
+        "position": 12,
+        "item_name": "Babbling",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "mod-01",
+        "item_type": "lesson",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 2,
+        "track_weight": 1,
+        "position": 13,
+        "item_name": "Baby blues vs PPD",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "slp-02",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 200,
+        "track_weight": 2,
+        "position": 14,
+        "item_name": "Night wakings",
+        "item_description": "",
+        "with_quiz": true,
+        "track_priority": 1
+      },
+      {
+        "item_id": "dev-06",
+        "item_type": "lesson",
+        "track_id": "T_dev",
+        "track_name": "Development",
+        "item_priority": 6,
+        "track_weight": 5,
+        "position": 15,
+        "item_name": "Object permanence",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 4
+      },
+      {
+        "item_id": "slp-03",
+        "item_type": "lesson",
+        "track_id": "T_sleep",
+        "track_name": "Sleep",
+        "item_priority": 200,
+        "track_weight": 2,
+        "position": 16,
+        "item_name": "Naps (tie on priority)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 1
+      },
+      {
+        "item_id": "fed-02",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 6,
+        "track_weight": 1,
+        "position": 17,
+        "item_name": "Untitled",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      },
+      {
+        "item_id": "mod-q1",
+        "item_type": "questionnaire",
+        "track_id": "T_mood",
+        "track_name": "Mood",
+        "item_priority": 3,
+        "track_weight": 1,
+        "position": 18,
+        "item_name": "EPDS (never suppressible)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": null
+      },
+      {
+        "item_id": "fed-03",
+        "item_type": "lesson",
+        "track_id": "T_feed",
+        "track_name": "Feeding",
+        "item_priority": 7,
+        "track_weight": 1,
+        "position": 19,
+        "item_name": "Weaning (out of age)",
+        "item_description": "",
+        "with_quiz": false,
+        "track_priority": 3
+      }
+    ],
+    "debug": {
+      "itemsSelected": 19,
+      "trackWeights": {
+        "T_sleep": 2,
+        "T_feed": 1,
+        "T_dev": 5,
+        "T_mood": 1
+      },
+      "poolSize": 20,
+      "filteredPoolSize": 20,
+      "completedItems": 0,
+      "selectedCountByTrack": {
+        "T_sleep": 5,
+        "T_feed": 4,
+        "T_dev": 7,
+        "T_mood": 3
+      },
+      "weightedSequence": [
+        "T_sleep",
+        "T_feed",
+        "T_dev",
+        "T_mood",
+        "T_sleep",
+        "T_dev",
+        "T_dev",
+        "T_dev",
+        "T_dev"
+      ],
+      "ageBracketDebug": {
+        "inputAges": [],
+        "matchedBrackets": [],
+        "bracketWeights": {},
+        "totalAgeWeight": 0
+      },
+      "ageFilter": {
+        "youngestAgeMonths": null,
+        "removedByAge": 0
+      },
+      "milestoneSuppression": {
+        "removed": 0,
+        "keys": []
+      }
+    }
+  }
+}

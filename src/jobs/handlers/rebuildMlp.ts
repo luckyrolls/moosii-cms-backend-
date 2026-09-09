@@ -725,6 +725,10 @@ async function rebuildAllUsers(): Promise<BatchResult> {
         await rebuildOneUser(uid);
         succeeded += 1;
       } catch (e) {
+        // One bad user (e.g. MlpInvalidWeights, CHANGE 4) must NOT abort the batch: log,
+        // record in the job result, continue with the next user.
+        const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+        console.error(`[rebuild_mlp] scope:all — user ${uid} failed, continuing: ${msg}`);
         errors.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
       }
     }

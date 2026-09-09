@@ -19,8 +19,8 @@ corrupts data. Anything narrower belongs in `api-contract.md` or a code comment.
 section is full, one must be argued out before another goes in. Format is fixed: one line
 of rule, one line of file/line evidence.
 
-1. **The MLP algorithm is FROZEN** — flag any slice that touches it before writing code.
-   → `src/mlp/generateFullMLP.ts:1-12` (faithful BuildShip port: "logic kept IDENTICAL except deliberate changes").
+1. **The MLP algorithm is FROZEN** — flag any slice that touches it before writing code. The ONE sanctioned deviation is CHANGE 4 (2026-09, defect fix only): no usable age → no age tilt, plus a finiteness guard that throws `MlpInvalidWeights` where the round-robin used to loop forever; ranking for every valid input is byte-identical, proven by `npm test` against a frozen pre-fix copy + snapshot.
+   → `src/mlp/generateFullMLP.ts:1-20` (faithful BuildShip port: "logic kept IDENTICAL except deliberate changes"); proof `src/mlp/__tests__/generateFullMLP.hang.test.ts`.
 2. **`card_positions` = role-by-position** (first/body/takeaway derived from `sequence`), SHARED by every segment-gen prompt and the reviewer; card edits keep `sequence` contiguous 1..N; never pin a role per card.
    → `card_positions_v1` block ("TAKEAWAY CARD — always the final card"); `src/jobs/handlers/generateSegmentContent.ts:160-164`; renumber in `src/routes/subSegments.ts` (DELETE).
 3. **No real users exist** — prefer structural safety (constraints/FKs/NOT NULL) over behavioral rules; wipe-and-rebuild usually beats careful migration.
@@ -359,6 +359,12 @@ Docs are updated **unprompted, in the same commit** as the change that necessita
 - Do not invent or update docs outside this repo.
 
 ## Not yet built / parked
+- [ ] **POST-DEPLOY STEP (Mark runs, only AFTER slice 2 — the generateFullMLP hang fix — is
+      live on Render):** migration 059, the `user_mlp_data` LEFT JOIN rewrite (SQL is with
+      Mark). It makes zero-child users visible to the MLP (they get a `user_mlp_data` row, so
+      default tracks + `scope:'all'` rebuilds reach them). Ordering is load-bearing: before the
+      guard, a zero-child user with an `Age`-typed track is the hang (FINDINGS-financial.md
+      §A.7); after it, the worst case is a logged `MlpInvalidWeights` 500.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).

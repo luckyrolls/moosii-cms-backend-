@@ -1,4 +1,13 @@
 // ============================================================================
+// FROZEN PRE-FIX COPY of src/mlp/generateFullMLP.ts (as of commit 2af4376) — the
+// "before" side of the slice-2 hang-fix proof. DO NOT EDIT and DO NOT import from
+// runtime code. The test harness runs this in a child process under a kill timeout
+// to demonstrate the hang, and diffs its ranking against the fixed function to prove
+// the fix is byte-identical for every valid input. Everything below this banner is
+// the original file, verbatim.
+// ============================================================================
+
+// ============================================================================
 // Faithful port of the BuildShip "weightedRR" node (generateFullMLP).
 // Logic is kept IDENTICAL to the original except two deliberate changes:
 //   CHANGE 1 (pool): only published items — enforced in the handler's query
@@ -8,29 +17,8 @@
 //                    whose [min_child_age, max_child_age] range does not overlap
 //                    the youngest child's age (NULL bounds = open-ended, so
 //                    questionnaires always pass). NEW behavior; see below.
-//   CHANGE 4 (2026-09, DEFECT FIX ONLY — slice 2): (i) with NO usable age, Age-typed
-//                    tracks keep their BASE weight (no age tilt) instead of being scaled
-//                    by totalAgeWeight = 0; (ii) a finiteness guard before Phase 1 throws
-//                    MlpInvalidWeights instead of looping forever. For every input that
-//                    previously produced output, the ranking is byte-identical — proven by
-//                    src/mlp/__tests__/generateFullMLP.hang.test.ts against a frozen
-//                    pre-fix copy + snapshot. Inputs that used to HANG now throw or complete.
 // Pure/standalone and side-effect free so it can be unit-tested in isolation.
 // ============================================================================
-
-// CHANGE 4(ii) — thrown when the weighted round-robin cannot be built: an adjusted track
-// weight or cycle count is NaN/±Infinity/≤ 0 (e.g. a zero-weight track, or an Age-typed
-// track whose scale factor collapsed to 0). Before this guard the Phase 1 loop never
-// exited and took the whole process down synchronously. A throw is a logged 500 (routes)
-// or a per-user error entry (scope:all batch); a hang was an outage.
-export class MlpInvalidWeights extends Error {
-  readonly trackIds: string[];
-  constructor(trackIds: string[], detail: string) {
-    super(`MLP weighting is not finite/positive for track(s) [${trackIds.join(", ")}]: ${detail}`);
-    this.name = "MlpInvalidWeights";
-    this.trackIds = trackIds;
-  }
-}
 
 export type MlpTrack = {
   track_id: string;
@@ -198,15 +186,9 @@ export function generateFullMLP(input: GenerateFullMLPInput): GenerateFullMLPOut
   const removedByAge = poolBeforeAge - filteredPool.length;
 
   // Adjust weights for age track(s)
-  // CHANGE 4(i): only when there is at least one usable age. With none (zero-children
-  // user, or nothing parseable), the scale factor would be totalAgeWeight/total = 0 and
-  // the Age track's weight would collapse to 0 — the hang. No child age → no age tilt:
-  // the Age track keeps its base weight, exactly like a non-Age track. Any input with a
-  // usable age takes the ORIGINAL branch unchanged.
-  const hasUsableAge = numericAges.length > 0;
   const adjustedTrackWeights: Record<string, number> = {};
   for (const t of tracks) {
-    if (t.track_type === "Age" && hasUsableAge) {
+    if (t.track_type === "Age") {
       // Proportional adjustment for each age bracket
       adjustedTrackWeights[t.track_id] = (t.weight ?? 1) * (totalAgeWeight / totalTrackWeight);
     } else {
@@ -241,26 +223,6 @@ export function generateFullMLP(input: GenerateFullMLPInput): GenerateFullMLPOut
     trackCycles[track.track_id] = Math.round(
       (adjustedTrackWeights[track.track_id] ?? 1) / minWeight
     );
-  }
-
-  // CHANGE 4(ii) — finiteness guard. Every adjusted weight and every cycle count must be
-  // finite and > 0, or the sequence loop below (maxCycles = Infinity) or Phase 1
-  // (empty sequence, non-empty buckets) never terminates. Pure check: for valid input
-  // nothing here changes; for the formerly-hanging input it throws with the culprits.
-  // Name the ROOT CAUSE: a bad weight poisons every other track's cycle count (w / 0 =
-  // Infinity), so report weight-invalid tracks when there are any, else cycle-invalid ones.
-  const badWeight = tracks
-    .filter((t) => !(Number.isFinite(adjustedTrackWeights[t.track_id]) && adjustedTrackWeights[t.track_id] > 0))
-    .map((t) => t.track_id);
-  const badCycle = tracks
-    .filter((t) => !(Number.isFinite(trackCycles[t.track_id]) && trackCycles[t.track_id] > 0))
-    .map((t) => t.track_id);
-  const invalidTrackIds = badWeight.length > 0 ? badWeight : badCycle;
-  if (invalidTrackIds.length > 0) {
-    const detail = invalidTrackIds
-      .map((id) => `${id}: weight=${adjustedTrackWeights[id]} cycles=${trackCycles[id]}`)
-      .join("; ");
-    throw new MlpInvalidWeights(invalidTrackIds, `${detail} (ages=${JSON.stringify(ages)}, totalAgeWeight=${totalAgeWeight})`);
   }
 
   const weightedSequence: string[] = [];
