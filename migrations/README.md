@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **057** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **058** (main) + **0008** (prompt track).)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -110,11 +110,11 @@ Main track:
   IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.
   Lets a consequence-free "Not yet" answer carry a cadence. No reader consumed the action
   column; no data migration. Filed idempotent (already live).
-- **058** — **DRAFT (pending apply)**: `tracks.weight` positive — backfill `NULL → 1`
+- **058** — APPLIED (2026-09-09): `tracks.weight` positive — backfill `NULL → 1`
   (the value the reader already folds NULL to), `SET NOT NULL`, and CHECK
   `tracks_weight_positive (weight > 0)`. Closes the reproduced generateFullMLP hang on a
-  zero-weight track (FINDINGS-financial.md §A.7). Pre-check for `weight <= 0` rows first —
-  those need a human-chosen value. High-water stays 057 until Mark confirms the apply.
+  zero-weight track (FINDINGS-financial.md §A.7). Apply after 057. Types regen pending
+  (`tracks.weight` Row type tightens to `number`; no code bridge involved).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

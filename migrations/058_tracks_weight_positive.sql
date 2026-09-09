@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 058: tracks.weight must be positive (DRAFT — pending apply)
+-- Migration 058: tracks.weight must be positive (APPLIED 2026-09-09)
 -- ============================================================================
 -- WHY. generateFullMLP (the FROZEN BuildShip port) builds its weighted round-robin from
 -- tracks.weight: minWeight = min(adjusted weights); cycles = round(weight / minWeight).
@@ -27,7 +27,7 @@
 -- no `(supabase as any)` bridge is involved and `?? 1` still compiles, so the regen is a
 -- confirm, not a blocker.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — on the 008..058 reconciliation list. Idempotent:
+-- APPLIED VIA THE SUPABASE SQL EDITOR (2026-09-09) — on the 008..058 reconciliation list. Idempotent:
 -- the backfill is a no-op once applied; DROP CONSTRAINT IF EXISTS makes a re-run safe.
 -- ============================================================================
 
