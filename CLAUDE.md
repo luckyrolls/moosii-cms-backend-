@@ -41,6 +41,8 @@ of rule, one line of file/line evidence.
     → `src/jobs/handlers/rebuildMlp.ts:369,415`; migrations 041/045/046.
 11. **Lesson creation is IDEMPOTENT per (track_id, lesson_name)** — the RPC is insert-or-select, returning the EXISTING row (`created:false`) instead of a duplicate; it never overwrites, and archived rows are exempt so a name can be reused. Before this, the ONLY duplicate protection anywhere was a sentence in an LLM prompt, and re-running ideation silently forked the catalog.
     → `migrations/061_lessons_track_name_unique.sql` (partial unique index = the conflict target); `migrations/062_create_lessons_insert_or_select.sql`; readers use `src/lib/lessonCreateResult.ts`.
+12. **`lessons.with_quiz` is DERIVED and READ-ONLY — never set it** (a BEFORE trigger overwrites any value you supply, so a manual write is silently discarded, not honoured). It means "an approved question exists on the segment the APP reads" — first `seg_status='complete'` segment by `segment_order` NULLS LAST, then `quiz_questions` by `segment_id` only (never `lesson_id`), mirroring moosii-rn `useLesson.ts`/`useQuiz.ts`. To give a lesson a quiz, APPROVE A QUESTION.
+    → `migrations/063_with_quiz_derived.sql` (`lesson_with_quiz_derive(uuid)` is the single definition; triggers on `quiz_questions`, `segments` AND `lessons`).
 
 ## The founding rule: no BuildShip, ever
 The previous CMS used BuildShip (a visual workflow platform) for AI orchestration.

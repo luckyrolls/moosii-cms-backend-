@@ -44,9 +44,12 @@
 --     Understanding Your Premature Baby's Cues · Babyproofing Your Home for a Crawler ·
 --     Managing Stress and Finding Support as a Single Mom
 --   Those five currently offer a quiz that renders EMPTY. This migration makes the flag
---   honest. ⚠ IF THE INTENT IS FOR THEM TO HAVE A QUIZ, APPROVE THE QUESTION INSTEAD —
---   the trigger flips with_quiz back to true the moment answer_status becomes 'approved',
---   with no further migration.
+--   honest.
+--   DECIDED (2026-09-10): LEAVE THOSE FIVE AS-IS. Their questions stay unapproved, so the
+--   backfill takes them to with_quiz=false and the app stops offering the empty quiz. This
+--   is the intended outcome, not an oversight — do not "fix" it by bulk-approving.
+--   If any of them should later have a quiz, APPROVE ITS QUESTION: the trigger flips
+--   with_quiz back to true the moment answer_status becomes 'approved', with no migration.
 --
 -- ── WHAT IS IN THIS FILE ────────────────────────────────────────────────────
 --   1. lesson_with_quiz_derive(uuid)  — the ONE definition, used by everything below.
