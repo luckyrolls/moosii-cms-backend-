@@ -110,7 +110,7 @@ Main track:
   IS NULL OR repeat_after_days > 0)`; DROP `questionnaire_answer_actions.repeat_after_days`.
   Lets a consequence-free "Not yet" answer carry a cadence. No reader consumed the action
   column; no data migration. Filed idempotent (already live).
-- **058** — APPLIED (2026-09-09): `tracks.weight` positive — backfill `NULL → 1`
+- **058** — APPLIED (2026-09-09; verified live in Supabase 2026-09-10): `tracks.weight` positive — backfill `NULL → 1`
   (the value the reader already folds NULL to), `SET NOT NULL`, and CHECK
   `tracks_weight_positive (weight > 0)`. Closes the reproduced generateFullMLP hang on a
   zero-weight track (FINDINGS-financial.md §A.7). Apply after 057. Types regen pending
