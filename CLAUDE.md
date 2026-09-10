@@ -332,10 +332,19 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
   `prompt_blocks` + `content_size_profiles`), managed via admin CRUD, not files.
 - Prefer minimal formatting and minimal dependencies. Keep it debuggable.
 - Database types (`src/types/database.types.ts`) are generated from the live schema via
-  PostgREST introspection; regenerate after any schema migration and drop the temporary
-  `(supabase as any)` bridge in the same pass. **Known current gap:** missing `archived_at`
-  (045/046) and `curator_note` (044) — code bridges those with `(supabase as any)` until a
-  regen. (There is no clean "types through migration N" — it's a patchwork; don't cite one.)
+  the Supabase CLI; regenerate after any schema migration and drop any temporary
+  `(supabase as any)` bridge that existed only for a MISSING COLUMN in the same pass.
+  Regen (no install, no login needed — a stored CLI session exists; project ref is the
+  subdomain of `SUPABASE_URL`):
+  `npx supabase@latest gen types typescript --project-id <ref> > /tmp/new.ts` then verify
+  and move it over `src/types/database.types.ts`. **Never redirect straight onto the real
+  file** — `>` truncates it BEFORE the command runs, so a failure leaves you with an empty
+  types file. The committed file is **CRLF**; the CLI emits LF, so convert on the way in or
+  the diff is whole-file churn instead of the handful of real lines.
+  Column gaps as of the 058 regen: none known (`archived_at`, `curator_note` are present).
+  The ~27 remaining `(supabase as any)` bridges are mostly for VIEWS and RPCs the generator
+  does not type — those stay; they are not a regen gap. (There is no clean "types through
+  migration N" — it's a patchwork; don't cite one.)
 
 ## Status pointers
 - **Delivered work** — routes, jobs, payloads, semantics: `docs/api-contract.md` is canonical.
