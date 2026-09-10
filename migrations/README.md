@@ -140,6 +140,18 @@ Main track:
     is unapproved.
   ⚠ These four take the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
   (060–067). Facts v1 must be renumbered to 064+ before it is applied.
+- **064–065 — DRAFT (pending apply): published-content edit policy**
+  (FINDINGS-published-edit.md). Design slice; nothing is built on top of them yet.
+  - **064** — `app_settings` (one row: `domain`) + `content_edit_policy_guard()` on
+    `sub_segments` / `quiz_questions` / `quiz_answers` / `segments` content columns. Inert
+    unless `domain='financial'`, where a content write touching a PUBLISHED lesson raises with
+    `HINT='published_content_locked'`. The warn domain gets **no trigger** on purpose — the
+    state it would set is derived. ⚠ The financial project must have its row UPDATEd to
+    `'financial'` after the schema dump; the seed writes `'moosii'`.
+  - **065** — `lessons_review_status` view: derived `content_state`
+    (`draft` | `published_reviewed` | `published_unreviewed`) plus stage-1/stage-2 queue
+    counters. Read-only, stores nothing, self-clears on re-approval. Needs PG15+
+    (`security_invoker`).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -19,7 +19,7 @@ the deviation is deliberate rather than a precedent.
 
 These drafts claim **060–067**, but migrations **060–063** were subsequently filed for the
 catalog-integrity set (`migrations/060`–`063`, FINDINGS-catalog-integrity.md), which applies
-first. Renumber this set to **064–071** before applying it, and update the cross-references
+first. Renumber this set to **066–073** before applying it (064/065 were subsequently taken by the published-edit policy drafts), and update the cross-references
 inside the files (065 cites 062 and 063 as its dependencies; the README table below does too).
 Nothing here has been applied, so this is a rename, not a migration.
 

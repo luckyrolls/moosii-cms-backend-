@@ -1691,11 +1691,17 @@ button — intentionally **un-coalesced**; an explicit force must not be swallow
 publish-state change propagates to users by enqueuing a **coalesced** `rebuild_mlp
 scope:all`. Triggers: questionnaire **publish/unpublish** hook it **server-side**
 (`/questionnaires/:id/publish|unpublish`, fire-and-forget — never blocks the publish);
-lesson **publish/unpublish** now go through backend routes **`POST
-/lessons/:id/publish|unpublish`** (migration 043) that flip `is_published` + `published_by`,
-log the approval, AND enqueue the coalesced rebuild — the CMS repointed its toggle here, so
-it no longer calls `/mlp/rebuild-all` for lessons (that endpoint stays for any other
-Supabase-direct publish-state change). Body (optional): `{ reason?,
+lesson **publish/unpublish** backend routes **`POST /lessons/:id/publish|unpublish`**
+(migration 043) exist, and flip `is_published` + `published_by`, log the approval, AND enqueue
+the coalesced rebuild.
+> ⚠ **CORRECTION (verified 2026-09-10): the CMS has NOT repointed to them.** This paragraph
+> previously claimed it had. `moosii-cms/src/data/cards.ts` (`useTogglePublish`) still flips
+> `lessons.is_published` **Supabase-direct**, and the CMS has no `publishLesson` wrapper at all
+> (`src/lib/api.ts` exports the questionnaire pair only — questionnaires *did* repoint, and
+> their data layer even carries a "never flip is_published" comment). So a lesson
+> publish/unpublish today writes **no `content_approvals` row** and enqueues **no rebuild** —
+> a newly published lesson reaches nobody until an unrelated rebuild runs. Repointing the CMS
+> toggle is a small change in that repo; tracked in `FINDINGS-published-edit.md` §A.4. Body (optional): `{ reason?,
 correlation_id? }` → stamped into the job's `input` (`triggered_by`, `correlation_id`) so
 **"why did a rebuild run"** is answerable from the `jobs` row. Returns `202 { enqueued,
 job_id, coalesced_into }`. **Coalescing guard:** if a `rebuild_mlp scope:all` job is
