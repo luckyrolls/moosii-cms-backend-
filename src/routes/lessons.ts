@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { createAndStartJob, enqueueRebuildAllIfIdle } from "../jobs/runner";
 import { apiError } from "../lib/errors";
+import { summarizeLessonCreate, type LessonCreateRow } from "../lib/lessonCreateResult";
 import { logApproval } from "../lib/approvalLog";
 import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { planLessonDelete } from "../lib/contentTeardown";
@@ -288,7 +289,19 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
   // Same atomic tail as ideation — lessons (with the model's flags) + one segment each.
   const { data: created, error: rpcErr } = await db.rpc("create_lessons_with_segments", { p_lessons: rows });
   if (rpcErr || !created) { apiError(res, 500, "insert_failed", rpcErr?.message ?? "insert failed"); return; }
-  res.json({ ok: true, track_id, lessons_created: (created as unknown[]).length, lessons: created });
+  // Migration 062: the RPC is idempotent per (track_id, lesson_name). A proposal whose name
+  // is already live in this track comes back as the EXISTING row (created=false) instead of
+  // being inserted twice, so `lessons_created` now means what its name says and
+  // `lessons_existing` reports the rest. `lessons` still carries every row, so accepting the
+  // same proposal twice is safe and the CMS always gets an id back.
+  const summary = summarizeLessonCreate(created as LessonCreateRow[]);
+  res.json({
+    ok: true,
+    track_id,
+    lessons_created: summary.createdCount,
+    lessons_existing: summary.reusedCount,
+    lessons: summary.rows,
+  });
 });
 
 // DELETE /lessons/:id — full teardown. The content tree is CASCADE all the way down

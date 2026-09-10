@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
+import { summarizeLessonCreate, type LessonCreateRow } from "../../lib/lessonCreateResult";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
@@ -247,18 +248,28 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     ...(created_by && { created_by }),
   }));
 
-  // Step 10 — atomic lessons+segments insert (proven 010/011 function; not redefined)
+  // Step 10 — atomic lessons+segments insert (proven 010/011 function; not redefined).
+  // Since migration 062 this is INSERT-OR-SELECT: a proposal whose name is already live in
+  // this track is NOT inserted again — the RPC returns the existing row with created=false.
+  // So the returned count is "rows resolved", not "rows created"; summarize to tell them
+  // apart (and to stay correct against the pre-062 RPC, which sends no flag).
   const { data: createdLessons, error: rpcErr } = (await db
     .rpc("create_lessons_with_segments", { p_lessons: lessonsToInsert })) as {
-    data: { id: string; lesson_name: string | null; description: string | null }[] | null;
+    data: LessonCreateRow[] | null;
     error: { message: string } | null;
   };
   if (rpcErr || !createdLessons) throw new Error(`Lesson+segment insert failed: ${rpcErr?.message}`);
+  const summary = summarizeLessonCreate(createdLessons);
 
   return {
-    lessons_inserted:  createdLessons.length,
-    segments_inserted: createdLessons.length,
-    lesson_ids:        createdLessons.map((l) => l.id),
+    lessons_inserted:  summary.createdCount,
+    // One segment is created per NEW lesson only — a reused lesson already has its segment.
+    segments_inserted: summary.createdCount,
+    // Lessons the model re-proposed that already existed in this track (062). Non-zero here
+    // is normal on a re-run, not an error.
+    lessons_reused:    summary.reusedCount,
+    // Every id, created and reused alike, so nothing downstream holds a dangling reference.
+    lesson_ids:        summary.ids,
     // Coverage-driven count: true when the model wanted MORE than the cap allowed.
     // topics_dropped names the dropped (least-essential) lessons — re-run with a
     // higher cap to include them, not a silent trim.

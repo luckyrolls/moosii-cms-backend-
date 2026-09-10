@@ -15,6 +15,14 @@ the deviation is deliberate rather than a precedent.
 
 ---
 
+## ⚠ RENUMBER BEFORE APPLYING
+
+These drafts claim **060–067**, but migrations **060–063** were subsequently filed for the
+catalog-integrity set (`migrations/060`–`063`, FINDINGS-catalog-integrity.md), which applies
+first. Renumber this set to **064–071** before applying it, and update the cross-references
+inside the files (065 cites 062 and 063 as its dependencies; the README table below does too).
+Nothing here has been applied, so this is a rename, not a migration.
+
 ## 1. Apply order
 
 Run in this order. Each file has its own header rationale and a VERIFICATION block.

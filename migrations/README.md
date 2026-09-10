@@ -115,6 +115,24 @@ Main track:
   `tracks_weight_positive (weight > 0)`. Closes the reproduced generateFullMLP hang on a
   zero-weight track (FINDINGS-financial.md §A.7). Apply after 057. Types regen pending
   (`tracks.weight` Row type tightens to `number`; no code bridge involved).
+- **060–063 — DRAFT (pending apply): catalog integrity set** (FINDINGS-catalog-integrity.md).
+  Apply strictly in this order; each file carries its own PRE-CHECK and VERIFICATION block.
+  - **060** — archive the duplicate lesson losers (`68a7b180`, `2421cb61`, `4d7af074`).
+    Archive, not delete, so the 3 approved quiz questions on `68a7b180` survive. **Must run
+    FIRST**: 061 cannot be created while those rows are live.
+  - **061** — partial unique index `lessons_track_name_active_uq` on
+    `(track_id, lesson_name) WHERE archived_at IS NULL`. Scoped to the track because the same
+    title legitimately exists in two tracks today.
+  - **062** — `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
+    NOTHING` + return the existing row, `created` flag added to the RETURNS TABLE). Requires
+    061 as its conflict target. Backend code tolerates the flag's absence, so it may deploy
+    before this is applied.
+  - **063** — `lessons.with_quiz` becomes DERIVED: `lesson_with_quiz_derive(uuid)` + triggers
+    on `quiz_questions`, `segments` and `lessons`, plus a one-time backfill. Measured impact:
+    141 of 153 lessons flip true→false, including 5 published ones whose single quiz question
+    is unapproved.
+  ⚠ These four take the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
+  (060–067). Facts v1 must be renumbered to 064+ before it is applied.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

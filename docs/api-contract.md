@@ -1441,9 +1441,18 @@ Per-proposal — the CMS sends only the picked proposals (they aren't stored):
 ```
 body: { track_id, proposals: [ { lesson_name, description, min_child_age, max_child_age, topic, priority,
         safety_sensitive?, band_rationale?, curator_note?, internal_name? } ] }
-→ 200 { ok, track_id, lessons_created, lessons: [ { id, lesson_name, description } ] }
+→ 200 { ok, track_id, lessons_created, lessons_existing, lessons: [ { id, lesson_name, description, created } ] }
 → 422 unresolved_topic  // a topic outside the allow-set → fail-loud, NOTHING inserted (identical to generate_lessons)
 ```
+**Idempotent per (track, name) — migration 062.** Accepting a proposal whose `lesson_name` is
+already live in that track does **NOT** create a second lesson: the RPC returns the EXISTING
+row with `created: false`, and it is counted in `lessons_existing` rather than
+`lessons_created`. Every proposal still comes back with an `id`, so a re-accept is safe and
+never leaves the CMS without a reference. Nothing is overwritten — the existing lesson keeps
+its content, priority, `curator_note` and any human edits (`DO NOTHING`, deliberately not `DO
+UPDATE`; see §5). An **archived** lesson does not block the name: the uniqueness rule is
+partial on `archived_at IS NULL`, so archive-then-rewrite works.
+
 Resolves `topic` name→id (fail-loud) then calls `create_lessons_with_segments` — so accepted
 stubs are **byte-identical** to ideation-created stubs (unpublished, un-approved, one segment
 each) and the downstream batch-generate flow treats them identically. **`band_rationale` and
@@ -1925,6 +1934,27 @@ backend must preserve and the frontend leans on:
   you can SIGN. They ride on `req.user` (verifyAdminJwt select). Enforced in the route, actor
   always from the JWT — so someone with `super_admin` role but no clinical capability is
   structurally 403 on a clinical approval and can never appear on a clinical sign-off.
+- **`lessons.with_quiz` is DERIVED and READ-ONLY (migration 063).** It is **not** an authored
+  flag — do not set it, from the CMS, the backend, or the SQL editor. A `BEFORE INSERT OR
+  UPDATE` trigger overwrites any supplied value with the derived one, so a manual write is
+  silently discarded rather than honoured. **Definition (it mirrors the APP's read path
+  exactly):** `with_quiz = true` iff an **approved** `quiz_questions` row exists on the
+  segment the app actually reads — the first `seg_status='complete'` segment ordered by
+  `segment_order` ascending (NULLs last). Matched to `moosii-rn` `useLesson.ts` +
+  `useQuiz.ts`; note the app filters quiz questions by **`segment_id` only, never
+  `lesson_id`**, so the derivation does too. Maintained by triggers on `quiz_questions` AND
+  on `segments` (because `seg_status` / `segment_order` decide which segment counts).
+  **To give a lesson a quiz, approve a question** — the flag follows within the same
+  transaction. Single source of truth: the `lesson_with_quiz_derive(uuid)` SQL function; never
+  reimplement the rule anywhere else. Consequence for the app: `user_mlp.with_quiz` can no
+  longer promise a quiz that renders empty. Because it inherits `seg_status`, a stale
+  `seg_status` yields a stale flag — which is correct, since the app reads that same stale
+  value; fix it with `recompute_seg_status()`.
+- **One live lesson per (track, name) — migration 061.** A partial unique index
+  (`lessons_track_name_active_uq` on `(track_id, lesson_name) WHERE archived_at IS NULL`).
+  The same title in two DIFFERENT tracks is still legal and is a real authoring pattern.
+  Archived lessons are exempt, so archiving frees a name. This index is the conflict target
+  for `create_lessons_with_segments` (§2m).
 - **Quiz tables:** `quiz_questions` (`question_id`, `question_text`, `type`,
   `segment_id`, `lesson_id`, `answer_status`) and `quiz_answers` (`id`,
   `question_id`, `answer_text`, `is_correct`, `response`, `score`). Separate rows,

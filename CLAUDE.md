@@ -39,6 +39,8 @@ of rule, one line of file/line evidence.
    → `migrations/043_content_approvals.sql` (header); `src/routes/mlp.ts:76` (recompute user_id from token).
 10. **MLP selection converges on two objects** — `user_active_tracks_for_user` + `mlp_item_pool`; age gate, suppression, and archival all flow through them, so touching either touches every user's plan.
     → `src/jobs/handlers/rebuildMlp.ts:369,415`; migrations 041/045/046.
+11. **Lesson creation is IDEMPOTENT per (track_id, lesson_name)** — the RPC is insert-or-select, returning the EXISTING row (`created:false`) instead of a duplicate; it never overwrites, and archived rows are exempt so a name can be reused. Before this, the ONLY duplicate protection anywhere was a sentence in an LLM prompt, and re-running ideation silently forked the catalog.
+    → `migrations/061_lessons_track_name_unique.sql` (partial unique index = the conflict target); `migrations/062_create_lessons_insert_or_select.sql`; readers use `src/lib/lessonCreateResult.ts`.
 
 ## The founding rule: no BuildShip, ever
 The previous CMS used BuildShip (a visual workflow platform) for AI orchestration.
