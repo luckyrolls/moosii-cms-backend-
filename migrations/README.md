@@ -22,7 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **058** (main) + **0008** (prompt track).)
+(Current APPLIED high-water: **061** (main) + **0008** (prompt track). ⚠ **059 is an open
+gap inside that range** — the number is RESERVED for the `user_mlp_data` LEFT JOIN rewrite,
+which is written but not yet applied. 060 and 061 were applied over the top of it, so the
+range is not contiguous; a fresh-DB rebuild walk must still run 059 in its place.)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -115,19 +118,23 @@ Main track:
   `tracks_weight_positive (weight > 0)`. Closes the reproduced generateFullMLP hang on a
   zero-weight track (FINDINGS-financial.md §A.7). Apply after 057. Types regen pending
   (`tracks.weight` Row type tightens to `number`; no code bridge involved).
-- **060–063 — DRAFT (pending apply): catalog integrity set** (FINDINGS-catalog-integrity.md).
-  Apply strictly in this order; each file carries its own PRE-CHECK and VERIFICATION block.
-  - **060** — archive the duplicate lesson losers (`68a7b180`, `2421cb61`, `4d7af074`).
-    Archive, not delete, so the 3 approved quiz questions on `68a7b180` survive. **Must run
-    FIRST**: 061 cannot be created while those rows are live.
-  - **061** — partial unique index `lessons_track_name_active_uq` on
+- **060–063 — catalog integrity set** (FINDINGS-catalog-integrity.md). Apply strictly in this
+  order; each file carries its own PRE-CHECK and VERIFICATION block.
+  - **060** — **APPLIED (2026-09-10)**: archive the duplicate lesson losers (`68a7b180`,
+    `2421cb61`, `4d7af074`). Archive, not delete, so the 3 approved quiz questions on
+    `68a7b180` survive. **Had to run FIRST**: 061 cannot be created while those rows are live.
+    Verified live — the three losers are archived, the two keepers are not.
+  - **061** — **APPLIED (2026-09-10)**: partial unique index `lessons_track_name_active_uq` on
     `(track_id, lesson_name) WHERE archived_at IS NULL`. Scoped to the track because the same
-    title legitimately exists in two tracks today.
-  - **062** — `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
+    title legitimately exists in two tracks today. Applied **without `CONCURRENTLY`, wrapped in
+    `BEGIN/COMMIT`** (see the standing rule below); the file has been rewritten to match what
+    actually ran. Verified live — zero collisions, and a duplicate INSERT is refused with
+    `23505` naming the constraint.
+  - **062** — **DRAFT (pending apply)**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
     NOTHING` + return the existing row, `created` flag added to the RETURNS TABLE). Requires
     061 as its conflict target. Backend code tolerates the flag's absence, so it may deploy
     before this is applied.
-  - **063** — `lessons.with_quiz` becomes DERIVED: `lesson_with_quiz_derive(uuid)` + triggers
+  - **063** — **DRAFT (pending apply)**: `lessons.with_quiz` becomes DERIVED: `lesson_with_quiz_derive(uuid)` + triggers
     on `quiz_questions`, `segments` and `lessons`, plus a one-time backfill. Measured impact:
     141 of 153 lessons flip true→false, including 5 published ones whose single quiz question
     is unapproved.
@@ -159,6 +166,24 @@ Prompt track:
 
 Migrations are written idempotent where practical (`IF NOT EXISTS`,
 `ON CONFLICT DO NOTHING`, `CREATE OR REPLACE`) so a re-run is safe.
+
+### RULE: no `CONCURRENTLY` in editor-applied migrations
+**Never write `CREATE INDEX CONCURRENTLY` (or `DROP INDEX CONCURRENTLY`, or any other
+`CONCURRENTLY` form) in a file destined for the Supabase SQL editor.** Those statements
+cannot run inside a transaction block, and the editor wraps what it sends in one, so the
+statement fails outright — or, worse, a partial run leaves an **INVALID** index behind that
+silently enforces nothing and must be dropped by hand.
+
+Write the plain, locking form and wrap it in `BEGIN`/`COMMIT` like every other migration
+here. `CONCURRENTLY` exists to avoid holding a write lock on a large, busy table; this
+catalog is in the low hundreds of rows with no live user traffic on writes, so the lock is
+measured in milliseconds and buys nothing. (Learned on migration 061, which was drafted with
+`CONCURRENTLY` and applied without it.)
+
+If a table ever does grow large enough that the lock matters, that is the point to run the
+index build **outside** the editor — via `psql` or a session with autocommit — and to say so
+explicitly in the file header, rather than leaving a keyword in a file someone will paste
+into the editor.
 
 ## Cleaning this up (optional, later)
 The reconciliation list disappears if you either:

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 060: archive the duplicate lesson losers (DRAFT — pending apply)
+-- Migration 060: archive the duplicate lesson losers (APPLIED 2026-09-10)
 -- ============================================================================
 -- FROM: FINDINGS-catalog-integrity.md §A. Three lesson_name groups hold duplicate rows
 -- created by repeated generate_lessons / coverage-accept runs (root cause: §B, fixed by
@@ -38,8 +38,9 @@
 -- FINANCIAL PROJECT: inherits this via the schema dump. The three ids below do not exist
 -- there, so the UPDATE matches zero rows and is a harmless no-op.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — on the 008..060 reconciliation list. Idempotent: the
--- guard `WHERE archived_at IS NULL` makes a re-run a no-op and never re-stamps the date.
+-- APPLIED VIA THE SUPABASE SQL EDITOR (2026-09-10) — on the 008..060 reconciliation list.
+-- Idempotent: the guard `WHERE archived_at IS NULL` makes a re-run a no-op and never
+-- re-stamps the date.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -96,4 +97,10 @@ COMMIT;
 --      JOIN segments s ON s.id = q.segment_id
 --     WHERE s.lesson_id = '68a7b180-201c-40b7-9007-7f4d8be2ef04'
 --       AND q.answer_status = 'approved';   -- EXPECT 3
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-10 (read-only probe): 68a7b180, 2421cb61 and 4d7af074 all carry a
+-- non-null archived_at; the keepers b6e7628b and 7dae9e3e do not. Zero (track_id,
+-- lesson_name) collisions remain among non-archived lessons, which is what let 061 build.
 -- ============================================================================

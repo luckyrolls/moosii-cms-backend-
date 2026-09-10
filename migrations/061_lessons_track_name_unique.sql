@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 061: partial unique index on lessons (track_id, lesson_name) (DRAFT)
+-- Migration 061: partial unique index on lessons (track_id, lesson_name) (APPLIED 2026-09-10)
 -- ============================================================================
 -- FROM: FINDINGS-catalog-integrity.md §C. Makes duplicate lessons IMPOSSIBLE rather than
 -- merely discouraged. Until now the only protection anywhere was a sentence in an LLM
@@ -35,8 +35,15 @@
 -- FINANCIAL PROJECT: inherits this via the schema dump. It has no lessons yet, so the
 -- index is created empty and simply enforces the rule from the start.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — on the 008..061 reconciliation list, AFTER 060.
--- Idempotent: IF NOT EXISTS.
+-- APPLIED VIA THE SUPABASE SQL EDITOR (2026-09-10) — on the 008..061 reconciliation list,
+-- after 060. Idempotent: IF NOT EXISTS.
+--
+-- NOTE ON HOW IT WAS RUN: the original draft used CREATE INDEX CONCURRENTLY, which CANNOT
+-- run inside a transaction block — and the Supabase SQL editor wraps every statement it
+-- sends in one. It was therefore applied WITHOUT CONCURRENTLY, inside BEGIN/COMMIT, and
+-- this file has been rewritten to match what actually ran. At 153 rows the locking build is
+-- instantaneous. See the standing rule now in migrations/README.md: no CONCURRENTLY in
+-- editor-applied migrations.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -50,11 +57,11 @@
 --  GROUP BY track_id, lesson_name
 -- HAVING count(*) > 1;
 
--- NOTE: CONCURRENTLY cannot run inside a transaction block, so there is no BEGIN/COMMIT
--- here. At 153 rows a plain (locking) CREATE INDEX would also be instant — CONCURRENTLY is
--- used because it is correct at any future size and costs nothing now. If the SQL editor
--- objects, drop the keyword and wrap in BEGIN/COMMIT.
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS lessons_track_name_active_uq
+BEGIN;
+
+-- Plain (locking) build, deliberately — see the note above. It takes an ACCESS EXCLUSIVE
+-- lock on `lessons` for the duration, which at this size is milliseconds.
+CREATE UNIQUE INDEX IF NOT EXISTS lessons_track_name_active_uq
   ON public.lessons (track_id, lesson_name)
   WHERE archived_at IS NULL;
 
@@ -62,16 +69,19 @@ COMMENT ON INDEX public.lessons_track_name_active_uq IS
   'Migration 061: one live lesson per (track, name). Partial on archived_at IS NULL so an '
   'archived lesson frees its title. Conflict target for create_lessons_with_segments (062).';
 
+COMMIT;
+
 -- ============================================================================
 -- VERIFICATION — run after applying.
 --
--- 1. The index exists and is VALID (a failed CONCURRENTLY build leaves it INVALID):
+-- 1. The index exists with the right shape:
 --    SELECT i.indexrelid::regclass AS index, i.indisvalid, i.indisunique,
 --           pg_get_expr(i.indpred, i.indrelid) AS predicate
 --      FROM pg_index i
 --     WHERE i.indexrelid = 'lessons_track_name_active_uq'::regclass;
 --    -- EXPECT indisvalid = true, indisunique = true, predicate = (archived_at IS NULL)
---    -- If indisvalid = false: DROP INDEX lessons_track_name_active_uq; fix data; retry.
+--    -- (A non-concurrent build either commits or rolls back, so it cannot leave an INVALID
+--    -- index the way a failed CONCURRENTLY build can.)
 --
 -- 2. It actually bites (this INSERT must fail with 23505 unique_violation):
 --    INSERT INTO lessons (lesson_name, track_id)
@@ -82,4 +92,11 @@ COMMENT ON INDEX public.lessons_track_name_active_uq IS
 --      INSERT INTO lessons (lesson_name, track_id, archived_at)
 --      SELECT lesson_name, track_id, now() FROM lessons WHERE archived_at IS NULL LIMIT 1;
 --    ROLLBACK;
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-10 (read-only probe): the three 060 losers are archived, the two
+-- keepers are not, there are ZERO (track_id, lesson_name) collisions among non-archived
+-- lessons, and a duplicate INSERT is refused with 23505 naming
+-- "lessons_track_name_active_uq". The index is enforcing.
 -- ============================================================================
