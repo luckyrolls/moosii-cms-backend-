@@ -125,6 +125,21 @@ added by slice 1.
 
 ### 9g. The CMS publish call — replace the direct write
 
+> ⚠ **UPDATED 2026-09-11 — this section understated one thing.** The routes did call
+> `logApproval` and did enqueue the rebuild, as described below. But the flip and the audit
+> row were TWO PostgREST calls, therefore two transactions, and `logApproval` swallows its
+> own errors by design — so a publish whose audit row never landed still returned **200**,
+> invisibly. That is now fixed by **migration 068**: `set_lesson_published` does both writes
+> in ONE transaction, refuses a null actor, and rolls the flip back if the audit insert
+> fails. **A 200 from these routes now proves the `content_approvals` row exists**, so the
+> CMS needs no `audit_logged` field to check it. The trade-off is deliberate and inverts
+> `logApproval`'s usual rule for this action only: an audit failure now BLOCKS the publish,
+> because publishing unaudited is the worse outcome. Every other `logApproval` caller keeps
+> the forgiving behaviour.
+>
+> Note also that a `403` is now possible: an unattributed request is refused outright rather
+> than flipping the flag and skipping the audit row.
+
 **No backend change is required: the routes already exist and are already complete.**
 `POST /lessons/:id/publish` and `/unpublish` (`src/routes/lessons.ts`) flip `is_published` +
 `published_by`, call `logApproval('lesson', id, …)`, and fire the coalesced
@@ -136,8 +151,8 @@ POST /lessons/:id/publish
 POST /lessons/:id/unpublish
 Authorization: Bearer <admin Supabase JWT>
 Body: {}
-→ 200 { ok: true, lesson_id: string, is_published: boolean }
-→ 404 not_found · 500 db_error
+→ 200 { ok: true, lesson_id: string, is_published: boolean }   // the audit row is committed with it
+→ 403 forbidden (no authenticated actor) · 404 not_found · 500 db_error
 ```
 
 **CMS change:** `moosii-cms/src/data/cards.ts` `useTogglePublish` currently does

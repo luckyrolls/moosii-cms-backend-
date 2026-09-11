@@ -8,6 +8,11 @@ import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { planLessonDelete } from "../lib/contentTeardown";
 import { hasCapability } from "../middleware/jwtAuth";
 import { setCardsReviewState } from "../lib/cardReview";
+import {
+  isMissingFunctionError,
+  interpretPublishResult,
+  resolvePublishActor,
+} from "../lib/lessonPublish";
 
 const router = Router();
 const BUCKET = "lessons";
@@ -189,33 +194,67 @@ router.post("/:id/unapprove", async (req: Request, res: Response): Promise<void>
 // rebuild is hooked. Writes published_by=req.user.id (wiring the previously-unwired
 // column), logs the approval, and enqueues a coalesced rebuild. "Publishing ≠ content
 // approval" — this only flips the app-facing published flag.
-router.post("/:id/publish", async (req: Request, res: Response): Promise<void> => {
+// ATOMIC (migration 068): the is_published flip and its content_approvals row are ONE
+// transaction inside set_lesson_published, so a lesson can never be published or
+// unpublished without its audit row. Previously these were two PostgREST calls — two
+// transactions — and logApproval swallowed its own failures, so a missing audit row still
+// returned 200. A 200 from here now PROVES the row exists.
+async function setLessonPublished(req: Request, res: Response, published: boolean): Promise<void> {
   const id = req.params.id;
-  const { data, error } = await supabase
-    .from("lessons")
-    .update({ is_published: true, published_by: req.user?.id ?? null, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select("id");
-  if (error) { apiError(res, 500, "db_error", error.message); return; }
-  if (!data || data.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
-  await logApproval("lesson", id, "publish", req);
-  void enqueueRebuildAllIfIdle({ reason: "lesson_publish", correlationId: id });
-  res.json({ ok: true, lesson_id: id, is_published: true });
+  const action = published ? "publish" : "unpublish";
+
+  // Actor from the verified JWT only (invariant 9). The RPC refuses a null actor too; this
+  // just turns it into a clean 403 rather than a database exception.
+  const actor = resolvePublishActor(req.user);
+  if (!actor) { apiError(res, 403, "forbidden", "an authenticated actor is required to change publish state"); return; }
+
+  const { data, error } = await db.rpc("set_lesson_published", {
+    p_lesson_id: id,
+    p_published: published,
+    p_actor_id: actor.id,
+    p_actor_role: actor.role,
+  });
+
+  // Pre-068 fallback. The code deploys before the migration is applied by hand, and in that
+  // window the RPC does not exist — failing here would take publishing down entirely. ONLY
+  // "no such function" falls back; every other error is a real error.
+  if (error && isMissingFunctionError(error)) {
+    console.warn(`[lesson-${action}] set_lesson_published is absent (migration 068 not applied yet); falling back to the NON-ATOMIC two-step path for ${id}`);
+    const { data: rows, error: upErr } = await supabase
+      .from("lessons")
+      .update({ is_published: published, published_by: published ? actor.id : null, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select("id");
+    if (upErr) { apiError(res, 500, "db_error", upErr.message); return; }
+    if (!rows || rows.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
+    await logApproval("lesson", id, action, req);
+    void enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
+    res.json({ ok: true, lesson_id: id, is_published: published });
+    return;
+  }
+
+  if (error) {
+    // Includes the atomic failure case: if the audit insert fails, the flip rolls back with
+    // it and we report the failure rather than a silent partial success.
+    console.error(`[lesson-${action}] set_lesson_published failed for ${id}: ${error.message}`);
+    apiError(res, 500, "db_error", error.message);
+    return;
+  }
+
+  const result = interpretPublishResult(data);
+  if (!result.found) { apiError(res, 404, "not_found", "lesson not found"); return; }
+
+  void enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
+  res.json({ ok: true, lesson_id: id, is_published: result.isPublished });
+}
+
+router.post("/:id/publish", async (req: Request, res: Response): Promise<void> => {
+  await setLessonPublished(req, res, true);
 });
 
 // POST /lessons/:id/unpublish — flip is_published=false, clear published_by, log, rebuild.
 router.post("/:id/unpublish", async (req: Request, res: Response): Promise<void> => {
-  const id = req.params.id;
-  const { data, error } = await supabase
-    .from("lessons")
-    .update({ is_published: false, published_by: null, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select("id");
-  if (error) { apiError(res, 500, "db_error", error.message); return; }
-  if (!data || data.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
-  await logApproval("lesson", id, "unpublish", req);
-  void enqueueRebuildAllIfIdle({ reason: "lesson_unpublish", correlationId: id });
-  res.json({ ok: true, lesson_id: id, is_published: false });
+  await setLessonPublished(req, res, false);
 });
 
 // POST /lessons/coverage-accept — accept selected track-coverage-audit proposals as lesson

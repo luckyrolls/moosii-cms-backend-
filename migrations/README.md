@@ -170,6 +170,13 @@ Main track:
   SQL). Zero-child users now get a `user_mlp_data` row, so default tracks and `scope:'all'`
   rebuilds reach them. Its precondition — the `generateFullMLP` hang fix being live — was met
   on 2026-09-10.
+- **068** — **DRAFT (pending apply)**: `set_lesson_published(uuid, boolean, uuid, text)` —
+  flips `lessons.is_published` AND writes the `content_approvals` row in ONE transaction, so
+  a lesson cannot be published or unpublished without its audit row. Replaces two PostgREST
+  calls (two transactions) where `logApproval` swallowed its own failures, so a missing audit
+  row still returned 200. Refuses a null actor rather than skipping the row. ⚠ Deliberately
+  inverts `logApproval`'s "never block the action" rule **for this action only**. The backend
+  falls back to the old non-atomic path while this is unapplied, so the code can deploy first.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
