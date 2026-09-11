@@ -146,8 +146,10 @@ Main track:
     `sub_segments` / `quiz_questions` / `quiz_answers` / `segments` content columns, plus `lessons.description` + `lessons.safety_sensitive` (both decided CONTENT 2026-09-10). Inert
     unless `domain='financial'`, where a content write touching a PUBLISHED lesson raises with
     `HINT='published_content_locked'`. The warn domain gets **no trigger** on purpose — the
-    state it would set is derived. ⚠ The financial project must have its row UPDATEd to
-    `'financial'` after the schema dump; the seed writes `'moosii'`.
+    state it would set is derived. ⚠ The financial project inherits `app_settings.domain = 'moosii'`
+    with the schema dump and must be UPDATEd to `'financial'` immediately after it, or the
+    financial backend's boot assert sees the mismatch against its `DOMAIN=financial` env and
+    refuses to start.
   - **066** — approval-reset triggers for the three CMS-direct content paths (card reorder,
     add card, quiz edit). A structural card change (insert/delete/reorder) resets the WHOLE
     segment because card roles are role-by-position (invariant 2); a text/image edit resets

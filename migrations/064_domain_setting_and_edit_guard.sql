@@ -28,6 +28,10 @@
 -- FINANCIAL PROJECT: inherits this via the schema dump. It MUST get its own
 -- `('domain','financial')` row — the seed below writes 'moosii', so seeding the other project
 -- correctly is a manual step, called out in the verification block.
+-- ⚠ The financial project inherits `app_settings.domain = 'moosii'` with the dump and must be
+-- UPDATEd to `'financial'` IMMEDIATELY AFTER it, because the financial backend boots with
+-- `DOMAIN=financial`, sees the inherited `'moosii'` row, and REFUSES TO START on the mismatch
+-- (src/lib/domain.ts assertDomainMatchesDatabase → process.exit(1)).
 --
 -- APPLY VIA THE SUPABASE SQL EDITOR — on the 008..064 reconciliation list. Idempotent
 -- throughout. No CONCURRENTLY (see the standing rule in migrations/README.md).
