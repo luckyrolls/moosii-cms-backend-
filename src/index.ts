@@ -1,7 +1,7 @@
 import "dotenv/config";
 // DOMAIN is validated at import and exits the process if unset/unknown — keep this the
 // first import after dotenv so a mislabelled deploy fails before anything else boots.
-import { DOMAIN } from "./lib/domain";
+import { DOMAIN, assertDomainMatchesDatabase } from "./lib/domain";
 import express from "express";
 import { jobsAuthMiddleware } from "./auth";
 import { corsMiddleware } from "./middleware/cors";
@@ -78,6 +78,12 @@ async function start() {
   // Fail fast at boot if any image prompt file is malformed, so a bad prompt
   // breaks the deploy (Render keeps the old version) rather than a user's job.
   await validateImagePrompts();
+
+  // Same fail-fast posture for the domain: the DB enforces the published-content edit policy
+  // from its own app_settings.domain row, so a disagreement with DOMAIN means half the
+  // deployment is applying the wrong domain's rules. Exits on mismatch; tolerates the row
+  // being absent (migration 064 not applied yet).
+  await assertDomainMatchesDatabase();
 
   app.listen(port, () => {
     console.log(`Server running on port ${port}`);

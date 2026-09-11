@@ -140,14 +140,21 @@ Main track:
     is unapproved.
   ⚠ These four take the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
   (060–067). Facts v1 must be renumbered to 064+ before it is applied.
-- **064–065 — DRAFT (pending apply): published-content edit policy**
+- **064–066 — DRAFT (pending apply): published-content edit policy**
   (FINDINGS-published-edit.md). Design slice; nothing is built on top of them yet.
   - **064** — `app_settings` (one row: `domain`) + `content_edit_policy_guard()` on
-    `sub_segments` / `quiz_questions` / `quiz_answers` / `segments` content columns. Inert
+    `sub_segments` / `quiz_questions` / `quiz_answers` / `segments` content columns, plus `lessons.description` + `lessons.safety_sensitive` (both decided CONTENT 2026-09-10). Inert
     unless `domain='financial'`, where a content write touching a PUBLISHED lesson raises with
     `HINT='published_content_locked'`. The warn domain gets **no trigger** on purpose — the
     state it would set is derived. ⚠ The financial project must have its row UPDATEd to
     `'financial'` after the schema dump; the seed writes `'moosii'`.
+  - **066** — approval-reset triggers for the three CMS-direct content paths (card reorder,
+    add card, quiz edit). A structural card change (insert/delete/reorder) resets the WHOLE
+    segment because card roles are role-by-position (invariant 2); a text/image edit resets
+    only that card. A quiz question's text, or any of its answers, sends that question back to
+    `answer_status='pending'` — closing the hole where an edit to an APPROVED question reached
+    parents unreviewed. No recursion: every trigger is `UPDATE OF <content columns>` and the
+    resets write only `review_state` / `answer_status`.
   - **065** — `lessons_review_status` view: derived `content_state`
     (`draft` | `published_reviewed` | `published_unreviewed`) plus stage-1/stage-2 queue
     counters. Read-only, stores nothing, self-clears on re-approval. Needs PG15+

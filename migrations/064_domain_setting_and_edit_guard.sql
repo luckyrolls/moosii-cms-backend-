@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 064: app_settings.domain + the published-content edit guard (DRAFT)
+-- Migration 064: app_settings.domain + the published-content edit guard (DRAFT v2)
 -- ============================================================================
 -- FROM: FINDINGS-published-edit.md §C. Implements the BLOCK half of the per-domain
 -- published-content edit policy. The WARN half deliberately has no code — see below.
@@ -105,6 +105,10 @@ BEGIN
     WHEN 'quiz_answers'    THEN (SELECT s.lesson_id FROM segments s
                                   JOIN quiz_questions q ON q.segment_id = s.id
                                  WHERE q.question_id = COALESCE(NEW.question_id, OLD.question_id))
+    -- DECIDED 2026-09-10: `description` and `safety_sensitive` are CONTENT, so the lesson row
+    -- itself is a guarded surface. Scoped by column on the trigger below, so publish /
+    -- unpublish / archival / priority stay editable while published.
+    WHEN 'lessons'         THEN COALESCE(NEW.id, OLD.id)
   END;
 
   IF v_lesson_id IS NULL THEN
@@ -159,6 +163,19 @@ CREATE TRIGGER content_edit_policy_guard_trg
      OR DELETE ON public.segments
   FOR EACH ROW EXECUTE FUNCTION public.content_edit_policy_guard();
 
+-- lessons: ONLY the two content-bearing columns.
+--   description      — the app renders it (moosii-rn useLesson.ts returns it; the plan list
+--                      shows it via user_mlp.item_description). Verified 2026-09-10.
+--   safety_sensitive — a review-routing input; raising the bar on a published lesson is a
+--                      content-policy act, not bookkeeping.
+-- Everything else on `lessons` (is_published, published_by, priority, track_id, topic_id,
+-- names, ages, curator_note, archived_at, with_quiz) is METADATA and stays writable while
+-- published — which is what keeps POST /lessons/:id/publish|unpublish working under the guard.
+DROP TRIGGER IF EXISTS content_edit_policy_guard_trg ON public.lessons;
+CREATE TRIGGER content_edit_policy_guard_trg
+  AFTER UPDATE OF description, safety_sensitive ON public.lessons
+  FOR EACH ROW EXECUTE FUNCTION public.content_edit_policy_guard();
+
 COMMIT;
 
 -- ============================================================================
@@ -191,4 +208,18 @@ COMMIT;
 -- 5. An UNPUBLISHED lesson is editable even in the block domain (this is what makes option A
 --    work). Same shape as 4 but with `WHERE NOT l.is_published` — expect SUCCESS, then
 --    ROLLBACK.
+--
+-- 6. METADATA on a PUBLISHED lesson stays writable even in the block domain — otherwise the
+--    publish route could not unpublish. Expect BOTH to SUCCEED, then roll back:
+--    BEGIN;
+--      UPDATE app_settings SET value = 'financial' WHERE key = 'domain';
+--      UPDATE lessons SET priority = priority     WHERE is_published LIMIT 1;  -- metadata: OK
+--      UPDATE lessons SET is_published = false    WHERE is_published LIMIT 1;  -- unpublish: OK
+--    ROLLBACK;
+--
+-- 7. CONTENT columns on `lessons` ARE guarded (the 2026-09-10 decision). Expect this to RAISE:
+--    BEGIN;
+--      UPDATE app_settings SET value = 'financial' WHERE key = 'domain';
+--      UPDATE lessons SET description = description || '' WHERE is_published LIMIT 1;
+--    ROLLBACK;
 -- ============================================================================

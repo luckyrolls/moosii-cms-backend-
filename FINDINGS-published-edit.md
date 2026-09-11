@@ -277,7 +277,22 @@ routes — the existing capability gating (056) already decides who may act at e
 
 ---
 
-## Decisions left to Mark
+## Decisions — RESOLVED 2026-09-10
+
+All five are settled; the build slice implements them. Recorded here so the reasoning above
+is read in light of the outcome, not re-litigated.
+
+1. **Option A only.** Option B is not offered. It is not deliverable while the app requires
+   `seg_status='complete'` (§B.4).
+2. **Lesson publish routes through the backend.** The routes already exist and already audit
+   and rebuild; the CMS must stop writing `is_published` directly (§A.4, contract 9g).
+3. **`safety_sensitive` is content.** Guarded on `lessons` by migration 064.
+4. **`description` is content** — the rule was "iff the app renders it", and it does:
+   `moosii-rn` `useLesson.ts:71` returns it, and the plan list renders it via
+   `user_mlp.item_description`. Guarded on `lessons` by migration 064.
+5. **The three CMS-direct paths get approval-reset triggers** — migration 066.
+
+### Original framing (kept for the reasoning)
 
 1. **§B.4 — one button or two?** Option B is not honestly deliverable until `moosii-rn` stops
    requiring `seg_status='complete'`. Ship A-only now, or ship B with a warning that parents
