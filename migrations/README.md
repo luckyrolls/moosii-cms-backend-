@@ -194,6 +194,28 @@ Prompt track:
 Migrations are written idempotent where practical (`IF NOT EXISTS`,
 `ON CONFLICT DO NOTHING`, `CREATE OR REPLACE`) so a re-run is safe.
 
+### RULE: a return-type change needs DROP + CREATE, in ONE transaction
+`CREATE OR REPLACE FUNCTION` **cannot change a function's return type** — including adding a
+column to a `RETURNS TABLE`. Postgres refuses with `42P13 cannot change return type of
+existing function`. So any migration that changes what a function returns must
+`DROP FUNCTION <name>(<arg types>);` first, then `CREATE FUNCTION`.
+
+**Put both inside the same `BEGIN`/`COMMIT`.** Between them the function does not exist; one
+transaction means no caller can ever observe that gap — it sees the old version or the new
+one, never nothing. A DROP committed on its own takes every caller down until the CREATE
+lands.
+
+**Check the privileges before you drop.** A `DROP` discards the function's `GRANT`/`REVOKE`
+state, so anything explicitly granted has to be re-granted in the same migration. Capture it
+first with `SELECT proacl FROM pg_proc WHERE proname = '<name>'` — `NULL` means Postgres
+defaults and nothing needs restoring. (Migration 062 is the worked example: it adds `created`
+to the RETURNS TABLE, and the function turned out to have no explicit grants, so none were
+needed.)
+
+Naming the argument types in the DROP is what keeps this safe: the argument signature is
+usually unchanged, so the DROP removes exactly the function the CREATE then replaces and no
+overload can linger.
+
 ### RULE: no `CONCURRENTLY` in editor-applied migrations
 **Never write `CREATE INDEX CONCURRENTLY` (or `DROP INDEX CONCURRENTLY`, or any other
 `CONCURRENTLY` form) in a file destined for the Supabase SQL editor.** Those statements

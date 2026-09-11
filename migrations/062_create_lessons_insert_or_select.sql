@@ -40,14 +40,33 @@
 -- lesson with the same name is invisible to it: proposing that title again CREATES a new
 -- live lesson, which is exactly the intent of archive-then-rewrite.
 --
--- SIGNATURE UNCHANGED — still create_lessons_with_segments(p_lessons jsonb), so plain
--- CREATE OR REPLACE with no DROP and no overload hazard. The insert column list and the
--- segment-pairing CTE are carried over from 047 VERBATIM.
+-- ⚠ DROP + CREATE, NOT `CREATE OR REPLACE` — AND IT MUST BE. Adding `created` to the
+-- RETURNS TABLE is a RETURN-TYPE change, and Postgres refuses those under CREATE OR REPLACE:
+--   ERROR 42P13: cannot change return type of existing function
+--   HINT: Use DROP FUNCTION create_lessons_with_segments(jsonb) first.
+-- The ARGUMENT signature is unchanged (still one `p_lessons jsonb`), so there is no overload
+-- hazard: the DROP names exactly the function the CREATE then replaces, and no second
+-- version can linger.
+--
+-- BOTH STATEMENTS ARE IN ONE TRANSACTION. Between the DROP and the CREATE the function does
+-- not exist; committing them together means no concurrent caller can ever observe that gap —
+-- it either sees the old function or the new one. A DROP committed on its own would leave
+-- `generate_lessons` and coverage-accept failing with "function does not exist" for as long
+-- as it took to paste the next statement.
+--
+-- NO GRANTS TO RESTORE. A DROP discards a function's privileges, so they normally have to be
+-- re-granted — but this one has never had an explicit GRANT or REVOKE in any migration
+-- (010/044/047 all leave it at Postgres defaults), so DROP + CREATE returns it to the
+-- identical state. Verified 2026-09-11. Confirm with the query in the verification block.
+--
+-- The insert column list and the segment-pairing CTE are carried over from 047 VERBATIM.
 --
 -- FINANCIAL PROJECT: inherits this via the schema dump.
 --
 -- APPLY VIA THE SUPABASE SQL EDITOR — on the 008..062 reconciliation list, AFTER 061.
--- Idempotent: CREATE OR REPLACE.
+-- Re-runnable: the DROP finds the function (whether the 047 version or this one) and the
+-- CREATE replaces it. The only way the DROP fails is on a database where the function was
+-- never created at all — i.e. a rebuild walk that skipped 010/047.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -62,7 +81,11 @@
 
 BEGIN;
 
-CREATE OR REPLACE FUNCTION create_lessons_with_segments(
+-- Required: the RETURNS TABLE gains a column, which CREATE OR REPLACE cannot do (42P13).
+-- Inside the transaction, so the window where the function is absent is never observable.
+DROP FUNCTION public.create_lessons_with_segments(jsonb);
+
+CREATE FUNCTION public.create_lessons_with_segments(
   p_lessons jsonb
 ) RETURNS TABLE (
   id          uuid,
@@ -145,6 +168,16 @@ COMMIT;
 
 -- ============================================================================
 -- VERIFICATION — run after applying. This creates and then rolls back real rows.
+--
+-- 0. Exactly ONE function exists (no overload left behind), it returns four columns, and its
+--    privileges are back at the default — compare this against the same query run BEFORE
+--    applying:
+--    SELECT p.oid::regprocedure AS signature, pg_get_function_result(p.oid) AS returns,
+--           p.proacl AS privileges
+--      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--     WHERE n.nspname = 'public' AND p.proname = 'create_lessons_with_segments';
+--    -- EXPECT 1 row; returns includes `created boolean`; privileges NULL (= defaults, the
+--    -- same state it was in before, because the function never had an explicit GRANT).
 --
 -- BEGIN;
 --   -- pick any live track
