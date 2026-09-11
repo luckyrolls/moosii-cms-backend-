@@ -22,6 +22,7 @@ for internal/authoring/licensed data.
 | `lesson_source_documents` | Lesson↔doc linkage; internal review config. | 036 |
 | `content_findings` | AI review findings for internal human judgment — not app-facing. | 035 |
 | `content_approvals` | Append-only approval/attribution audit (who approved/published what). Written backend-only (service role via `logApproval`); never app-facing. A future CMS read-UI should go through a backend route (or needs an admin read policy — like `screen_help`, not a blanket deny). | 043 |
+| `app_settings` | One row (`domain`) the DATABASE itself reads to pick the published-content edit policy (064). Backend-mediated; the guard function is SECURITY DEFINER so it reads the table regardless of RLS. No client has any reason to see it. | 064 |
 | `screen_help` | Per-screen CMS help content (panels + concept markers). Internal authoring UI only — the app has no reason to read it. Readable content, admin-writable via the CMS. **CMS-direct — needs an admin POLICY, not blanket-deny (see Notes).** | 039 |
 
 ## Notes

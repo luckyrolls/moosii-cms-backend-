@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 064: app_settings.domain + the published-content edit guard (DRAFT v2)
+-- Migration 064: app_settings.domain + the published-content edit guard (APPLIED 2026-09-11)
 -- ============================================================================
 -- FROM: FINDINGS-published-edit.md §C. Implements the BLOCK half of the per-domain
 -- published-content edit policy. The WARN half deliberately has no code — see below.
@@ -226,4 +226,13 @@ COMMIT;
 --      UPDATE app_settings SET value = 'financial' WHERE key = 'domain';
 --      UPDATE lessons SET description = description || '' WHERE is_published LIMIT 1;
 --    ROLLBACK;
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-11 (read-only probe): app_settings holds ('domain','moosii'),
+-- stamped 18:16:40Z. The guard is therefore INERT on this project, as intended. The trigger
+-- bodies could not be confirmed read-only over PostgREST — confirm with:
+--   SELECT tgrelid::regclass AS table, tgname FROM pg_trigger
+--    WHERE NOT tgisinternal AND tgname = 'content_edit_policy_guard_trg' ORDER BY 1;
+--   -- EXPECT 5 rows: sub_segments, quiz_questions, quiz_answers, segments, lessons
 -- ============================================================================

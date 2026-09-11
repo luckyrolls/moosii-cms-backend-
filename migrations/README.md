@@ -22,10 +22,16 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **061** (main) + **0008** (prompt track). ⚠ **059 is an open
-gap inside that range** — the number is RESERVED for the `user_mlp_data` LEFT JOIN rewrite,
-which is written but not yet applied. 060 and 061 were applied over the top of it, so the
-range is not contiguous; a fresh-DB rebuild walk must still run 059 in its place.)
+(Current APPLIED high-water: **066** (main) + **0008** (prompt track). ⚠ **TWO open gaps sit
+inside that range** — **059** (RESERVED for the `user_mlp_data` LEFT JOIN rewrite, written but
+not applied) and **062** (`create_lessons_with_segments` insert-or-select, written but not
+applied). Everything else 008..066 is live. The range is therefore NOT contiguous: a fresh-DB
+rebuild walk must still run 059 and 062 in their places.
+⚠ **061 without 062 is a sharp edge** — 061's unique index REJECTS a duplicate lesson name
+with `23505`, and 062 is the migration that turns that rejection into "return the existing
+row". Until 062 is applied, a `generate_lessons` or coverage-accept run that re-proposes an
+existing name FAILS THE WHOLE BATCH (the RPC is one statement, so nothing is inserted).
+Verified live 2026-09-11.)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -130,17 +136,17 @@ Main track:
     `BEGIN/COMMIT`** (see the standing rule below); the file has been rewritten to match what
     actually ran. Verified live — zero collisions, and a duplicate INSERT is refused with
     `23505` naming the constraint.
-  - **062** — **DRAFT (pending apply)**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
+  - **062** — **STILL DRAFT (pending apply — and now the one blocking gap; see the high-water note)**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
     NOTHING` + return the existing row, `created` flag added to the RETURNS TABLE). Requires
     061 as its conflict target. Backend code tolerates the flag's absence, so it may deploy
     before this is applied.
-  - **063** — **DRAFT (pending apply)**: `lessons.with_quiz` becomes DERIVED: `lesson_with_quiz_derive(uuid)` + triggers
+  - **063** — **APPLIED (2026-09-11; found by probe, not named in the confirmation — worth confirming)**: `lessons.with_quiz` becomes DERIVED: `lesson_with_quiz_derive(uuid)` + triggers
     on `quiz_questions`, `segments` and `lessons`, plus a one-time backfill. Measured impact:
     141 of 153 lessons flip true→false, including 5 published ones whose single quiz question
     is unapproved.
   ⚠ These four take the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
   (060–067). Facts v1 must be renumbered to 064+ before it is applied.
-- **064–066 — DRAFT (pending apply): published-content edit policy**
+- **064–066 — APPLIED (2026-09-11): published-content edit policy**
   (FINDINGS-published-edit.md). Design slice; nothing is built on top of them yet.
   - **064** — `app_settings` (one row: `domain`) + `content_edit_policy_guard()` on
     `sub_segments` / `quiz_questions` / `quiz_answers` / `segments` content columns, plus `lessons.description` + `lessons.safety_sensitive` (both decided CONTENT 2026-09-10). Inert

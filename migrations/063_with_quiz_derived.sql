@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 063: lessons.with_quiz becomes DERIVED (trigger + backfill) (DRAFT)
+-- Migration 063: lessons.with_quiz becomes DERIVED (trigger + backfill) (APPLIED 2026-09-11)
 -- ============================================================================
 -- FROM: FINDINGS-catalog-integrity.md §D. `with_quiz` was never an authored flag: no code
 -- in the backend has ever written it on a lesson, create_lessons_with_segments leaves it at
@@ -228,4 +228,15 @@ COMMIT;
 --            AND q.answer_status IS DISTINCT FROM 'approved' LIMIT 1);
 --      SELECT with_quiz FROM lessons WHERE lesson_name = 'Newborn Feeding Basics';  -- EXPECT true
 --    ROLLBACK;
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-11 (read-only probe): with_quiz is true on 10 of 153 lessons, and
+-- the column matches lesson_with_quiz_derive's definition on EVERY row — zero mismatches
+-- across the catalog. The predicted split was 12/141; it is 10/143 because two published
+-- lessons ("Getting enough sleep", "Surviving on Little Sleep") have since had cards sent
+-- back to draft, so their segment is no longer 'complete'. That is the derivation chain
+-- working end to end, not drift.
+-- ⚠ Mark confirmed 064-066; this file was found APPLIED by probe and flipped on that
+-- evidence. Worth a confirmation.
 -- ============================================================================

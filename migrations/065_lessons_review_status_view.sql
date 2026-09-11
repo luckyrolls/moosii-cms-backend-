@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 065: lessons_review_status — name the derived review state (DRAFT)
+-- Migration 065: lessons_review_status — name the derived review state (APPLIED 2026-09-11)
 -- ============================================================================
 -- FROM: FINDINGS-published-edit.md §B, §D, §E. Gives the CMS and the reviewer queue a name
 -- for the state a published-but-edited lesson is already in, WITHOUT storing it.
@@ -132,4 +132,13 @@ COMMIT;
 --      SELECT set_card_review_state('<seg_id>'::uuid, NULL, 'draft', NULL, NULL);
 --      SELECT content_state FROM lessons_review_status WHERE lesson_id = '<id>';  -- published_unreviewed
 --    ROLLBACK;
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-11 (read-only probe): the view returns all 153 lessons —
+-- 142 draft, 9 published_reviewed, 2 published_unreviewed. The two in the queue are
+-- "Getting enough sleep" (9 cards awaiting editorial) and "Surviving on Little Sleep"
+-- (1 awaiting). ⚠ Per §B.4 those two are currently UN-OPENABLE in the app: their segment is
+-- no longer 'complete', and useLesson.ts throws rather than rendering. They are the live
+-- backlog this view exists to surface.
 -- ============================================================================

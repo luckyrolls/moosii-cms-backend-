@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 066: approval-reset triggers for the CMS-direct content paths (DRAFT)
+-- Migration 066: approval-reset triggers for the CMS-direct content paths (APPLIED 2026-09-11)
 -- ============================================================================
 -- FROM: FINDINGS-published-edit.md §A.2 rows 10-12. Three content paths write
 -- Supabase-DIRECT from the CMS and reset NOTHING, so an edit reaches parents with no review
@@ -206,4 +206,15 @@ COMMIT;
 --      UPDATE quiz_questions SET answer_status = 'approved' WHERE question_id = '<q>';
 --      SELECT answer_status FROM quiz_questions WHERE question_id = '<q>';   -- EXPECT 'approved'
 --    ROLLBACK;
+-- ============================================================================
+
+-- ============================================================================
+-- APPLIED 2026-09-11 on Mark's confirmation. NOT independently verified: the triggers fire
+-- only on a content WRITE, and testing that against the live catalog would mutate real
+-- content, so it was not done. Confirm presence with:
+--   SELECT tgrelid::regclass AS table, tgname FROM pg_trigger
+--    WHERE NOT tgisinternal
+--      AND tgname IN ('sub_segments_reset_review_trg','quiz_questions_reset_review_trg',
+--                     'quiz_answers_reset_review_trg') ORDER BY 1;
+--   -- EXPECT 3 rows. Then run this file's VERIFICATION block, which rolls everything back.
 -- ============================================================================
