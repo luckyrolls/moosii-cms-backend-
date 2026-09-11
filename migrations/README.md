@@ -22,16 +22,13 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **066** (main) + **0008** (prompt track). ⚠ **TWO open gaps sit
-inside that range** — **059** (RESERVED for the `user_mlp_data` LEFT JOIN rewrite, written but
-not applied) and **062** (`create_lessons_with_segments` insert-or-select, written but not
-applied). Everything else 008..066 is live. The range is therefore NOT contiguous: a fresh-DB
-rebuild walk must still run 059 and 062 in their places.
-⚠ **061 without 062 is a sharp edge** — 061's unique index REJECTS a duplicate lesson name
-with `23505`, and 062 is the migration that turns that rejection into "return the existing
-row". Until 062 is applied, a `generate_lessons` or coverage-accept run that re-proposes an
-existing name FAILS THE WHOLE BATCH (the RPC is one statement, so nothing is inserted).
-Verified live 2026-09-11.)
+(Current APPLIED high-water: **066** (main) + **0008** (prompt track); 008..066 is now fully
+contiguous — 059 and 062 have both been applied and verified.
+⚠ **067 IS OUTSTANDING AND URGENT.** Migration 062 as applied is BROKEN: every call to
+`create_lessons_with_segments` raises `42702 column reference "lesson_name" is ambiguous`,
+so the `generate_lessons` job and `POST /lessons/coverage-accept` fail on every call.
+Nothing is corrupted — the statement aborts before writing. 067 is the one-line fix
+(`#variable_conflict use_column`). Confirmed live 2026-09-11.)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -136,7 +133,7 @@ Main track:
     `BEGIN/COMMIT`** (see the standing rule below); the file has been rewritten to match what
     actually ran. Verified live — zero collisions, and a duplicate INSERT is refused with
     `23505` naming the constraint.
-  - **062** — **STILL DRAFT (pending apply — and now the one blocking gap; see the high-water note)**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
+  - **062** — **APPLIED (2026-09-11) — but SEE 067, it shipped with a defect**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
     NOTHING` + return the existing row, `created` flag added to the RETURNS TABLE). Requires
     061 as its conflict target. Backend code tolerates the flag's absence, so it may deploy
     before this is applied.
@@ -167,6 +164,17 @@ Main track:
     (`draft` | `published_reviewed` | `published_unreviewed`) plus stage-1/stage-2 queue
     counters. Read-only, stores nothing, self-clears on re-approval. Needs PG15+
     (`security_invoker`).
+- **067** — **DRAFT (pending apply — URGENT)**: fix `42702 column reference "lesson_name" is
+  ambiguous` introduced by 062. The `ON CONFLICT (track_id, lesson_name)` inference takes
+  UNQUALIFIED column names, and `lesson_name` collides with the `RETURNS TABLE` OUT parameter,
+  so every call to the RPC fails — both lesson-creation paths are down until this is applied.
+  Fix is one line, `#variable_conflict use_column`, resolving ambiguous names to the column.
+  Renaming the OUT parameters was rejected: they are the JSON keys PostgREST returns.
+  `CREATE OR REPLACE` is correct here (unlike 062) because the return type is unchanged.
+- **059** — APPLIED + verified (2026-09-11): the `user_mlp_data` LEFT JOIN rewrite (Mark's
+  SQL). Zero-child users now get a `user_mlp_data` row, so default tracks and `scope:'all'`
+  rebuilds reach them. Its precondition — the `generateFullMLP` hang fix being live — was met
+  on 2026-09-10.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -372,12 +372,6 @@ Docs are updated **unprompted, in the same commit** as the change that necessita
 - Do not invent or update docs outside this repo.
 
 ## Not yet built / parked
-- [ ] **POST-DEPLOY STEP (Mark runs, only AFTER slice 2 — the generateFullMLP hang fix — is
-      live on Render):** migration 059, the `user_mlp_data` LEFT JOIN rewrite (SQL is with
-      Mark). It makes zero-child users visible to the MLP (they get a `user_mlp_data` row, so
-      default tracks + `scope:'all'` rebuilds reach them). Ordering is load-bearing: before the
-      guard, a zero-child user with an `Age`-typed track is the hang (FINDINGS-financial.md
-      §A.7); after it, the worst case is a logged `MlpInvalidWeights` 500.
 - [ ] Cross-model generate→critique→revise pipeline (content quality).
 - [ ] Lesson/segment-level images (track-image batch is sub-segment-level only).
 - [ ] React SPA frontend (separate repo).
