@@ -22,13 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **066** (main) + **0008** (prompt track); 008..066 is now fully
-contiguous — 059 and 062 have both been applied and verified.
-⚠ **067 IS OUTSTANDING AND URGENT.** Migration 062 as applied is BROKEN: every call to
-`create_lessons_with_segments` raises `42702 column reference "lesson_name" is ambiguous`,
-so the `generate_lessons` job and `POST /lessons/coverage-accept` fail on every call.
-Nothing is corrupted — the statement aborts before writing. 067 is the one-line fix
-(`#variable_conflict use_column`). Confirmed live 2026-09-11.)
+(Current APPLIED high-water: **067** (main) + **0008** (prompt track).
+008..067 is fully contiguous and every migration in that range is applied and verified.)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -133,7 +128,7 @@ Main track:
     `BEGIN/COMMIT`** (see the standing rule below); the file has been rewritten to match what
     actually ran. Verified live — zero collisions, and a duplicate INSERT is refused with
     `23505` naming the constraint.
-  - **062** — **APPLIED (2026-09-11) — but SEE 067, it shipped with a defect**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
+  - **062** — **APPLIED (2026-09-11); shipped with a defect, FIXED by 067 the same day**: `create_lessons_with_segments` becomes INSERT-OR-SELECT (`ON CONFLICT … DO
     NOTHING` + return the existing row, `created` flag added to the RETURNS TABLE). Requires
     061 as its conflict target. Backend code tolerates the flag's absence, so it may deploy
     before this is applied.
@@ -164,7 +159,7 @@ Main track:
     (`draft` | `published_reviewed` | `published_unreviewed`) plus stage-1/stage-2 queue
     counters. Read-only, stores nothing, self-clears on re-approval. Needs PG15+
     (`security_invoker`).
-- **067** — **DRAFT (pending apply — URGENT)**: fix `42702 column reference "lesson_name" is
+- **067** — **APPLIED (2026-09-11)**: fix `42702 column reference "lesson_name" is
   ambiguous` introduced by 062. The `ON CONFLICT (track_id, lesson_name)` inference takes
   UNQUALIFIED column names, and `lesson_name` collides with the `RETURNS TABLE` OUT parameter,
   so every call to the RPC fails — both lesson-creation paths are down until this is applied.

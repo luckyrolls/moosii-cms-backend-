@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 067: FIX create_lessons_with_segments — 42702 ambiguous lesson_name (DRAFT)
+-- Migration 067: FIX create_lessons_with_segments — 42702 ambiguous lesson_name (APPLIED 2026-09-11)
 -- ============================================================================
 -- ⚠ URGENT. Migration 062 as applied is BROKEN: every call to
 -- create_lessons_with_segments raises
@@ -168,4 +168,18 @@ COMMIT;
 --          jsonb_build_object('lesson_name','ZZZ 067 Dup','track_id',(SELECT id FROM tracks WHERE archived_at IS NULL LIMIT 1))));
 --      -- EXPECT 1
 --    ROLLBACK;
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-11 (read-only probe + Mark's own run of 062's verification block).
+-- All four checks pass:
+--   1. Re-proposing an existing (track_id, lesson_name) returns ONE row, created = false,
+--      id = the existing lesson. The 42702 is gone.
+--   2. The existing row was NOT overwritten — its description is the original, so the
+--      DO NOTHING (not DO UPDATE) choice holds.
+--   3. Nothing was inserted: 153 lessons / 167 segments, unchanged.
+--   4. The same name twice in ONE call yields exactly ONE row (the DISTINCT ON path) —
+--      Mark's "should_be_one" returned 1.
+-- The transactional probes left nothing behind: zero 'ZZZ%' lessons remain, so the
+-- BEGIN/ROLLBACK held in the Supabase editor.
 -- ============================================================================
