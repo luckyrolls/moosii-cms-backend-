@@ -643,6 +643,158 @@ CMS-side check is a separate-repo slice — flag for that seat.
 - **Env:** `RESEND_API_KEY`, `EMAIL_FROM`, `READER_LINK_SECRET`, `READER_BASE_URL`, all
   boot-validated.
 
+### F.3 Addendum (2026-09-12) — `pg_cron` + `pg_net`, and what the legacy reminder teaches
+
+**Inputs.** A second Supabase project (financial) now exists. `pg_cron` and `pg_net` are enabled
+in both projects — per Mark; not verifiable over PostgREST, since the `cron` and `net` schemas are
+not exposed, so the pre-check in the illustrative SQL below confirms it via `pg_extension`. The
+legacy reminder is `docs/Daily-reminder.zip` (untracked): a single Supabase **Edge Function**,
+`index.ts`, Deno, 291 lines. It sends **FCM push, not email**.
+
+**What the legacy function does.** Selects `user` rows where `allow_daily_reminders_notifications`
+(`src/types/database.types.ts:4273`), reading `daily_reminder_time` (`:4285`, a bare `time`,
+interpreted as LOCAL), `user_offset` (`:4314`, NOT NULL, minutes) and `fcm_token` (`:4288`). A user
+fires when `daily_reminder_time − user_offset` equals the current UTC `HH:MM` — an exact-minute
+match, so it was built to be invoked **every minute**. The message is a random row from
+`start_streak` / `continue_streak` (chosen by streak status from `completed_items_streak`), with
+`{lesson}` = the first `user_mlp` item whose `item_name` is not in `completed_items`, and `{streak}`.
+Sends go to FCM v1 one at a time; each outcome is returned only in the HTTP response body.
+
+**Live state on Moosii, verified 2026-09-12 (aggregates only; no financial credentials here):**
+
+| measure | value |
+|---|---|
+| users | 5 |
+| reminders enabled | 5 |
+| `daily_reminder_time = 09:00:00` | 5 |
+| `user_offset = 0` | 4 |
+| `user_offset = -240` | 1 |
+| users with an `fcm_token` | **0** |
+| `completed_items_streak` rows | **0** |
+| `start_streak` / `continue_streak` template rows | 15 / 15 |
+
+Three consequences. **The legacy push reaches nobody** — it skips users without a token, and none
+has one. **The streak branch never fires** (0 rows), so every message uses `start_streak`. And
+all-09:00 plus four offsets of `0` look like **column defaults nobody chose**, so most users would
+be reminded at 09:00 UTC regardless of where they are.
+
+**What it got RIGHT — carry forward.**
+- **The offset sign convention is correct for the data actually stored.** `-240` is the UTC-offset
+  convention (west negative), under which `local − offset = UTC`: 09:00 local → 13:00 UTC, which is
+  exactly what the code computes. A sign bug was a plausible reading of the code; the stored value
+  refutes it.
+- Honouring a **per-user chosen local time**.
+- The **template tables already exist** and are reusable for wording.
+
+**Defects — do NOT carry forward.**
+1. **Exact-minute equality.** A missed or late tick means no reminder that day; a doubled tick sends
+   twice.
+2. **Nothing is recorded.** No sent log, no idempotency, no retry, no dead-token cleanup — a device
+   token that FCM rejects is retried every day forever.
+3. **Next lesson matched by `item_name`, not `item_id`** — wrong on duplicate names, exactly the
+   case `FINDINGS-catalog-integrity.md` §A had to clean up.
+4. **Fixed offset, no DST.** `-240` is correct only in summer; in winter the same zone is `-300`.
+5. **Ignores check-in due-ness entirely.** Due-ness lives in TypeScript (§F.1) and the function
+   never consults it.
+
+#### Where should the logic run?
+
+- **(A) `pg_cron` as the clock → `pg_net` → a narrow backend route → the `email_digest` job, in
+  TypeScript. RECOMMENDED.**
+- **(B) `pg_cron` → `pg_net` → an Edge Function** (the legacy shape). **Rejected.** A second runtime
+  (Deno) outside this repo. `rebuildOneUser`, `computeQuestionnaireDecisions` and the frozen MLP
+  (invariant 1) are TypeScript here, so the function would either duplicate them or call back over
+  HTTP — and the legacy function is already proof that a second copy drifts (defects 3 and 5).
+- **(C) `pg_cron` does everything in SQL and `pg_net` calls Resend directly.** **Rejected.** SQL cannot
+  express the frozen MLP or the TypeScript due-ness logic, the Resend key would live in the database,
+  and it is the least debuggable of the three — against the founding rule.
+
+**Why (A), concretely.** It **replaces the Render Cron Job service §F.2 proposed** — the same
+schedule, with no extra Render service to run or pay for. `pg_net` is fire-and-forget, which fits
+the existing async pattern exactly: the backend returns `202` immediately and does the work
+in-process, so `pg_net` only needs the enqueue request to land. All logic stays single-source and
+testable in TypeScript.
+
+**Secrets for (A) — a scoped key, NOT `INTERNAL_API_KEY` in Vault.** `pg_net` must send an
+`Authorization` header, so the key has to be readable inside the database, i.e. Supabase Vault.
+Putting `INTERNAL_API_KEY` there would let anything that can read the vault create **any** job,
+and `/jobs` means arbitrary AI spend — the same argument as `FACTS_API_KEY`. **Proposal:** a
+dedicated `CRON_API_KEY` (backend env, same value in that project's Vault) gating **one** route,
+`POST /cron/email-digest`, which does nothing but enqueue the coalesced email job; timing-safe
+compare. That is still a secret stored outside `.env` / Render, which `CLAUDE.md`'s secrets
+discipline does not sanction today — **decision E2**.
+
+#### Cadence — fixing defects 1 and 2
+
+- **Tick every 15 minutes**, not every minute.
+- **Match a window, not an instant.** Select users whose local reminder moment
+  (`today_local + daily_reminder_time − user_offset`) fell within a lookback window, e.g. the last
+  60 minutes. A late or skipped tick is then caught by the next one.
+- **Idempotency keyed on the user's LOCAL date.** `event_key = 'daily:<YYYY-MM-DD local>'` in §F.2's
+  `email_sends` `UNIQUE (user_id, event_key)`. The lookback deliberately overlaps ticks, and the
+  unique key makes that safe: **at most one email per user per local day**, however many times a
+  window is re-evaluated.
+- **Latency.** A 09:07 reminder goes out at the 09:15 tick — up to 15 minutes late. Acceptable for
+  email; tick every 5 minutes if not.
+- **Send only when there is something to say** — a due check-in or a new top item, §F.2's events.
+  This merges the two models: the legacy's *when* (the user's chosen time) with §F.2's *whether* (no
+  nag without news). **Decision E3.**
+
+**Per project.** Per the apply-order rule in `migrations/README.md`, a `pg_cron` job is per-project
+data, not schema. Each project schedules its own tick against **its own** backend URL and **its
+own** Vault secret; `cron.schedule` is deployment configuration, never a shared migration body.
+
+#### Illustrative SQL — NOT a migration; run once per project, financial first
+
+```sql
+-- PRE-CHECK: both extensions present (EXPECT two rows)
+SELECT extname, extversion FROM pg_extension WHERE extname IN ('pg_cron', 'pg_net');
+
+-- The scoped key. Value = THIS project's backend CRON_API_KEY.
+SELECT vault.create_secret('<CRON_API_KEY value>', 'cron_api_key',
+                           'Scoped key for POST /cron/email-digest only');
+
+-- The tick, every 15 minutes (pg_cron schedules in UTC).
+SELECT cron.schedule(
+  'email-digest-tick',
+  '*/15 * * * *',
+  $cron$
+  SELECT net.http_post(
+    url     := 'https://<THIS-project-backend>/cron/email-digest',
+    headers := jsonb_build_object(
+                 'Content-Type',  'application/json',
+                 'Authorization', 'Bearer ' || (SELECT decrypted_secret
+                                                  FROM vault.decrypted_secrets
+                                                 WHERE name = 'cron_api_key')),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+  $cron$
+);
+
+-- OBSERVE. net._http_response is kept only briefly; the durable record is the backend's
+-- `jobs` row plus `email_sends`.
+SELECT jobid, status, return_message, start_time
+  FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
+SELECT id, status_code, created FROM net._http_response ORDER BY created DESC LIMIT 10;
+
+-- UNDO
+SELECT cron.unschedule('email-digest-tick');
+```
+
+#### Decisions for Mark
+
+- **E1 — replace push, or add email alongside it?** The legacy FCM push reaches nobody today (0 of 5
+  users have a token).
+- **E2 — sanction a scoped `CRON_API_KEY` in Supabase Vault**, i.e. a secret held outside `.env` /
+  Render, gating one enqueue-only route.
+- **E3 — cadence semantics.** At the user's reminder time only when there is news (recommended), a
+  daily nudge regardless (legacy), or purely event-driven (§F.2).
+- **E4 — timezone.** Keep the fixed `user_offset` (wrong across DST, and four of five look unset), or
+  add an IANA timezone column such as `America/Toronto` and let the offset be derived. An app-side
+  change as well as a schema one.
+- **E5 — retire the legacy Edge Function** once email ships? It currently notifies no one.
+
 ---
 
 ## Ranked risk list — what breaks first on a zero-children deployment
