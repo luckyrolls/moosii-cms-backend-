@@ -23,7 +23,9 @@ Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
 (Current APPLIED high-water: **068** (main) + **0008** (prompt track).
-008..068 is fully contiguous and every migration in that range is applied and verified.)
+Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
+but has no file in the repo (see its entry). ⚠ **From 069 the high-water is tracked PER PROJECT**
+— financial and Moosii — per the apply-order rule under "Applying a new migration".)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -212,6 +214,35 @@ Prompt track:
 
 Migrations are written idempotent where practical (`IF NOT EXISTS`,
 `ON CONFLICT DO NOTHING`, `CREATE OR REPLACE`) so a re-run is safe.
+
+### RULE: from migration 069, apply to the FINANCIAL project first, then Moosii
+There are two Supabase projects — **financial** and **Moosii** — sharing one schema. From
+**069 onward, every migration is applied to the financial project FIRST, then to Moosii.**
+Run the file's PRE-CHECK and VERIFICATION on financial, confirm it is clean, and only then
+repeat the whole file on Moosii. **A defect found on financial stops the Moosii apply** until
+the file is fixed.
+
+**Why this order.** Financial has no live content or users yet; Moosii has the published
+catalog and real traffic. A migration defect should surface where it cannot hurt anyone. This
+is not hypothetical: 062 applied cleanly and still broke `create_lessons_with_segments` on
+Moosii for every caller until 067 fixed it — exactly the class of failure a first apply on an
+empty project would have caught.
+
+**The apply gate now has two confirmations per migration.** A reconciliation entry from 069 on
+records both, e.g. `APPLIED financial (date) · APPLIED moosii (date)`, and a file is only
+"applied" once BOTH are confirmed. An entry reading `APPLIED financial · PENDING moosii` is a
+normal intermediate state, not an error.
+
+**Migrations ≤ 068 were applied to Moosii only.** If the financial project was created from a
+schema dump of Moosii, it inherited them — ⚠ including `app_settings.domain = 'moosii'` (064),
+which must be UPDATEd to `'financial'` or the financial backend's boot assert refuses to start.
+If it was created any other way, those migrations are NOT there and must be replayed in order
+before 069. Confirm which before applying anything from 069.
+
+**Scheduled jobs are per project.** A `pg_cron` job is data in that project's `cron` schema, not
+schema — a dump does not reliably carry it, and each project's job must target its OWN backend
+URL and secret. Treat `cron.schedule` calls as per-deployment configuration, never as a shared
+migration body.
 
 ### RULE: a return-type change needs DROP + CREATE, in ONE transaction
 `CREATE OR REPLACE FUNCTION` **cannot change a function's return type** — including adding a

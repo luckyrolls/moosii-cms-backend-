@@ -27,6 +27,7 @@ migrations and were deliberately left alone.
 ## 1. Apply order
 
 Run in this order. Each file has its own header rationale, a **PRE-CHECK** block to run first, and a VERIFICATION block to run after.
+**Apply each file to the financial project first, then Moosii** — see below.
 
 | # | File | One-line rationale |
 |---|---|---|
@@ -42,11 +43,13 @@ Run in this order. Each file has its own header rationale, a **PRE-CHECK** block
 Independence: 072 and 073 need only 069. 070 → 071 → 074 is the chain. 075 can run any
 time after 069.
 
-**Both Supabase projects.** With no `fact_track_rules` rows, the 074 arm returns nothing
-and resolution is byte-identical to migration 045. So the whole set is safe to apply to
-the Moosii project too, which keeps the two schemas identical as intended. Applying to
-financial only is also fine but the two projects' resolution functions then diverge —
-that divergence is the thing to avoid, so **apply to both** unless there is a reason not to.
+**Both Supabase projects — financial FIRST, then Moosii.** Per the standing rule in
+`migrations/README.md`, every file from 069 is applied to the **financial** project first
+(pre-check, apply, verification), and only then to Moosii. A defect found on financial stops the
+Moosii apply. Applying to both keeps the schemas identical, which is the point: with no
+`fact_track_rules` rows the 074 arm returns nothing, so on Moosii resolution stays
+byte-identical to migration 045. Facts only DO anything on financial, where rules get authored
+and `POST /facts` is meant to live (decision D5).
 
 **059 is applied, and it helps this set.** The `user_mlp_data` LEFT JOIN rewrite went live
 2026-09-11. It does not touch any object here, but it means zero-child users now get default
