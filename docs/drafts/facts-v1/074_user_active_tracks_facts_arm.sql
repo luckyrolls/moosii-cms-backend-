@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 065: fact arm on user_active_tracks_for_user + its VIEW TWIN (NOT APPLIED)
+-- DRAFT 074: fact arm on user_active_tracks_for_user + its VIEW TWIN (NOT APPLIED)
 -- ============================================================================
 -- RATIONALE: this is the ONE line of code that makes facts do anything. Track assignment
 -- is DERIVED, and every source (defaults, demographic rules, questionnaire routing,
@@ -15,17 +15,19 @@
 -- Both are changed here, identically, in one transaction. Never split them.
 --
 -- ⚠ TRANSCRIPTION WARNING: the bodies below are migration 045's verbatim, with ONE arm
--- added and ONE line added to base_set (both marked `-- ADDED (065)`). Nothing else
+-- added and ONE line added to base_set (both marked `-- ADDED (074)`). Nothing else
 -- differs. BEFORE APPLYING, confirm 045 is still what is live — if anything has been
 -- re-created since, re-base onto the live text instead of this file:
 --   SELECT pg_get_functiondef('user_active_tracks_for_user(uuid)'::regprocedure);
 --   SELECT pg_get_viewdef('user_active_tracks'::regclass, true);
 --
--- ⚠ INTERACTION WITH MIGRATION 059 (user_mlp_data LEFT JOIN rewrite, SQL with Mark):
--- 059 does NOT touch these two objects, so apply order between them does not matter.
--- It DOES change what the `default_tracks` arm returns (zero-child users start getting a
--- user_mlp_data row, hence the default tracks). That is 059's intended effect and is
--- independent of this arm.
+-- INTERACTION WITH MIGRATION 059 (user_mlp_data LEFT JOIN rewrite) — NOW APPLIED.
+-- 059 went live 2026-09-11 and does NOT touch these two objects, so it does not conflict
+-- with this file. It DOES change what the `default_tracks` arm returns: zero-child users now
+-- get a user_mlp_data row, hence the default tracks (verified live 2026-09-12: 2 of 5 rows
+-- have zero children). That matters for facts specifically — financial-domain users are
+-- zero-child, so they now receive default tracks AND fact-granted tracks through the same
+-- resolution, rather than fact tracks alone.
 --
 -- SEMANTICS OF THE NEW ARM:
 --   * ADDITIVE ONLY. It contributes rows to base_set and can never emit a removal —
@@ -42,9 +44,36 @@
 --     resolution is byte-identical to 045, so this is safe to apply to BOTH Supabase
 --     projects to keep the schemas identical.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — LAST in the facts-v1 set. Requires 062
--- (user_facts_latest) and 063 (fact_track_rules) to exist first, or it fails to compile.
+-- APPLY VIA THE SUPABASE SQL EDITOR — LAST in the facts-v1 set. Requires 071
+-- (user_facts_latest) and 072 (fact_track_rules) to exist first, or it fails to compile.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST. This file REPLACES two live objects wholesale, so these checks
+-- guard against silently reverting anything that changed since migration 045.
+-- 1. 071 and 072 are applied (the arm will not compile without them) — EXPECT both not NULL:
+--    SELECT to_regclass('public.user_facts_latest') AS latest_view,
+--           to_regclass('public.fact_track_rules')  AS track_rules;
+-- 2. The live bodies are still 045's: each must mention `archived_at IS NULL` and must NOT
+--    already contain `fact_tracks`. If either differs, RE-BASE this file on the live text.
+--    SELECT pg_get_functiondef('user_active_tracks_for_user(uuid)'::regprocedure);
+--    SELECT pg_get_viewdef('user_active_tracks'::regclass, true);
+--    (Checked 2026-09-12 by repo audit: only 048/049 mention these objects after 045, and
+--    both change the questionnaire_responses_tracks view they READ, never the pair itself.)
+-- 3. The twins are in sync BEFORE the change — EXPECT ZERO ROWS. (Verified live 2026-09-12:
+--    0 mismatches across all 5 users. A non-zero result means the pair has already drifted,
+--    and this migration would bake that drift in.)
+--    WITH users AS (SELECT DISTINCT user_id FROM user_active_tracks)
+--    (SELECT user_id, track_id FROM user_active_tracks
+--      EXCEPT SELECT f.user_id, f.track_id
+--      FROM users u CROSS JOIN LATERAL user_active_tracks_for_user(u.user_id) f)
+--    UNION ALL
+--    (SELECT f.user_id, f.track_id
+--      FROM users u CROSS JOIN LATERAL user_active_tracks_for_user(u.user_id) f
+--      EXCEPT SELECT user_id, track_id FROM user_active_tracks);
+-- 4. Capture the current total, to prove the arm is a no-op with no rules authored:
+--    SELECT count(*) FROM user_active_tracks;   -- note the number; re-run after applying
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -66,7 +95,7 @@ AS $$
     FROM user_mlp_data u
       CROSS JOIN new_user_tracks nut
     WHERE u.user_id = p_user_id
-  ), fact_tracks AS (                        -- ADDED (065): platform-supplied facts
+  ), fact_tracks AS (                        -- ADDED (074): platform-supplied facts
     SELECT ufl.user_id, ftr.track_id
     FROM user_facts_latest ufl
       JOIN fact_track_rules ftr
@@ -77,7 +106,7 @@ AS $$
     UNION
     SELECT default_tracks.user_id, default_tracks.track_id FROM default_tracks
     UNION
-    SELECT fact_tracks.user_id, fact_tracks.track_id FROM fact_tracks   -- ADDED (065)
+    SELECT fact_tracks.user_id, fact_tracks.track_id FROM fact_tracks   -- ADDED (074)
   ), questionnaire_track_actions AS (
     SELECT qrt.user_id, qrt.track_id, qrt.add, qrt.action_at
     FROM questionnaire_responses_tracks qrt
@@ -130,7 +159,7 @@ $$;
 COMMENT ON FUNCTION user_active_tracks_for_user(uuid) IS
   'Per-user twin of the user_active_tracks view (migration 037): same resolution, filtered '
   'by user_id in each arm so it is O(one user). Keep in sync with the view definition. '
-  'Migration 065 added the fact_tracks arm (user_facts_latest x fact_track_rules).';
+  'Migration 074 added the fact_tracks arm (user_facts_latest x fact_track_rules).';
 
 -- ---- 2. The view twin (KEEP IN SYNC WITH THE FUNCTION ABOVE) --------------------------
 CREATE OR REPLACE VIEW public.user_active_tracks AS
@@ -144,7 +173,7 @@ CREATE OR REPLACE VIEW public.user_active_tracks AS
     SELECT u.user_id, nut.track_id
     FROM user_mlp_data u
       CROSS JOIN new_user_tracks nut
-  ), fact_tracks AS (                        -- ADDED (065): keep in sync with the function
+  ), fact_tracks AS (                        -- ADDED (074): keep in sync with the function
     SELECT ufl.user_id, ftr.track_id
     FROM user_facts_latest ufl
       JOIN fact_track_rules ftr
@@ -154,7 +183,7 @@ CREATE OR REPLACE VIEW public.user_active_tracks AS
     UNION
     SELECT default_tracks.user_id, default_tracks.track_id FROM default_tracks
     UNION
-    SELECT fact_tracks.user_id, fact_tracks.track_id FROM fact_tracks   -- ADDED (065)
+    SELECT fact_tracks.user_id, fact_tracks.track_id FROM fact_tracks   -- ADDED (074)
   ), questionnaire_track_actions AS (
     SELECT qrt.user_id, qrt.track_id, qrt.add, qrt.action_at
     FROM questionnaire_responses_tracks qrt

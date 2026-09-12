@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 060: fact vocabulary — fact_keys + fact_values (NOT APPLIED)
+-- DRAFT 069: fact vocabulary — fact_keys + fact_values (NOT APPLIED)
 -- ============================================================================
 -- RATIONALE: a fact's legal (key, value) pairs are a CLOSED, CMS-authored vocabulary,
 -- so "is this a real fact?" is answered by a foreign key rather than by app code.
@@ -13,9 +13,19 @@
 -- (fact_key, value) defined here, so a rule can never target a value a fact cannot hold,
 -- and a fact can never carry a value no one authored.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — FIRST in the facts-v1 set (060 → 065, then 066
+-- APPLY VIA THE SUPABASE SQL EDITOR — FIRST in the facts-v1 set (069 → 074, then 075
 -- seeds). Idempotent: IF NOT EXISTS throughout.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 1. Neither table exists yet (EXPECT both NULL on a first apply):
+--    SELECT to_regclass('public.fact_keys') AS fact_keys,
+--           to_regclass('public.fact_values') AS fact_values;
+-- 2. The regex CHECKs below are portable (no multibyte class), but confirm the editor
+--    session is UTF-8 so the header comments paste cleanly:
+--    SHOW server_encoding;   -- EXPECT UTF8
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -36,7 +46,7 @@ CREATE TABLE IF NOT EXISTS public.fact_keys (
 );
 
 COMMENT ON TABLE public.fact_keys IS
-  'CMS-authored vocabulary of platform-supplied fact keys (facts v1, migration 060). '
+  'CMS-authored vocabulary of platform-supplied fact keys (facts v1, migration 069). '
   'A fact is boolean or a short enum — never an amount. See fact_values for legal values.';
 
 -- 2. The legal VALUES per key ------------------------------------------------
@@ -62,7 +72,7 @@ CREATE TABLE IF NOT EXISTS public.fact_values (
 CREATE INDEX IF NOT EXISTS fact_values_fact_key_idx ON public.fact_values (fact_key);
 
 COMMENT ON TABLE public.fact_values IS
-  'Legal values per fact key (facts v1, migration 060). The composite (fact_key, value) '
+  'Legal values per fact key (facts v1, migration 069). The composite (fact_key, value) '
   'is the FK target for user_facts, fact_track_rules and fact_entry_map — so an unknown '
   'or numeric-looking value is rejected by the database, not by app code.';
 

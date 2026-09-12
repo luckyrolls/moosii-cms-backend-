@@ -169,7 +169,15 @@ Main track:
 - **059** — APPLIED + verified (2026-09-11): the `user_mlp_data` LEFT JOIN rewrite (Mark's
   SQL). Zero-child users now get a `user_mlp_data` row, so default tracks and `scope:'all'`
   rebuilds reach them. Its precondition — the `generateFullMLP` hang fix being live — was met
-  on 2026-09-10.
+  on 2026-09-10. Verified live 2026-09-12: 2 of 5 `user_mlp_data` rows have zero children.
+  ⚠ **NO FILE FOR 059 EXISTS IN THIS REPO.** It was applied from SQL held outside the repo and
+  never filed, so it is the one applied migration with no record here. A fresh-database
+  rebuild walk has nothing to run at 059 and would silently skip the LEFT JOIN rewrite —
+  reintroducing "zero-child users get no default tracks" on the financial project, which is
+  exactly the population it was written for. **File Mark's SQL as
+  `migrations/059_user_mlp_data_left_join.sql`** (with an ALREADY-APPLIED banner, like 047a) so
+  the walk is complete. The body is `user_mlp_data`'s view definition, which is not otherwise
+  recorded anywhere in the repo either.
 - **068** — **APPLIED (2026-09-11)**: `set_lesson_published(uuid, boolean, uuid, text)` —
   flips `lessons.is_published` AND writes the `content_approvals` row in ONE transaction, so
   a lesson cannot be published or unpublished without its audit row. Replaces two PostgREST

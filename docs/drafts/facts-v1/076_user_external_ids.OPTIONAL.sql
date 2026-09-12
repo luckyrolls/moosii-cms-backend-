@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 067 (OPTIONAL — DECISION REQUIRED): user_external_ids (NOT APPLIED)
+-- DRAFT 076 (OPTIONAL — DECISION REQUIRED): user_external_ids (NOT APPLIED)
 -- ============================================================================
 -- ⚠ THIS FILE EXISTS BECAUSE THE CONTRACT ASKS FOR SOMETHING THE SCHEMA CANNOT DO.
 -- The facts-intake body is specified as `{ external_user_id | user_id, ... }`, but
@@ -21,9 +21,22 @@
 -- NOT AN MX ADAPTER (explicitly out of scope): this is an identity mapping only, no
 -- aggregator-specific fields, no token storage, no account/institution modelling.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — only under option (B); after 060, before any
+-- APPLY VIA THE SUPABASE SQL EDITOR — only under option (B); after 069, before any
 -- POST /facts code that resolves external ids.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 0. ⚠ DECISION D2 GATE — DO NOT RUN THIS FILE unless option (B) was chosen AND the signup
+--    flow that POPULATES this table has been decided. Applying it alone yields an empty
+--    mapping table and a POST /facts that still 404s on every external_user_id.
+-- 1. The table name is free — EXPECT NULL:
+--    SELECT to_regclass('public.user_external_ids');
+-- 2. Match the user_id FK choice made for user_facts in 070 (the two must agree):
+--    SELECT conname FROM pg_constraint
+--     WHERE conrelid = 'public.user_facts'::regclass AND contype = 'f';
+--    -- a user_facts_user_id_fkey row here means option (b); uncomment the same FK below.
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -45,7 +58,7 @@ CREATE TABLE IF NOT EXISTS public.user_external_ids (
   CONSTRAINT user_external_ids_partner_shape CHECK (partner ~ '^[a-z][a-z0-9_]{1,31}$'),
   CONSTRAINT user_external_ids_external_nonempty CHECK (length(btrim(external_user_id)) > 0)
 
-  -- Match whatever user_id FK decision is made for user_facts (061) — the two must agree.
+  -- Match whatever user_id FK decision is made for user_facts (070) — the two must agree.
   -- , CONSTRAINT user_external_ids_user_id_fkey
   --     FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
@@ -53,7 +66,7 @@ CREATE TABLE IF NOT EXISTS public.user_external_ids (
 CREATE INDEX IF NOT EXISTS user_external_ids_user_id_idx ON public.user_external_ids (user_id);
 
 COMMENT ON TABLE public.user_external_ids IS
-  'OPTIONAL (facts v1, draft 067): partner external_user_id <-> Supabase user_id. Exists '
+  'OPTIONAL (facts v1, draft 076): partner external_user_id <-> Supabase user_id. Exists '
   'only to let POST /facts accept external_user_id. Unpopulated unless the signup flow '
   'writes it — decide that before applying.';
 
@@ -61,3 +74,41 @@ COMMENT ON TABLE public.user_external_ids IS
 ALTER TABLE public.user_external_ids ENABLE ROW LEVEL SECURITY;
 
 COMMIT;
+
+-- ============================================================================
+-- VERIFICATION — run after applying (only under option B). Everything rolls back.
+--
+-- 1. Both uniqueness rules bite — a partner id means ONE person, and a person has ONE id per
+--    partner. The second INSERT in each pair must FAIL with 23505:
+--    BEGIN;
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('demo', 'ext-1', gen_random_uuid());
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('demo', 'ext-1', gen_random_uuid());          -- EXPECT 23505 (same ext id)
+--    ROLLBACK;
+--    BEGIN;
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('demo', 'ext-1', '00000000-0000-0000-0000-000000000001');
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('demo', 'ext-2', '00000000-0000-0000-0000-000000000001');  -- EXPECT 23505 (same user)
+--    ROLLBACK;
+--
+-- 2. The SAME external id under a DIFFERENT partner is legal — namespaces are per partner.
+--    Both must SUCCEED:
+--    BEGIN;
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('demo', 'ext-1', gen_random_uuid());
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('other', 'ext-1', gen_random_uuid());         -- EXPECT success
+--    ROLLBACK;
+--
+-- 3. The shape CHECKs reject junk. Each must FAIL with 23514:
+--    BEGIN;
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('demo', '   ', gen_random_uuid());            -- blank external id
+--    ROLLBACK;
+--    BEGIN;
+--      INSERT INTO user_external_ids (partner, external_user_id, user_id)
+--      VALUES ('Bad Partner', 'ext-1', gen_random_uuid());   -- partner not snake_case
+--    ROLLBACK;
+-- ============================================================================

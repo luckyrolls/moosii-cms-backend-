@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 063: fact_track_rules — (fact_key, value) → track (NOT APPLIED)
+-- DRAFT 072: fact_track_rules — (fact_key, value) → track (NOT APPLIED)
 -- ============================================================================
 -- RATIONALE: the direct analogue of demographic_track_rules (migration 008): a bare
 -- mapping table, CMS-authored, no is_active flag, no weight, no ordering. A user gets
@@ -15,9 +15,21 @@
 -- when BARE". A track still targeted by a fact rule raises 23001 rather than silently
 -- losing the rule.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — after 060 (needs fact_values). Independent of
--- 061/062; must precede 065.
+-- APPLY VIA THE SUPABASE SQL EDITOR — after 069 (needs fact_values). Independent of
+-- 070/071; must precede 074.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 1. 069 is applied (rules FK the composite) — EXPECT not NULL:
+--    SELECT to_regclass('public.fact_values');
+-- 2. The table name is free — EXPECT NULL:
+--    SELECT to_regclass('public.fact_track_rules');
+-- 3. The live tracks table still has the `id` target and the 040 RESTRICT posture on its
+--    other config FKs (so a track stays deletable only when bare):
+--    SELECT conname FROM pg_constraint
+--     WHERE confrelid = 'public.tracks'::regclass AND confdeltype = 'r' ORDER BY 1;
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -49,11 +61,11 @@ CREATE INDEX IF NOT EXISTS fact_track_rules_track_id_idx ON public.fact_track_ru
 CREATE INDEX IF NOT EXISTS fact_track_rules_pair_idx     ON public.fact_track_rules (fact_key, value);
 
 COMMENT ON TABLE public.fact_track_rules IS
-  'CMS-authored (fact_key, value) -> track_id mapping (facts v1, migration 063). Read by '
-  'the fact arm of user_active_tracks_for_user + its view twin (065). RETROACTIVE: '
+  'CMS-authored (fact_key, value) -> track_id mapping (facts v1, migration 072). Read by '
+  'the fact arm of user_active_tracks_for_user + its view twin (074). RETROACTIVE: '
   'adding/removing a rule changes matching users on their next recompute.';
 
--- RLS — config table, backend-mediated (same posture as 060).
+-- RLS — config table, backend-mediated (same posture as 069).
 ALTER TABLE public.fact_track_rules ENABLE ROW LEVEL SECURITY;
 
 COMMIT;

@@ -1,7 +1,7 @@
 -- ============================================================================
--- DRAFT 066: seed the demo fact vocabulary (NOT APPLIED) — DATA ONLY
+-- DRAFT 075: seed the demo fact vocabulary (NOT APPLIED) — DATA ONLY
 -- ============================================================================
--- RATIONALE: separate file from the DDL (060–065) because it is DATA, re-runnable, and
+-- RATIONALE: separate file from the DDL (069–074) because it is DATA, re-runnable, and
 -- editable without touching schema. Seeds the six demo keys and their legal values only
 -- — NO fact_track_rules and NO fact_entry_map rows, because which track each fact should
 -- grant is a CONTENT decision for the financial catalog, which does not exist yet.
@@ -10,15 +10,25 @@
 -- Every value here is a boolean or a short enum token. No amounts, no bands with numbers
 -- in them — `credit_utilization_band` deliberately carries low/moderate/high rather than
 -- any percentage, so the numeric thresholds stay on the PLATFORM side and never enter
--- this database. That is the whole point of the CHECK constraints in 060/061.
+-- this database. That is the whole point of the CHECK constraints in 069/070.
 --
 -- Idempotent: ON CONFLICT DO NOTHING throughout, so a re-run adds nothing and errors on
 -- nothing. Safe to run against BOTH Supabase projects (in Moosii the vocabulary simply
--- goes unused — with no rules authored, the 065 arm stays a no-op).
+-- goes unused — with no rules authored, the 074 arm stays a no-op).
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — after 060 (and, in practice, after the whole
--- 060–065 set).
+-- APPLY VIA THE SUPABASE SQL EDITOR — after 069 (and, in practice, after the whole
+-- 069–074 set).
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 1. 069 is applied — EXPECT not NULL:
+--    SELECT to_regclass('public.fact_keys');
+-- 2. Current vocabulary size — EXPECT 0 keys and 0 values on a first run. Any other number
+--    is fine (the seed is ON CONFLICT DO NOTHING), but note it so the verification counts
+--    below can be read as a delta:
+--    SELECT (SELECT count(*) FROM fact_keys) AS keys, (SELECT count(*) FROM fact_values) AS vals;
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 

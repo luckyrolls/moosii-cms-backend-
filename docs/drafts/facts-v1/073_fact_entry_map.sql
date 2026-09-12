@@ -1,7 +1,7 @@
 -- ============================================================================
--- DRAFT 064: fact_entry_map — (fact_key, value) → ONE lesson or segment (NOT APPLIED)
+-- DRAFT 073: fact_entry_map — (fact_key, value) → ONE lesson or segment (NOT APPLIED)
 -- ============================================================================
--- RATIONALE: a track is the broad response to a fact (063); this is the NARROW one —
+-- RATIONALE: a track is the broad response to a fact (072); this is the NARROW one —
 -- "this exact fact should drop the user at this exact piece of content". Distinct from
 -- the track rule and deliberately separate: a fact may have a track, an entry point,
 -- both, or neither.
@@ -19,9 +19,21 @@
 -- is decided and the CMS can start authoring against it. Flagged so nobody assumes
 -- writing a row changes a plan today.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — after 060 (needs fact_values). Independent of
--- 061/062/063/065.
+-- APPLY VIA THE SUPABASE SQL EDITOR — after 069 (needs fact_values). Independent of
+-- 070/071/072/074.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 1. 069 is applied — EXPECT not NULL:
+--    SELECT to_regclass('public.fact_values');
+-- 2. The table name is free — EXPECT NULL:
+--    SELECT to_regclass('public.fact_entry_map');
+-- 3. Both FK targets exist with a uuid `id` — EXPECT two rows, both uuid:
+--    SELECT table_name, data_type FROM information_schema.columns
+--     WHERE table_schema = 'public' AND column_name = 'id'
+--       AND table_name IN ('lessons', 'segments') ORDER BY 1;
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -58,10 +70,10 @@ CREATE INDEX IF NOT EXISTS fact_entry_map_segment_id_idx ON public.fact_entry_ma
 
 COMMENT ON TABLE public.fact_entry_map IS
   'CMS-authored (fact_key, value) -> exactly one lesson OR segment (facts v1, migration '
-  '064). Direct entry point for a fact. NOT read by anything in v1 — the MLP has no '
+  '073). Direct entry point for a fact. NOT read by anything in v1 — the MLP has no '
   'forced-entry mechanism yet; this is authoring config ahead of that slice.';
 
--- RLS — config table, backend-mediated (same posture as 060/063).
+-- RLS — config table, backend-mediated (same posture as 069/072).
 ALTER TABLE public.fact_entry_map ENABLE ROW LEVEL SECURITY;
 
 COMMIT;

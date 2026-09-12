@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 061: user_facts — append-only observation history (NOT APPLIED)
+-- DRAFT 070: user_facts — append-only observation history (NOT APPLIED)
 -- ============================================================================
 -- RATIONALE: financial facts are NOT monotonic. "has an emergency buffer" can become
 -- false; a subscription lapses. The existing child-fact model (child_milestones) is
@@ -7,7 +7,7 @@
 -- delete — which is right for milestones ("a fact never un-happens") and WRONG here.
 --
 -- So: this table is an APPEND-ONLY LOG of observations. Nothing is ever updated or
--- deleted in normal operation; "the user's current value" is DERIVED by 062's
+-- deleted in normal operation; "the user's current value" is DERIVED by 071's
 -- latest-wins view. That keeps history (trajectory is the point) and makes clearing a
 -- fact an ordinary write rather than a special un-record path.
 --
@@ -27,8 +27,21 @@
 --       would reject facts for legitimate users.
 -- Uncomment the (b) constraint below if that is the call.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — after 060, before 062.
+-- APPLY VIA THE SUPABASE SQL EDITOR — after 069, before 071.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 1. 069 is applied (user_facts FKs its composite) — EXPECT not NULL:
+--    SELECT to_regclass('public.fact_values');
+-- 2. user_facts does not exist yet — EXPECT NULL:
+--    SELECT to_regclass('public.user_facts');
+-- 3. ⚠ DECISION D1 GATE. Re-confirm the premise behind the user_id FK choice: that
+--    children.parent_id itself carries NO foreign key. EXPECT ZERO ROWS:
+--    SELECT conname FROM pg_constraint
+--     WHERE conrelid = 'public.children'::regclass AND contype = 'f';
+--    Then choose option (a) no FK or (b) auth.users in the header BEFORE running this file.
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -43,7 +56,7 @@ CREATE TABLE IF NOT EXISTS public.user_facts (
   created_at  timestamptz NOT NULL DEFAULT now(),  -- when WE received it
   CONSTRAINT user_facts_pkey PRIMARY KEY (id),
 
-  -- The pair must be authored vocabulary (060). RESTRICT: a key/value in use cannot be
+  -- The pair must be authored vocabulary (069). RESTRICT: a key/value in use cannot be
   -- deleted out from under recorded history (same posture as migrations 038/040).
   CONSTRAINT user_facts_value_fkey
     FOREIGN KEY (fact_key, value) REFERENCES public.fact_values (fact_key, value)
@@ -67,15 +80,15 @@ CREATE TABLE IF NOT EXISTS public.user_facts (
   --     FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
 
--- The ONLY read pattern in v1: "latest value per key for this user" (the 062 view) and
+-- The ONLY read pattern in v1: "latest value per key for this user" (the 071 view) and
 -- "this user's history" (GET /facts/:user_id). Both are served by this one index.
 CREATE INDEX IF NOT EXISTS user_facts_user_key_observed_idx
   ON public.user_facts (user_id, fact_key, observed_at DESC);
 
 COMMENT ON TABLE public.user_facts IS
-  'Append-only log of platform-supplied user facts (facts v1, migration 061). NEVER '
+  'Append-only log of platform-supplied user facts (facts v1, migration 070). NEVER '
   'updated or deleted: a fact that CLEARS is a NEW observation with the new value. '
-  'Current value is derived by user_facts_latest (062). Values are boolean or short '
+  'Current value is derived by user_facts_latest (071). Values are boolean or short '
   'enum only — amounts are rejected by CHECK.';
 
 -- RLS — per-user, financial-adjacent. Default-deny, NO policy: only the service-role
@@ -86,7 +99,7 @@ ALTER TABLE public.user_facts ENABLE ROW LEVEL SECURITY;
 COMMIT;
 
 -- ============================================================================
--- VERIFICATION — run after applying (and after the 066 seeds).
+-- VERIFICATION — run after applying (and after the 075 seeds).
 --   -- rejected: unknown pair
 --   INSERT INTO user_facts (user_id, fact_key, value, source)
 --     VALUES (gen_random_uuid(), 'credit_utilization_band', 'enormous', 'manual'); -- FK violation

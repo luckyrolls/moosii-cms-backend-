@@ -8,12 +8,12 @@ Say the word and I'll inline it as a `[DESIGN]` section instead.
 
 ---
 
-## 8. Facts intake — `[DESIGN]` (facts v1; draft migrations 060–066)
+## 8. Facts intake — `[DESIGN]` (facts v1; draft migrations 069–075)
 
 Platform-supplied facts about a user (financial domain). A fact is **boolean or a short
 enum, never an amount** — enforced by CHECK constraints, not by this contract
-(`fact_values`, draft 060). Facts add tracks through the derived resolution
-(`user_active_tracks_for_user` + its view twin, draft 065); nothing is stamped.
+(`fact_values`, draft 069). Facts add tracks through the derived resolution
+(`user_active_tracks_for_user` + its view twin, draft 074); nothing is stamped.
 
 ### 8a. Machine-caller auth — what exists, and what this proposes
 
@@ -54,7 +54,7 @@ Content-Type: application/json
 
 Body: {
   user_id?:          string,   // Supabase auth uid — SEE THE IDENTITY DECISION BELOW
-  external_user_id?: string,   // partner's own id; requires draft 067 to resolve
+  external_user_id?: string,   // partner's own id; requires draft 076 to resolve
   facts: [
     { key: string, value: string, observed_at?: string }   // ISO 8601; defaults to now()
   ]
@@ -82,6 +82,11 @@ batches to reconcile. The error names the offending entry and its position:
 { "error": { "code": "unknown_fact",
              "message": "facts[1]: unknown key/value 'credit_utilization_band'='extreme'" } }
 ```
+
+**Writes are ONE statement.** All entries in a call are inserted by a single multi-row
+`INSERT`, so they commit or fail together. Learned from migration 068: two PostgREST calls are
+two transactions, and a half-written batch is exactly the invisible partial state that made
+the lesson-publish audit gap so hard to spot. Validation is all-or-nothing, and so is the write.
 
 **Writes are append-only.** Each entry becomes one `user_facts` row with
 `source='platform_api'`. A fact that CLEARS is an ordinary write of the new value, not a
@@ -128,9 +133,20 @@ through `fact_track_rules` so "why does this user have that track" is answerable
 reading the SQL — the same instinct behind `suppressed_by` on `/questionnaire-status`.
 A user with no facts returns `200` with three empty arrays, never a 404.
 
+### 8c-domain. Domain gating — a new decision
+
+Migrations 069–076 are meant to apply to **both** Supabase projects, so the schema stays
+identical (with no rules authored, the 074 arm is a no-op). But `POST /facts` is a financial
+intake: a partner has no business writing facts into the Moosii deployment. Since slice 1 the
+backend knows which deployment it is (`DOMAIN`, boot-validated and cross-checked against
+`app_settings.domain`). **Proposal:** the route returns `404 not_found` unless `DOMAIN =
+'financial'`, so on Moosii it does not exist rather than existing and refusing. `GET
+/facts/:user_id` can stay available on both, since an empty inspector is harmless and useful
+for checking the schema landed. **Decision D5 for Mark.**
+
 ### 8d. Identity — the open decision
 
 `external_user_id` cannot be resolved today: no table maps a partner id to a Supabase uid.
-Either the partner sends `user_id` and the field is dropped from v1, or draft 067
+Either the partner sends `user_id` and the field is dropped from v1, or draft 076
 (`user_external_ids`) is applied AND something in the signup flow populates it. Until that
 is settled, treat `POST /facts` as accepting `user_id` only.

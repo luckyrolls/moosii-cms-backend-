@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 062: user_facts_latest — latest-wins resolution (NOT APPLIED)
+-- DRAFT 071: user_facts_latest — latest-wins resolution (NOT APPLIED)
 -- ============================================================================
 -- RATIONALE: "the user's current facts" is DERIVED from the append-only log, never
 -- stored. Same discipline as user_active_tracks (derived) and milestone suppression
@@ -8,7 +8,7 @@
 --
 -- ORDERING: observed_at DESC (what the platform says), then created_at DESC (when we
 -- received it), then id DESC as a total-order tiebreak so the result is deterministic
--- even for two rows at the same instant. The 061 UNIQUE (user_id, fact_key, observed_at)
+-- even for two rows at the same instant. The 070 UNIQUE (user_id, fact_key, observed_at)
 -- means the first key alone is almost always decisive.
 --
 -- SECURITY: security_invoker so the view can NEVER hand out rows the underlying table's
@@ -25,9 +25,19 @@
 -- between a non-service reader and the facts. Note that in the plain-view case the
 -- REVOKE is load-bearing, not belt-and-braces.
 --
--- APPLY VIA THE SUPABASE SQL EDITOR — after 061, before 065 (the arm reads this view).
+-- APPLY VIA THE SUPABASE SQL EDITOR — after 070, before 074 (the arm reads this view).
 -- Idempotent: CREATE OR REPLACE.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PRE-CHECK — run FIRST.
+-- 1. Postgres 15+ (security_invoker) — EXPECT true. If false, see the header's fallback:
+--    SELECT current_setting('server_version_num')::int >= 150000;
+-- 2. 070 is applied — EXPECT not NULL:
+--    SELECT to_regclass('public.user_facts');
+-- 3. The view name is free — EXPECT NULL:
+--    SELECT to_regclass('public.user_facts_latest');
+-- ---------------------------------------------------------------------------
 
 BEGIN;
 
@@ -46,7 +56,7 @@ CREATE OR REPLACE VIEW public.user_facts_latest
 
 COMMENT ON VIEW public.user_facts_latest IS
   'Latest-wins current value per (user_id, fact_key) over the user_facts log (facts v1, '
-  'migration 062). DERIVED — no state table. A fact that CLEARS is simply a newer '
+  'migration 071). DERIVED — no state table. A fact that CLEARS is simply a newer '
   'observation, so this view flips and every consumer follows on the next recompute.';
 
 -- Lock the view to the backend. Nothing else should read facts in v1.
@@ -56,7 +66,7 @@ GRANT SELECT ON public.user_facts_latest TO service_role;
 COMMIT;
 
 -- ============================================================================
--- VERIFICATION — run after applying, using the two rows from 061's verification:
+-- VERIFICATION — run after applying, using the two rows from 070's verification:
 --   SELECT fact_key, value FROM user_facts_latest WHERE user_id = '<uuid>';
 --   -- EXPECT exactly ONE row: has_emergency_buffer = 'false' (the newer observation),
 --   -- while SELECT count(*) FROM user_facts WHERE user_id = '<uuid>' still returns 2.

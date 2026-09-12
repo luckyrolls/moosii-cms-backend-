@@ -15,40 +15,44 @@ the deviation is deliberate rather than a precedent.
 
 ---
 
-## ⚠ RENUMBER BEFORE APPLYING
+## Numbering — renumbered to 069–076 (2026-09-12)
 
-These drafts claim **060–067**, but migrations **060–063** were subsequently filed for the
-catalog-integrity set (`migrations/060`–`063`, FINDINGS-catalog-integrity.md), which applies
-first. Renumber this set to **066–073** before applying it (064/065 were subsequently taken by the published-edit policy drafts), and update the cross-references
-inside the files (065 cites 062 and 063 as its dependencies; the README table below does too).
-Nothing here has been applied, so this is a rename, not a migration.
+These drafts were first written as 060–067. That range was later taken by real, applied
+migrations — the catalog-integrity set (060–063), the published-edit policy (064–066), the
+`create_lessons_with_segments` fix (067) and the atomic lesson publish (068). The set is now
+**069–076**, and every internal cross-reference has been updated to match. Nothing here has
+been applied. References to 037, 038, 040, 045, 048/049 and 059 below are to REAL applied
+migrations and were deliberately left alone.
 
 ## 1. Apply order
 
-Run in this order. Each file has its own header rationale and a VERIFICATION block.
+Run in this order. Each file has its own header rationale, a **PRE-CHECK** block to run first, and a VERIFICATION block to run after.
 
 | # | File | One-line rationale |
 |---|---|---|
-| 060 | `060_fact_vocabulary.sql` | `fact_keys` + `fact_values`: a closed CMS-authored vocabulary, so "is this a real fact?" is a foreign key — and the composite `(fact_key, value)` becomes the FK target everything else uses. Home of the "no amounts" CHECKs. |
-| 061 | `061_user_facts.sql` | Append-only observation log. Financial facts are not monotonic, so clearing must be an ordinary write, not a special un-record path. Keeps history; index serves both read patterns. |
-| 062 | `062_user_facts_latest.sql` | Latest-wins view. Current value is DERIVED, never stored — same discipline as `user_active_tracks` and milestone suppression. |
-| 063 | `063_fact_track_rules.sql` | `(fact_key, value) → track_id`, the direct analogue of `demographic_track_rules`. Bare CMS-authored mapping, RESTRICT on the track per migration 040. |
-| 064 | `064_fact_entry_map.sql` | `(fact_key, value) → exactly one lesson or segment`, exactly-one enforced by `num_nonnulls(...) = 1`. **Nothing reads it in v1** — authoring config ahead of a forced-entry mechanism that does not exist. |
-| 065 | `065_user_active_tracks_facts_arm.sql` | The additive arm on `user_active_tracks_for_user` **and its view twin**, joining `user_facts_latest` to `fact_track_rules`. The one change that makes facts do anything. **Must be applied last** — it will not compile without 062 and 063. |
-| 066 | `066_seed_demo_vocabulary.sql` | Seeds the six demo keys + 13 values. Data only, separate from DDL, idempotent. No rules or entry-map rows: which track a fact grants is a content decision. |
-| — | `067_user_external_ids.OPTIONAL.sql` | **Decision required, probably do not apply.** Only needed if `POST /facts` must accept a partner id. See §3. |
+| 069 | `069_fact_vocabulary.sql` | `fact_keys` + `fact_values`: a closed CMS-authored vocabulary, so "is this a real fact?" is a foreign key — and the composite `(fact_key, value)` becomes the FK target everything else uses. Home of the "no amounts" CHECKs. |
+| 070 | `070_user_facts.sql` | Append-only observation log. Financial facts are not monotonic, so clearing must be an ordinary write, not a special un-record path. Keeps history; index serves both read patterns. |
+| 071 | `071_user_facts_latest.sql` | Latest-wins view. Current value is DERIVED, never stored — same discipline as `user_active_tracks` and milestone suppression. |
+| 072 | `072_fact_track_rules.sql` | `(fact_key, value) → track_id`, the direct analogue of `demographic_track_rules`. Bare CMS-authored mapping, RESTRICT on the track per migration 040. |
+| 073 | `073_fact_entry_map.sql` | `(fact_key, value) → exactly one lesson or segment`, exactly-one enforced by `num_nonnulls(...) = 1`. **Nothing reads it in v1** — authoring config ahead of a forced-entry mechanism that does not exist. |
+| 074 | `074_user_active_tracks_facts_arm.sql` | The additive arm on `user_active_tracks_for_user` **and its view twin**, joining `user_facts_latest` to `fact_track_rules`. The one change that makes facts do anything. **Must be applied last** — it will not compile without 071 and 072. |
+| 075 | `075_seed_demo_vocabulary.sql` | Seeds the six demo keys + 13 values. Data only, separate from DDL, idempotent. No rules or entry-map rows: which track a fact grants is a content decision. |
+| — | `076_user_external_ids.OPTIONAL.sql` | **Decision required, probably do not apply.** Only needed if `POST /facts` must accept a partner id. See §3. |
 
-Independence: 063 and 064 need only 060. 061 → 062 → 065 is the chain. 066 can run any
-time after 060.
+Independence: 072 and 073 need only 069. 070 → 071 → 074 is the chain. 075 can run any
+time after 069.
 
-**Both Supabase projects.** With no `fact_track_rules` rows, the 065 arm returns nothing
+**Both Supabase projects.** With no `fact_track_rules` rows, the 074 arm returns nothing
 and resolution is byte-identical to migration 045. So the whole set is safe to apply to
 the Moosii project too, which keeps the two schemas identical as intended. Applying to
 financial only is also fine but the two projects' resolution functions then diverge —
 that divergence is the thing to avoid, so **apply to both** unless there is a reason not to.
 
-**Not 059.** That number is reserved for the `user_mlp_data` LEFT JOIN rewrite already with
-Mark (`CLAUDE.md`, parked list). 059 does not touch these objects; either order works.
+**059 is applied, and it helps this set.** The `user_mlp_data` LEFT JOIN rewrite went live
+2026-09-11. It does not touch any object here, but it means zero-child users now get default
+tracks — and financial-domain users are zero-child, so they will receive default tracks
+alongside any fact-granted ones. ⚠ 059 has **no file in `migrations/`**; that gap is flagged
+separately in `migrations/README.md` and does not block this set.
 
 ---
 
@@ -93,8 +97,8 @@ target" is literally "no constraint". Options, drafted as (a):
   for legitimate users. Not recommended.
 
 **D2 — `external_user_id`.** Nothing maps a partner id to a Supabase uid. Either drop the
-field from v1 (partner sends `user_id`; nothing to build) or apply draft 067 **and** decide
-what populates it in the signup flow. Drafted 067 so the option is concrete, but it should
+field from v1 (partner sends `user_id`; nothing to build) or apply draft 076 **and** decide
+what populates it in the signup flow. Drafted 076 so the option is concrete, but it should
 not be applied on its own — an empty mapping table plus a contract that 404s is worse than
 not having the field.
 
@@ -106,6 +110,16 @@ half that is false is worth a deliberate decision.
 (reasoning in `contract-facts-intake.draft.md` §8a: the internal key also unlocks `POST
 /jobs`, i.e. arbitrary AI spend and content writes).
 
+**D5 — domain gating for `POST /facts` (new since the first draft).** These migrations apply to
+**both** Supabase projects so the schemas stay identical; with no rules authored, the 074 arm
+is a no-op on Moosii. But `POST /facts` is a financial intake, and a partner has no business
+writing facts into the Moosii deployment. The backend has known which deployment it is since
+slice 1 (`DOMAIN`, boot-validated and cross-checked against `app_settings.domain`).
+**Proposal:** the route returns `404` unless `DOMAIN = 'financial'`, so on Moosii it simply does
+not exist. `GET /facts/:user_id` stays available on both, since an empty inspector is harmless
+and is a quick way to confirm the schema landed. Detail in `contract-facts-intake.draft.md`
+§8c-domain.
+
 ---
 
 ## 4. A fact that CLEARS, against §B's five monotonic sites
@@ -115,7 +129,7 @@ un-happens". How each one lands in this design:
 
 1. **Presence-as-truth.** `child_milestones` has no value column, so the resolver tests
    `facts.has(milestone_id)` — asserting a fact is permanent by construction.
-   **AVOIDED.** `user_facts` carries `value`, and the 065 arm joins `ON fact_key AND value`.
+   **AVOIDED.** `user_facts` carries `value`, and the 074 arm joins `ON fact_key AND value`.
    Nothing anywhere tests for the mere existence of a fact row.
 2. **First-reach-wins insert.** `ON CONFLICT DO NOTHING` silently drops a re-assertion.
    **AVOIDED.** The UNIQUE is `(user_id, fact_key, observed_at)` — an idempotency guard
