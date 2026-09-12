@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **067** (main) + **0008** (prompt track).
-008..067 is fully contiguous and every migration in that range is applied and verified.)
+(Current APPLIED high-water: **068** (main) + **0008** (prompt track).
+008..068 is fully contiguous and every migration in that range is applied and verified.)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
 The 006–043 + 0001–0004 range above predates per-entry logging. From **044** (main) and
@@ -170,13 +170,14 @@ Main track:
   SQL). Zero-child users now get a `user_mlp_data` row, so default tracks and `scope:'all'`
   rebuilds reach them. Its precondition — the `generateFullMLP` hang fix being live — was met
   on 2026-09-10.
-- **068** — **DRAFT (pending apply)**: `set_lesson_published(uuid, boolean, uuid, text)` —
+- **068** — **APPLIED (2026-09-11)**: `set_lesson_published(uuid, boolean, uuid, text)` —
   flips `lessons.is_published` AND writes the `content_approvals` row in ONE transaction, so
   a lesson cannot be published or unpublished without its audit row. Replaces two PostgREST
   calls (two transactions) where `logApproval` swallowed its own failures, so a missing audit
   row still returned 200. Refuses a null actor rather than skipping the row. ⚠ Deliberately
-  inverts `logApproval`'s "never block the action" rule **for this action only**. The backend
-  falls back to the old non-atomic path while this is unapplied, so the code can deploy first.
+  inverts `logApproval`'s "never block the action" rule **for this action only**. Verified live:
+  the null-actor guard fires, and the CMS has written real `lesson` publish/unpublish rows through
+  it. The route's pre-068 fallback is now dead code and can be removed in a later cleanup.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

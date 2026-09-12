@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 068: set_lesson_published — flip + audit in ONE transaction (DRAFT)
+-- Migration 068: set_lesson_published — flip + audit in ONE transaction (APPLIED 2026-09-11)
 -- ============================================================================
 -- WHY. `POST /lessons/:id/publish|unpublish` did two separate writes: an UPDATE of
 -- `lessons.is_published` and then an INSERT into `content_approvals` via logApproval().
@@ -145,4 +145,18 @@ COMMIT;
 --        true, (SELECT id FROM "user" WHERE role IN ('admin','super_admin') LIMIT 1), 'super_admin');
 --      -- EXPECT a check_violation, NOT a successful publish
 --    ROLLBACK;   -- restores the original constraint AND discards any flip
+-- ============================================================================
+
+-- ============================================================================
+-- CONFIRMED LIVE 2026-09-11.
+--   * The function exists and its actor guard fires: calling it with a NULL actor returns
+--     22004 "set_lesson_published: an actor is required" and writes nothing.
+--   * It is carrying real traffic. The CMS wrote two correct lesson audit rows through it,
+--     both attributed to markmun99@gmail.com (super_admin):
+--       21:40:51 unpublish "Strengthening Your Partnership Through Sleepless Nights"
+--                 → is_published=false, published_by cleared to NULL
+--       21:43:55 publish   "Managing Stress When Sleep-Deprived"
+--                 → is_published=true, published_by = the actor's uuid
+--   Before this, content_approvals held ZERO lesson rows. The route's pre-068 fallback is now
+--   dead code in practice and can be removed in a later cleanup.
 -- ============================================================================
