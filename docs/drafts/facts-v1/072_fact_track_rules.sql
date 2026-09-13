@@ -12,8 +12,11 @@
 -- activation source in this system behaves.
 --
 -- ON DELETE RESTRICT on track_id follows migration 040's rule — "a track deletes only
--- when BARE". A track still targeted by a fact rule raises 23001 rather than silently
--- losing the rule.
+-- when BARE". A track still targeted by a fact rule is REFUSED rather than silently
+-- losing the rule. ⚠ The refusal's SQLSTATE is 23503 (foreign_key_violation), the same code
+-- NO ACTION raises — NOT the 23001 that migration 038, CLAUDE.md and api-contract.md claim.
+-- Measured on real PostgreSQL 17.11 (2026-09-12): RESTRICT -> 23503, NO ACTION -> 23503.
+-- 038's "verified" was pglite. Catch 23503.
 --
 -- APPLY VIA THE SUPABASE SQL EDITOR — after 069 (needs fact_values). Independent of
 -- 070/071; must precede 074.
@@ -29,6 +32,8 @@
 --    other config FKs (so a track stays deletable only when bare):
 --    SELECT conname FROM pg_constraint
 --     WHERE confrelid = 'public.tracks'::regclass AND confdeltype = 'r' ORDER BY 1;
+--    EXPECT at least one row (040's RESTRICT FKs). Zero rows means the "bare track" posture
+--    has changed since 040 — stop and ask before adding another RESTRICT FK to tracks.
 -- ---------------------------------------------------------------------------
 
 BEGIN;
@@ -76,5 +81,5 @@ COMMIT;
 --   INSERT INTO fact_track_rules (fact_key, value, track_id)
 --     VALUES ('credit_utilization_band', 'nonsense', '<track uuid>');   -- FK violation
 --   -- rejected: deleting a track that a rule still targets
---   DELETE FROM tracks WHERE id = '<track uuid>';                        -- 23001 restrict_violation
+--   DELETE FROM tracks WHERE id = '<track uuid>';                        -- 23503, refused by RESTRICT
 -- ============================================================================

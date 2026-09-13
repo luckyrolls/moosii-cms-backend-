@@ -74,15 +74,24 @@ nothing breaks, and every anon/authenticated client is shut out.
 |---|---|---|
 | `fact_keys`, `fact_values` | RLS on, no policy | CMS reads/writes through backend routes. If the CMS ever writes these Supabase-direct (the `screen_help` pattern) it needs an admin policy — a no-policy enable would deny the CMS itself. |
 | `user_facts` | RLS on, no policy | Per-user, financial-adjacent. **The app never reads facts directly in v1**; admin reads go through `GET /facts/:user_id`. |
-| `user_facts_latest` | `security_invoker = true`, plus REVOKE from anon/authenticated, GRANT SELECT to service_role | A plain view would run as its owner and be a hole in `user_facts`' RLS. Invoker semantics change nothing operationally (every v1 reader is service-role or a SECURITY DEFINER function running as owner) and close that hole permanently. |
+| `user_facts_latest` | **Plain view** + REVOKE ALL from anon/authenticated, GRANT SELECT to service_role | The REVOKE is what stops a client reading every user's facts; a direct SELECT is a permission error (tested). `security_invoker` was the first draft and was **rejected after a local test**, see below. |
 | `fact_track_rules`, `fact_entry_map` | RLS on, no policy | CMS-authored config, backend-mediated. |
 | `user_external_ids` (optional) | RLS on, no policy | Identity mapping, backend-only. |
 
-One subtlety worth knowing before someone "fixes" it: `user_active_tracks` (a plain view)
-reads `user_facts_latest`. Permission checks on a plain view's underlying objects run as
-the **view owner**, so revoking `user_facts_latest` from `authenticated` does **not** break
-an authenticated client's read of `user_active_tracks`. The revoke only stops a *direct*
-`SELECT ... FROM user_facts_latest`. That is exactly the intended split.
+**Why not `security_invoker` — measured, not theorised** (local PostgreSQL 17, §5).
+`user_active_tracks` is a plain view, so its arms read their tables with the view OWNER's
+rights. With `user_facts_latest` drafted as a `security_invoker` view nested inside it,
+`user_facts`' RLS was applied as the CALLER instead. An `authenticated` reader of
+`user_active_tracks` then got **zero** fact-granted tracks, silently, while service_role got
+them all: the twins disagreed by role, with no error. As a plain view, the authenticated reader
+sees the fact track exactly as it sees every other arm's, and a direct
+`SELECT FROM user_facts_latest` is still refused. Do not "harden" it back.
+
+**What does change for clients.** `user_active_tracks_for_user()` is SECURITY INVOKER, so an
+anon/authenticated **call of the function** fails after 074 with `permission denied for view
+user_facts_latest` — on Moosii too, since 074 applies to both. Reading the view is unaffected.
+The backend calls the function as service_role only; 074's pre-check 5 asks Postgres whether
+anything else does (D7).
 
 **Add all of these to `docs/rls-sweep.md` when applied** — that file is the running list and
 the standing rule is to add a table when its migration lands.
@@ -108,7 +117,10 @@ target" is literally "no constraint". Options, drafted as (a):
 field from v1 (partner sends `user_id`; nothing to build) or apply draft 076 **and** decide
 what populates it in the signup flow. Drafted 076 so the option is concrete, but it should
 not be applied on its own — an empty mapping table plus a contract that 404s is worse than
-not having the field.
+not having the field. **New input (2026-09-12):** the cadence decision has partner provisioning
+supply each financial user's timezone, which means the partner provisions the accounts. If that
+provisioning goes through us, the partner can be handed the Supabase uid at that moment — which
+makes **dropping `external_user_id` (076 unapplied)** the natural fit.
 
 **D3 — clearing semantics.** See §4. The brief states v1 behaviour as "a cleared fact stops
 adding the track but does not remove it." That is **only half true** as drafted, and the
@@ -126,7 +138,30 @@ slice 1 (`DOMAIN`, boot-validated and cross-checked against `app_settings.domain
 **Proposal:** the route returns `404` unless `DOMAIN = 'financial'`, so on Moosii it simply does
 not exist. `GET /facts/:user_id` stays available on both, since an empty inspector is harmless
 and is a quick way to confirm the schema landed. Detail in `contract-facts-intake.draft.md`
-§8c-domain.
+§8c-domain. Financial's `app_settings.domain` is confirmed `'financial'`, so the gate has a
+correct value to key off on both projects.
+
+**D6 — run 075 (demo vocabulary seeds) on financial ONLY?** 075 is data, not schema, and the
+apply-both rule exists to keep SCHEMAS identical, which 069–074 already do. **Recommended:
+financial only**, so a Moosii vocabulary screen never lists six financial facts. Both is
+harmless if you prefer symmetry.
+
+**D7 — two consumers 074 affects beyond its twins.**
+- **Function callers.** After 074, an anon/authenticated *call* of
+  `user_active_tracks_for_user()` fails on both projects (§2). The backend is service_role.
+  Whether the app calls it with a user token is a question for the moosii-rn seat, and
+  074's pre-check 5 answers it from `pg_stat_statements`. If something does, the options are to
+  move that caller to the view, or to keep the function callable by making the fact arm read
+  through a narrow SECURITY DEFINER helper. Decide once the answer is known.
+- **`user_active_tracks_with_reason`.** A third derivation of active tracks that exists live
+  but in no repo migration. It matches `user_active_tracks` exactly on Moosii today, but only
+  the `new_user_default` arm is exercised. If it re-derives the arms, it will be missing every
+  fact-granted track after 074 and needs a `fact` reason arm in the same transaction. 074's
+  pre-check 6 dumps its definition, and that is the input for this decision.
+
+**D8 — require `observed_at` for platform facts?** Without it, a retried call writes duplicate
+history rows (tested; contract "Redelivery and conflicts"). Recommended: required when
+`source='platform_api'`.
 
 ---
 
@@ -183,3 +218,38 @@ indistinguishable from a human one at that point.
 **Recommendation: keep derived removal as drafted.** It matches every other activation
 source in the system, needs no cleanup path, and is the behaviour that makes a
 non-monotonic fact model coherent in the first place. Confirm or overrule.
+
+---
+
+## 5. Local verification (2026-09-12) — what has actually been executed
+
+Everything above was run, not just read, against a **throwaway local PostgreSQL 17.11**
+cluster with Supabase-shaped roles (`anon`, `authenticated`, `service_role BYPASSRLS`, default
+grants to all three). Stubs cover only the objects these files touch, and 074's predecessor was
+rebuilt as 045 by stripping the two `ADDED (074)` edits. **This is not the live schema**: it
+proves the SQL and the semantics, not that the live objects still match 045 — pre-checks 2, 3,
+3b and 6 in 074 exist for that. Harness: `local-test/` (`run.py`; see its header).
+
+| Result | |
+|---|---|
+| All 8 files apply cleanly, and apply cleanly **a second time** (idempotent) | PASS |
+| 069/070 reject `1200`, `$40`, `0.82`, ` 12`, `-5`, `Low`, a numeric-leading key, an unknown pair, an unknown source | PASS |
+| 070/071 history kept, latest-wins, a late-arriving OLDER observation does not win | PASS |
+| 074 with zero rules: resolution identical to the 045 snapshot; function and view agree | PASS |
+| 074 grant, then clear as sole source: track appears, then leaves, in BOTH twins (§4) | PASS |
+| 074 clear when another arm also grants: track stays · archived target inert · admin `delete` beats a live fact | PASS |
+| 072 rule on an unknown value refused · deleting a rule-targeted track refused | PASS |
+| 073 exactly one target · one entry point per pair | PASS |
+| 076 both uniqueness directions, per-partner namespaces, shape CHECKs · D1 option (b) FK compiles and cascades | PASS |
+
+**Defects the run found, now fixed in the drafts:**
+1. **071 `security_invoker` hid fact tracks from authenticated readers of `user_active_tracks`**,
+   silently (§2). Now a plain view; re-tested: visible.
+2. **070 `ON UPDATE CASCADE` rewrote history** — renaming `moderate`→`medium` changed past
+   observations in place. Now `ON UPDATE RESTRICT`; re-tested: refused when in use, allowed when not.
+3. **The contract's "redelivery is safe" was only partly true** — duplicate keys in one call,
+   same-instant contradictions and redelivery without `observed_at` (contract, D8).
+4. **RESTRICT raises 23503, not 23001.** Real PostgreSQL 17.11 returns 23503 for RESTRICT and
+   NO ACTION alike. 072 is corrected. ⚠ **Outside this set**, migration 038 (verified in pglite),
+   `CLAUDE.md` invariant 3 and `api-contract.md` all state 23001; any CMS code that catches 23001
+   would miss the refusal. Not changed here; flagged for a rolled-back delete on Moosii to confirm.

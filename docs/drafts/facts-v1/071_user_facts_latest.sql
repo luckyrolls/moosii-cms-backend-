@@ -11,19 +11,19 @@
 -- even for two rows at the same instant. The 070 UNIQUE (user_id, fact_key, observed_at)
 -- means the first key alone is almost always decisive.
 --
--- SECURITY: security_invoker so the view can NEVER hand out rows the underlying table's
--- RLS would refuse. In v1 every reader is the service-role backend (or a SECURITY
--- DEFINER function running as owner), so invoker semantics change nothing operationally
--- — they just remove "the view is a hole in the table's RLS" as a future foot-gun.
--- Grants are then locked to service_role explicitly (migration 057's REVOKE/GRANT
--- precedent) so a stray anon/authenticated SELECT is a permission error, not empty rows.
+-- SECURITY: a PLAIN view (runs with its owner's rights), locked to service_role by the
+-- REVOKE/GRANT below (migration 057's precedent). The REVOKE is LOAD-BEARING: it is the only
+-- thing between an anon/authenticated client and every user's facts, and a direct SELECT by
+-- either is a permission error (tested).
 --
--- ⚠ REQUIRES POSTGRES 15+ for `security_invoker`. Check first:
---   SELECT current_setting('server_version_num')::int >= 150000;
--- If that is false, drop the WITH (...) clause and instead rely on the REVOKE/GRANT below
--- alone — a plain view runs as its OWNER, so the grants become the only thing standing
--- between a non-service reader and the facts. Note that in the plain-view case the
--- REVOKE is load-bearing, not belt-and-braces.
+-- ⚠ NOT security_invoker — that was the first draft, REJECTED after a local test (PG 17,
+-- 2026-09-12). user_active_tracks (074) is itself a plain view, so its other arms read their
+-- tables with the VIEW OWNER's rights. A security_invoker view nested inside it instead
+-- applies user_facts' RLS as the CALLER, and for `authenticated` that RLS has no policy. The
+-- fact arm therefore returned ZERO rows to an authenticated reader while every other arm
+-- returned everything: fact-granted tracks silently vanished from the view by ROLE, with no
+-- error, and the twins disagreed. A plain view keeps the fact arm on the same footing as the
+-- other arms. Do not "harden" this back to security_invoker.
 --
 -- APPLY VIA THE SUPABASE SQL EDITOR — after 070, before 074 (the arm reads this view).
 -- Idempotent: CREATE OR REPLACE.
@@ -31,18 +31,15 @@
 
 -- ---------------------------------------------------------------------------
 -- PRE-CHECK — run FIRST.
--- 1. Postgres 15+ (security_invoker) — EXPECT true. If false, see the header's fallback:
---    SELECT current_setting('server_version_num')::int >= 150000;
--- 2. 070 is applied — EXPECT not NULL:
+-- 1. 070 is applied — EXPECT not NULL:
 --    SELECT to_regclass('public.user_facts');
--- 3. The view name is free — EXPECT NULL:
+-- 2. The view name is free — EXPECT NULL:
 --    SELECT to_regclass('public.user_facts_latest');
 -- ---------------------------------------------------------------------------
 
 BEGIN;
 
-CREATE OR REPLACE VIEW public.user_facts_latest
-  WITH (security_invoker = true) AS
+CREATE OR REPLACE VIEW public.user_facts_latest AS
   SELECT DISTINCT ON (uf.user_id, uf.fact_key)
          uf.user_id,
          uf.fact_key,

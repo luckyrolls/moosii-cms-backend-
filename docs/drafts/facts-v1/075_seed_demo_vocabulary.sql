@@ -13,8 +13,13 @@
 -- this database. That is the whole point of the CHECK constraints in 069/070.
 --
 -- Idempotent: ON CONFLICT DO NOTHING throughout, so a re-run adds nothing and errors on
--- nothing. Safe to run against BOTH Supabase projects (in Moosii the vocabulary simply
--- goes unused — with no rules authored, the 074 arm stays a no-op).
+-- nothing.
+--
+-- ⚠ DECISION D6 — FINANCIAL ONLY? This file is DATA, not schema. The apply-both rule exists
+-- to keep the SCHEMAS identical, and 069-074 do that on their own. RECOMMENDED: run 075 on
+-- the FINANCIAL project only, so a future CMS vocabulary screen on Moosii does not list six
+-- financial facts. Running it on Moosii as well is harmless — with no rules authored, the 074
+-- arm stays a no-op — if symmetry matters more.
 --
 -- APPLY VIA THE SUPABASE SQL EDITOR — after 069 (and, in practice, after the whole
 -- 069–074 set).

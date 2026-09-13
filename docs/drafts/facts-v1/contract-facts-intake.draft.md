@@ -56,7 +56,7 @@ Body: {
   user_id?:          string,   // Supabase auth uid — SEE THE IDENTITY DECISION BELOW
   external_user_id?: string,   // partner's own id; requires draft 076 to resolve
   facts: [
-    { key: string, value: string, observed_at?: string }   // ISO 8601; defaults to now()
+    { key: string, value: string, observed_at?: string }   // ISO 8601; defaults to now() — see "Redelivery" (D8)
   ]
 }
 
@@ -69,8 +69,11 @@ Body: {
   }
 → 400 invalid_request   — no facts, or neither/both id fields
 → 400 unknown_fact      — key or value not in the vocabulary; NAMES THE OFFENDER
+→ 400 duplicate_fact    — the same key twice in one call; NAMES BOTH POSITIONS
 → 401 unauthorized      — bad or missing key
 → 404 unknown_user      — user_id / external_user_id does not resolve
+→ 409 conflicting_observation — same user + key + observed_at already recorded with a
+                          DIFFERENT value; NAMES THE OFFENDER; nothing in the call is written
 → 500 facts_write_failed
 ```
 
@@ -90,8 +93,27 @@ the lesson-publish audit gap so hard to spot. Validation is all-or-nothing, and 
 
 **Writes are append-only.** Each entry becomes one `user_facts` row with
 `source='platform_api'`. A fact that CLEARS is an ordinary write of the new value, not a
-delete and not an update. Re-delivering the same observation (same user, key,
-`observed_at`) hits the UNIQUE and is counted in `skipped`, so redelivery is safe.
+delete and not an update. Past observations are immutable: renaming a vocabulary value that
+is in use is refused by the database (draft 070, `ON UPDATE RESTRICT`).
+
+**Redelivery and conflicts — tested, not assumed** (local PostgreSQL 17, 2026-09-12). The
+UNIQUE `(user_id, fact_key, observed_at)` is the only idempotency key, and a bare
+`ON CONFLICT DO NOTHING` makes three different situations all look like a harmless `skipped`:
+
+- **The same key twice in one call.** With `observed_at` omitted, both entries get the same
+  `now()`. A plain insert rejects the whole statement (23505); `DO NOTHING` silently keeps one
+  of the two values and drops the other. **So validation rejects a repeated key up front**
+  with `400 duplicate_fact`, before anything is written.
+- **The same instant with a different value.** `DO NOTHING` writes zero rows, so a
+  contradiction would be counted as a redelivery. **So the handler compares:** an existing row
+  with the SAME value counts as `skipped`; a DIFFERENT value fails the call with
+  `409 conflicting_observation`, and the all-or-nothing rule means nothing else in the call
+  lands either. The comparison and the insert run in one RPC transaction, per migration 068.
+- **Redelivery without `observed_at`.** Each delivery gets a fresh `now()`, so a retried call
+  writes a second, identical history row. It is **not idempotent**. Resolution is unaffected
+  (latest-wins, same value), but history is polluted. **Decision D8:** require `observed_at`
+  when `source='platform_api'` (recommended — the partner knows when it observed the fact), or
+  accept the duplicate rows.
 
 **Then recompute.** After the rows commit, the handler calls `rebuildOneUser(user_id)` —
 the same function `POST /mlp/recompute` uses — so the new facts reach the plan in the same

@@ -60,9 +60,11 @@
 --    SELECT pg_get_viewdef('user_active_tracks'::regclass, true);
 --    (Checked 2026-09-12 by repo audit: only 048/049 mention these objects after 045, and
 --    both change the questionnaire_responses_tracks view they READ, never the pair itself.)
--- 3. The twins are in sync BEFORE the change — EXPECT ZERO ROWS. (Verified live 2026-09-12:
---    0 mismatches across all 5 users. A non-zero result means the pair has already drifted,
---    and this migration would bake that drift in.)
+-- 3. The twins are in sync BEFORE the change — EXPECT ZERO ROWS. (Verified live on Moosii
+--    2026-09-12: 0 mismatches across all 5 users. A non-zero result means the pair has already
+--    drifted, and this migration would bake that drift in.)
+--    ⚠ ON FINANCIAL THIS CHECK IS VACUOUS: no users, so zero rows proves nothing. There, run
+--    3b on BOTH projects and compare.
 --    WITH users AS (SELECT DISTINCT user_id FROM user_active_tracks)
 --    (SELECT user_id, track_id FROM user_active_tracks
 --      EXCEPT SELECT f.user_id, f.track_id
@@ -71,8 +73,33 @@
 --    (SELECT f.user_id, f.track_id
 --      FROM users u CROSS JOIN LATERAL user_active_tracks_for_user(u.user_id) f
 --      EXCEPT SELECT user_id, track_id FROM user_active_tracks);
+-- 3b. The live definitions are the SAME on financial as on Moosii. Run on each; financial first:
+--    SELECT current_setting('server_version_num') AS pg,
+--           md5(pg_get_functiondef('user_active_tracks_for_user(uuid)'::regprocedure)) AS fn_md5,
+--           md5(pg_get_viewdef('user_active_tracks'::regclass, true))                  AS view_md5;
+--    Same Postgres MAJOR on both -> both hashes must match. Different majors -> the deparsed
+--    view text can differ cosmetically; diff the two pre-check-2 outputs by eye instead.
 -- 4. Capture the current total, to prove the arm is a no-op with no rules authored:
 --    SELECT count(*) FROM user_active_tracks;   -- note the number; re-run after applying
+-- 5. ⚠ WHO CALLS THE FUNCTION, AS WHICH ROLE (decision D7). After this file the function reads
+--    user_facts_latest, which 071 REVOKEs from anon/authenticated. The function is SECURITY
+--    INVOKER, so an anon/authenticated CALL of it starts failing with "permission denied for
+--    view user_facts_latest" — on Moosii as well as financial (tested locally, PG 17). Reading
+--    the VIEW user_active_tracks as authenticated keeps working and includes fact tracks
+--    (tested). The backend calls the function as service_role only
+--    (src/jobs/handlers/rebuildMlp.ts:459). Confirm nobody else does — EXPECT no
+--    anon/authenticated rows (needs pg_stat_statements, on by default in Supabase):
+--    SELECT r.rolname, sum(s.calls) AS calls
+--      FROM pg_stat_statements s JOIN pg_roles r ON r.oid = s.userid
+--     WHERE s.query ILIKE '%user_active_tracks_for_user%'
+--     GROUP BY r.rolname ORDER BY calls DESC;
+-- 6. ⚠ A THIRD DERIVATION THIS FILE DOES NOT TOUCH: user_active_tracks_with_reason (decision
+--    D7). It exists live but in NO repo migration, so its body is unknown here. On Moosii
+--    2026-09-12 it matches user_active_tracks exactly (50 of 50 pairs, 0 mismatches), but every
+--    row is active_reason='new_user_default', so that match exercises one arm only. If it
+--    re-derives the arms instead of reading user_active_tracks, a fact-granted track will be
+--    MISSING from it after this file. Dump it before applying:
+--    SELECT pg_get_viewdef('user_active_tracks_with_reason'::regclass, true);
 -- ---------------------------------------------------------------------------
 
 BEGIN;

@@ -56,11 +56,15 @@ CREATE TABLE IF NOT EXISTS public.user_facts (
   created_at  timestamptz NOT NULL DEFAULT now(),  -- when WE received it
   CONSTRAINT user_facts_pkey PRIMARY KEY (id),
 
-  -- The pair must be authored vocabulary (069). RESTRICT: a key/value in use cannot be
-  -- deleted out from under recorded history (same posture as migrations 038/040).
+  -- The pair must be authored vocabulary (069). RESTRICT both ways: a key/value in use can
+  -- be neither DELETED nor RENAMED out from under recorded history. ON UPDATE was CASCADE in
+  -- the first draft; a local test (PG 17, 2026-09-12) showed renaming 'moderate' -> 'medium'
+  -- in fact_values silently rewrote every past OBSERVATION to 'medium' — an UPDATE to an
+  -- append-only log. A value in use is renamed by adding the new value and retiring the old.
+  -- (The rules/entry-map FKs in 072/073 keep CASCADE: they are config, not history.)
   CONSTRAINT user_facts_value_fkey
     FOREIGN KEY (fact_key, value) REFERENCES public.fact_values (fact_key, value)
-    ON UPDATE CASCADE ON DELETE RESTRICT,
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
 
   -- "No amounts, ever" repeated on the observation itself, so a bad row cannot exist
   -- even if the vocabulary table is later loosened.
