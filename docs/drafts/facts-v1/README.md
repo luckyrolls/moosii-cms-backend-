@@ -51,6 +51,11 @@ Moosii apply. Applying to both keeps the schemas identical, which is the point: 
 byte-identical to migration 045. Facts only DO anything on financial, where rules get authored
 and `POST /facts` is meant to live (decision D5).
 
+**Financial's starting point is confirmed.** It was built from a schema dump of Moosii, so it
+already has everything through 068 — including 045's `user_active_tracks_for_user` + view twin,
+which 074 recreates — and its `app_settings.domain` is `'financial'`. Nothing below 069 needs
+replaying before this set.
+
 **059 is applied, and it helps this set.** The `user_mlp_data` LEFT JOIN rewrite went live
 2026-09-11. It does not touch any object here, but it means zero-child users now get default
 tracks — and financial-domain users are zero-child, so they will receive default tracks

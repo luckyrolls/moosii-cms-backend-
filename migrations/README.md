@@ -24,7 +24,9 @@ Each hand-applied file's header carries a line like
 high-water number is bumped as migrations are added.
 (Current APPLIED high-water: **068** (main) + **0008** (prompt track).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
-but has no file in the repo (see its entry). ⚠ **From 069 the high-water is tracked PER PROJECT**
+but has no file in the repo (see its entry). The **financial** project was built from a schema
+dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
+`app_settings.domain` is set to `'financial'`. ⚠ **From 069 the high-water is tracked PER PROJECT**
 — financial and Moosii — per the apply-order rule under "Applying a new migration".)
 
 ## Reconciliation entries — enumerated (044+ / 0005+)
@@ -138,17 +140,17 @@ Main track:
     on `quiz_questions`, `segments` and `lessons`, plus a one-time backfill. Measured impact:
     141 of 153 lessons flip true→false, including 5 published ones whose single quiz question
     is unapproved.
-  ⚠ These four take the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
-  (060–067). Facts v1 must be renumbered to 064+ before it is applied.
+  ⚠ These four took the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
+  (060–067). Facts v1 has since been renumbered to 069–076.
 - **064–066 — APPLIED (2026-09-11): published-content edit policy**
   (FINDINGS-published-edit.md). Design slice; nothing is built on top of them yet.
   - **064** — `app_settings` (one row: `domain`) + `content_edit_policy_guard()` on
     `sub_segments` / `quiz_questions` / `quiz_answers` / `segments` content columns, plus `lessons.description` + `lessons.safety_sensitive` (both decided CONTENT 2026-09-10). Inert
     unless `domain='financial'`, where a content write touching a PUBLISHED lesson raises with
     `HINT='published_content_locked'`. The warn domain gets **no trigger** on purpose — the
-    state it would set is derived. ⚠ The financial project inherits `app_settings.domain = 'moosii'`
-    with the schema dump and must be UPDATEd to `'financial'` immediately after it, or the
-    financial backend's boot assert sees the mismatch against its `DOMAIN=financial` env and
+    state it would set is derived. The financial project got this via the schema dump, and its
+    `app_settings.domain` is set to `'financial'` (confirmed 2026-09-12) — without that, the
+    financial backend's boot assert sees a mismatch against its `DOMAIN=financial` env and
     refuses to start.
   - **066** — approval-reset triggers for the three CMS-direct content paths (card reorder,
     add card, quiz edit). A structural card change (insert/delete/reorder) resets the WHOLE
@@ -233,11 +235,14 @@ records both, e.g. `APPLIED financial (date) · APPLIED moosii (date)`, and a fi
 "applied" once BOTH are confirmed. An entry reading `APPLIED financial · PENDING moosii` is a
 normal intermediate state, not an error.
 
-**Migrations ≤ 068 were applied to Moosii only.** If the financial project was created from a
-schema dump of Moosii, it inherited them — ⚠ including `app_settings.domain = 'moosii'` (064),
-which must be UPDATEd to `'financial'` or the financial backend's boot assert refuses to start.
-If it was created any other way, those migrations are NOT there and must be replayed in order
-before 069. Confirm which before applying anything from 069.
+**Migrations ≤ 068 were applied to Moosii; financial inherited them from a schema dump**
+(confirmed 2026-09-12). So financial starts at the same schema high-water, 068, and nothing below
+069 is replayed there. Its `app_settings.domain` is set to `'financial'` (the row 064 created).
+⚠ **A schema dump carries objects, not necessarily rows.** Migrations whose effect is DATA did
+not reach financial through the schema: the prompt-track seeds 0005–0008, 060's archive of three
+Moosii lessons, and the 058/063 backfills. 058/060/063 are moot on an empty catalog. The
+prompt rows are not — any job that composes its prompt from `prompts` fails on financial until
+that project has its own prompt rows, which is a content decision, not a migration replay.
 
 **Scheduled jobs are per project.** A `pg_cron` job is data in that project's `cron` schema, not
 schema — a dump does not reliably carry it, and each project's job must target its OWN backend

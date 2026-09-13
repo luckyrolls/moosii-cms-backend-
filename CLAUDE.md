@@ -308,6 +308,11 @@ what metadata content rows may need to carry (reviewer identity, review status).
 - The Supabase SERVICE-ROLE key bypasses all RLS — it lives ONLY in `.env` and
   Render env vars. NEVER in code, NEVER committed, NEVER sent to any frontend.
 - Always verify staged files before committing — confirm `.env` is excluded.
+- **The ONE sanctioned secret in the database: a job-scoped key in Supabase Vault.** `pg_net`
+  must authenticate the `pg_cron` tick, so each project's Vault holds a key (`CRON_API_KEY`,
+  same value as that project's backend env) that gates ONE enqueue-only route
+  (`POST /cron/email-digest`, planned). NEVER `INTERNAL_API_KEY`, never the service-role key,
+  and no other secret goes in the database. Decided 2026-09-12 (`FINDINGS-financial.md` §F.3).
 
 ## AI generation logging
 Every AI API call is logged to `ai_generation_log` (migration 005) via
@@ -352,7 +357,7 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via
 
 ## Status pointers
 - **Delivered work** — routes, jobs, payloads, semantics: `docs/api-contract.md` is canonical.
-- **Migration high-water** — `migrations/README.md`'s reconciliation list is the only reliable number (currently **046** main / **0007** prompt track).
+- **Migration high-water** — `migrations/README.md`'s reconciliation list is the only reliable number (currently **068** main / **0008** prompt track — Moosii by apply, financial by schema dump; from 069 it is tracked per project).
 - This file is **architecture + invariants, not a slice ledger** — do NOT add per-slice `[x]` entries here (that ledger was deliberately removed).
 
 ## Docs map

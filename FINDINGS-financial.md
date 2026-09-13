@@ -648,8 +648,8 @@ CMS-side check is a separate-repo slice — flag for that seat.
 **Inputs.** A second Supabase project (financial) now exists. `pg_cron` and `pg_net` are enabled
 in both projects — per Mark; not verifiable over PostgREST, since the `cron` and `net` schemas are
 not exposed, so the pre-check in the illustrative SQL below confirms it via `pg_extension`. The
-legacy reminder is `docs/Daily-reminder.zip` (untracked): a single Supabase **Edge Function**,
-`index.ts`, Deno, 291 lines. It sends **FCM push, not email**.
+legacy reminder is `docs/legacy/daily-reminder/index.ts` (extracted from Mark's
+`Daily-reminder.zip`; reference only): a single Supabase **Edge Function**, Deno, 291 lines. It sends **FCM push, not email**.
 
 **What the legacy function does.** Selects `user` rows where `allow_daily_reminders_notifications`
 (`src/types/database.types.ts:4273`), reading `daily_reminder_time` (`:4285`, a bare `time`,
@@ -782,18 +782,19 @@ SELECT id, status_code, created FROM net._http_response ORDER BY created DESC LI
 SELECT cron.unschedule('email-digest-tick');
 ```
 
-#### Decisions for Mark
+#### Decisions — MADE by Mark, 2026-09-12
 
-- **E1 — replace push, or add email alongside it?** The legacy FCM push reaches nobody today (0 of 5
-  users have a token).
-- **E2 — sanction a scoped `CRON_API_KEY` in Supabase Vault**, i.e. a secret held outside `.env` /
-  Render, gating one enqueue-only route.
-- **E3 — cadence semantics.** At the user's reminder time only when there is news (recommended), a
-  daily nudge regardless (legacy), or purely event-driven (§F.2).
-- **E4 — timezone.** Keep the fixed `user_offset` (wrong across DST, and four of five look unset), or
-  add an IANA timezone column such as `America/Toronto` and let the offset be derived. An app-side
-  change as well as a schema one.
-- **E5 — retire the legacy Edge Function** once email ships? It currently notifies no one.
+- **E1 — email only.** Push is retired for v1; no FCM path is built.
+- **E2 — a job-scoped key in Supabase Vault, never `INTERNAL_API_KEY`.** Recorded in `CLAUDE.md`
+  (Secrets discipline) as the one sanctioned exception to "no secrets in the database".
+- **E3 — send only when there is news**: a check-in due, or a new top item since the last send. No
+  empty nudges. The user's reminder time decides *when*; news decides *whether*.
+- **E4 — an IANA timezone name per user** (e.g. `America/New_York`), not a fixed offset. The app
+  supplies the device timezone at sign-in; partner provisioning supplies it for financial users.
+  The column is proposed **in the cadence slice**, not before. Until then the window math above is
+  written against `user_offset` and must be rewritten against the timezone name in that slice.
+- **E5 — retire the legacy Edge Function once email ships.** Its source stays in the repo at
+  `docs/legacy/daily-reminder/`.
 
 ---
 
