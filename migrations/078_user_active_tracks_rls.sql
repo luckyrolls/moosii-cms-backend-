@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 078: active-tracks views read with the CALLER's rights, under per-user RLS
---                — DRAFT (pending apply; needs Mark's decision R1 below first)
+--                — DRAFT (pending apply; R1 and the admin widening ACCEPTED 2026-09-14)
 -- ============================================================================
 -- THE HOLE. user_active_tracks, user_active_tracks_with_reason and the two views under them
 -- (user_mlp_data, questionnaire_responses_tracks) are PLAIN views owned by postgres, and postgres
@@ -33,7 +33,7 @@
 --      from clients; with a real policy on user_facts that workaround is no longer needed, and the
 --      function and view read the same tables under the same RLS again.
 --
--- ⚠ DECISION R1 — REVERSES 071's POSTURE. After this file a signed-in user can SELECT their own
+-- DECISION R1 — ACCEPTED by Mark 2026-09-14. REVERSES 071's POSTURE. After this file a signed-in user can SELECT their own
 -- raw facts (user_facts / user_facts_latest) through PostgREST, and an admin can read everyone's.
 -- 071 kept facts unreadable by any client. The alternative keeps that: leave the REVOKE, keep the
 -- SECURITY DEFINER helper, and route BOTH views' fact arm through a definer function that filters
@@ -52,7 +52,7 @@
 --   * the CMS inspector (an admin's session reading user_active_tracks_with_reason for another
 --     user): still sees everything — requires role admin or super_admin on public."user"
 --     (Moosii: 2 admin, 2 super_admin). ⚠ SECOND SURFACE: open the inspector after applying.
---   * a plain `admin` GAINS read on children, completed_items, user, user_demographic_responses,
+--   * (ACCEPTED 2026-09-14) a plain `admin` GAINS read on children, completed_items, user, user_demographic_responses,
 --     user_mlp_mods and questionnaire_user_answers (today super_admin only, or everyone via `true`).
 --   * the backend: unchanged. service_role and postgres have BYPASSRLS; apply_classification and
 --     the renumber functions are SECURITY DEFINER owned by postgres.

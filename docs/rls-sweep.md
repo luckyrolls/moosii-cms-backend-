@@ -49,3 +49,26 @@ for internal/authoring/licensed data.
       with check (exists (select 1 from users_internal ui where ui.id = auth.uid()));
     ```
     (Adjust the `users_internal` match to how that table keys to the auth user.)
+
+## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
+
+The active-tracks views (`user_active_tracks`, `user_active_tracks_with_reason`, `user_mlp_data`,
+`questionnaire_responses_tracks`, `user_facts_latest`) are `security_invoker`, so these tables' RLS
+now actually binds every client read of them. `is_admin()` / `is_super_admin()` are SECURITY DEFINER
+(required: dropping `user`'s blanket read would otherwise make every policy calling them recurse).
+
+| Table | SELECT policy | Note |
+|---|---|---|
+| `user` | `user_self_select`: own `id`, or `is_admin()`, or service | blanket `USING (true)` read dropped |
+| `children` | `children_sel`: own `parent_id`, or admin, or service | blanket read dropped |
+| `completed_items` | `completed_items_sel`: own, or admin, or service | blanket read dropped |
+| `user_demographic_responses` | own or admin | was super_admin |
+| `user_mlp_mods` | own, or admin, or service | was super_admin |
+| `questionnaire_user_answers` | own or admin | was own only |
+| `user_facts` | `user_facts_select_own_or_admin` (authenticated) | decision R1 |
+| `new_user_tracks` | + any authenticated (config) | was admin/service only |
+| `fact_track_rules` | + any authenticated (config) | was no policy |
+
+Admin widening (a plain `admin`, not only `super_admin`, reads all of the above) accepted 2026-09-14.
+Write policies are unchanged. Known app gap: moosii-rn `app/(onboarding)/verify.tsx:78-82` looks up
+another user's row by email; after 078 that lookup returns nothing (see migration 079).

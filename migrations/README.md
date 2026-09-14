@@ -235,7 +235,7 @@ Main track:
     (the driver refuses it there). Verified: 6 keys, 13 values, 0 rules, 0 entry-map rows — the 074
     arm stays a no-op until rules are authored.
   Types regenerated from Moosii after the batch (adds `user_fact_track_ids`).
-- **078** — **DRAFT (pending apply; needs decision R1)**: the active-tracks views read with the
+- **078** — **DRAFT (pending apply) — R1 and the admin widening ACCEPTED 2026-09-14**: the active-tracks views read with the
   CALLER's rights under per-user RLS. Closes the hole where `user_active_tracks`,
   `user_active_tracks_with_reason`, `user_mlp_data` and `questionnaire_responses_tracks` are plain
   postgres-owned views (postgres has BYPASSRLS), so the anon key reads any user's tracks and every
@@ -244,10 +244,17 @@ Main track:
   read policy would otherwise recurse); drop the blanket `USING (true)` read policies on `children`,
   `completed_items`, `user`; widen the own-row SELECT policies to `is_admin()`; authenticated read on
   `new_user_tracks` + `fact_track_rules`; own-or-admin on `user_facts`; `security_invoker` on all five
-  views; the function reads facts directly again and 074's helper is dropped. ⚠ R1: signed-in users can
+  views; the function reads facts directly again and 074's helper is dropped. R1 (accepted): signed-in users can
   then read their OWN raw facts (reverses 071's posture). Tested locally against a schema-only dump of
   Moosii (`docs/drafts/rls-078/`). Surfaces to confirm: the app (moosii-rn) reads tracks with the
   user's session; the CMS inspector after applying.
+- **079** — **DRAFT (pending apply)**: `UNIQUE NULLS DISTINCT (email)` on `public."user"`
+  (`user_email_key`). Moves the duplicate-account guard into the database: after 078 the app's
+  client-side lookup of another user's row by email (moosii-rn `verify.tsx:78-82`) sees nothing.
+  Case-sensitive; NULL emails stay allowed. The body refuses to add the constraint while non-NULL
+  duplicates exist. Pre-check 2026-09-14: 0 duplicate groups on both projects (financial 0 users,
+  Moosii 5), 0 case-insensitive duplicates. ⚠ App effect: the duplicate-auth-account path now fails its
+  insert with 23505 — flag for the moosii-rn seat.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

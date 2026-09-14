@@ -155,6 +155,12 @@ through `fact_track_rules` so "why does this user have that track" is answerable
 reading the SQL — the same instinct behind `suppressed_by` on `/questionnaire-status`.
 A user with no facts returns `200` with three empty arrays, never a 404.
 
+**Direct client reads — decision R1, migration 078.** Separately from this endpoint, a signed-in
+user can SELECT their OWN rows from `user_facts` / `user_facts_latest` through PostgREST, an admin
+can read all rows, and anon reads none — RLS decides (`user_facts_select_own_or_admin`). This
+replaces 071's "no client reads facts" posture. `GET /facts/:user_id` remains the CMS inspector's
+read; the app should not build on the direct read in v1.
+
 ### 8c-domain. Domain gating — a new decision
 
 Migrations 069–074 and 076 apply to **both** Supabase projects (075, the demo seeds, is financial-only), so the schema stays

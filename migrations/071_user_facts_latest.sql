@@ -16,6 +16,10 @@
 -- thing between an anon/authenticated client and every user's facts, and a direct SELECT by
 -- either is a permission error (tested).
 --
+-- ⚠ SUPERSEDED 2026-09-14 by migration 078 (decision R1): user_facts gained an own-or-admin
+-- policy, so this view is now security_invoker with SELECT granted to clients, and RLS on
+-- user_facts decides the rows. The note below is why it was NOT invoker while no policy existed.
+--
 -- ⚠ NOT security_invoker — that was the first draft, REJECTED after a local test (PG 17,
 -- 2026-09-12). user_active_tracks (074) is itself a plain view, so its other arms read their
 -- tables with the VIEW OWNER's rights. A security_invoker view nested inside it instead

@@ -76,26 +76,27 @@ nothing breaks, and every anon/authenticated client is shut out.
 | Object | Posture | Note |
 |---|---|---|
 | `fact_keys`, `fact_values` | RLS on, no policy | CMS reads/writes through backend routes. If the CMS ever writes these Supabase-direct (the `screen_help` pattern) it needs an admin policy — a no-policy enable would deny the CMS itself. |
-| `user_facts` | RLS on, no policy | Per-user, financial-adjacent. **The app never reads facts directly in v1**; admin reads go through `GET /facts/:user_id`. |
-| `user_facts_latest` | **Plain view** + REVOKE ALL from anon/authenticated, GRANT SELECT to service_role | The REVOKE is what stops a client reading every user's facts; a direct SELECT is a permission error (tested). `security_invoker` was the first draft and was **rejected after a local test**, see below. |
+| `user_facts` | RLS on + `user_facts_select_own_or_admin` (078) | Per-user, financial-adjacent. **Decision R1, accepted 2026-09-14 (migration 078):** a signed-in user may read their OWN facts, an admin all facts, anon none. This reverses the original v1 posture that no client reads facts directly. The CMS inspector still reads through `GET /facts/:user_id`. |
+| `user_facts_latest` | `security_invoker` + SELECT to anon/authenticated (078) | RLS on `user_facts` decides the rows. Until 078 it was a plain view with the SELECT revoked from clients (071) — correct only while `user_facts` had no policy; see below. |
 | `fact_track_rules`, `fact_entry_map` | RLS on, no policy | CMS-authored config, backend-mediated. |
 | `user_external_ids` (optional) | RLS on, no policy | Identity mapping, backend-only. |
 
-**Why not `security_invoker` — measured, not theorised** (local PostgreSQL 17, §5).
+**Why 071 was not `security_invoker` — historical, superseded by 078** (local PostgreSQL 17, §5).
 `user_active_tracks` is a plain view, so its arms read their tables with the view OWNER's
 rights. With `user_facts_latest` drafted as a `security_invoker` view nested inside it,
 `user_facts`' RLS was applied as the CALLER instead. An `authenticated` reader of
 `user_active_tracks` then got **zero** fact-granted tracks, silently, while service_role got
 them all: the twins disagreed by role, with no error. As a plain view, the authenticated reader
 sees the fact track exactly as it sees every other arm's, and a direct
-`SELECT FROM user_facts_latest` is still refused. Do not "harden" it back.
+`SELECT FROM user_facts_latest` is still refused. That held only while `user_facts` had no policy; 078 added one and switched the view to invoker.
 
 **What this means for clients — resolved by a helper (D7, 2026-09-14).**
 `user_active_tracks_for_user()` is SECURITY INVOKER, so reading `user_facts_latest` inside it would
 have made every anon/authenticated **call of the function** fail — and Moosii's
 `pg_stat_statements` shows `authenticated` calling it. 074 therefore reads facts through
 `user_fact_track_ids(uuid)`, a SECURITY DEFINER helper that returns track ids only. Callers keep
-exactly today's access; raw facts stay unreadable (tested locally).
+exactly today's access; raw facts stay unreadable (tested locally). **Superseded by 078 (R1):** the
+helper is dropped, and both twins read facts under the caller's RLS.
 
 **Add all of these to `docs/rls-sweep.md` when applied** — that file is the running list and
 the standing rule is to add a table when its migration lands.
