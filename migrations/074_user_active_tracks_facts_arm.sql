@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 074: fact arm on user_active_tracks_for_user + its VIEW TWIN (NOT APPLIED)
+-- MIGRATION 074: fact arm on user_active_tracks_for_user + its VIEW TWIN — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14
 -- ============================================================================
 -- RATIONALE: this is the ONE line of code that makes facts do anything. Track assignment
 -- is DERIVED, and every source (defaults, demographic rules, questionnaire routing,

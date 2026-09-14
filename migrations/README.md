@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 073 · Moosii 073** (main) + **0008**
-(prompt track). Both projects share 008..073.
+(Current APPLIED high-water, per project from 069: **financial 076 · Moosii 076** (main) + **0008**
+(prompt track). Both projects share 008..074 and 076; **075 is financial-only** (decision D6).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -196,7 +196,7 @@ Main track:
   APPLIED moosii (2026-09-14).** First batch under the Claude-applies process. Applied with psql in
   order, on each project; per file PRE-CHECK → migration → VERIFICATION (rolled back), all clean
   on both (financial PG 17.6, Moosii PG 15.8); post-state 0 rows in every new table on both.
-  Nothing reads these yet — 074 (the resolution arm) is still a draft.
+  074 (the resolution arm) followed the same day; see the 076 / 074 / 075 entry below.
   - **069** — `fact_keys` + `fact_values`: closed vocabulary; the "no amounts" CHECKs. Verified:
     RLS on; `1200`, `$40`, `0.82`, `Low` rejected.
   - **070** — `user_facts`: append-only observation log; FK to the vocabulary `ON UPDATE RESTRICT ON
@@ -210,6 +210,31 @@ Main track:
   - **072** — `fact_track_rules`: (fact_key, value) → track, `ON DELETE RESTRICT` on the track.
   - **073** — `fact_entry_map`: (fact_key, value) → exactly one lesson or segment; nothing reads it
     in v1.
+- **076 → 074 → 075 — facts v1 second batch, APPLIED 2026-09-14.** Applied in that order (076
+  depends only on 070; 074 is independent of it). Same process: identity guard, then per file
+  PRE-CHECK → migration → VERIFICATION (rolled back), all clean.
+  - **076** — `user_facts.user_id` → `auth.users(id) ON DELETE CASCADE` (**decision D1, option
+    (b)**). **APPLIED financial · APPLIED moosii.** Pre-check: 0 orphan rows on both. Verified: FK
+    present with cascade; a fact for a user with no auth account is refused. (The cascade itself is
+    proven in the local harness, not live.) Took the number 076 — the optional partner-id mapping
+    draft moved to **077**, and the proposed RLS fix to **078**.
+  - **074** — the fact arm on `user_active_tracks_for_user` + its view twin, the SECURITY DEFINER
+    helper `user_fact_track_ids(uuid)` (track ids only; EXECUTE anon/authenticated/service_role,
+    mirroring the function), and `user_active_tracks_with_reason` replaced with its live text plus a
+    `fact_match` reason. **APPLIED financial · APPLIED moosii.** Pre-check on both: function, view
+    and with_reason md5 matched the texts 074 was built from. Verified on both: function reads the
+    helper, view has the arm, with_reason has `fact_match`, helper SECURITY DEFINER with pinned
+    search_path, `user_facts_latest` still closed to clients, twins agree (Moosii 5 users, 0
+    mismatches). **No-op proof:** Moosii `user_active_tracks` 50 rows and `with_reason` 50 rows,
+    byte-identical before/after (financial: 0/0). **Arm proof on Moosii** (a real user + track,
+    rolled back): the fact grants the track in function and view, with_reason says `fact_match`, an
+    `authenticated` CALL sees it through the helper, and clearing removes it. Financial: arm proof
+    skipped — no users or tracks exist there yet. Post-state on Moosii: every facts table 0 rows.
+    ⚠ Second surface: open the CMS inspector (`with_reason`) once to confirm it still renders.
+  - **075** — demo vocabulary seeds. **APPLIED financial only (decision D6); never for Moosii**
+    (the driver refuses it there). Verified: 6 keys, 13 values, 0 rules, 0 entry-map rows — the 074
+    arm stays a no-op until rules are authored.
+  Types regenerated from Moosii after the batch (adds `user_fact_track_ids`).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

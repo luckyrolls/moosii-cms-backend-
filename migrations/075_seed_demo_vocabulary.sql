@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 075: seed the demo fact vocabulary (NOT APPLIED) — DATA ONLY
+-- MIGRATION 075: seed the demo fact vocabulary — DATA ONLY — APPLIED financial 2026-09-14 · NOT FOR MOOSII (D6)
 -- ============================================================================
 -- RATIONALE: separate file from the DDL (069–074) because it is DATA, re-runnable, and
 -- editable without touching schema. Seeds the six demo keys and their legal values only

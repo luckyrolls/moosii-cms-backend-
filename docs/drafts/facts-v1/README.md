@@ -1,4 +1,4 @@
-# Facts v1 — DRAFT migrations, seeds and contract (nothing applied)
+# Facts v1 — migrations, seeds and contract (069–076 APPLIED 2026-09-14; 077 optional draft; intake not built)
 
 Slice 5 of the second-domain work. Proposal only: **no code, no applies, no pushes.**
 Everything here is a draft for Mark to review and run via the Supabase SQL editor.

@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 076: user_facts.user_id -> auth.users(id) ON DELETE CASCADE — DRAFT (pending apply)
+-- MIGRATION 076: user_facts.user_id -> auth.users(id) ON DELETE CASCADE — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14
 -- ============================================================================
 -- DECISION D1, made by Mark 2026-09-14: option (b). 070 shipped with NO foreign key on
 -- user_id (option (a), the draft default, because the decision was still open). This adds it.
