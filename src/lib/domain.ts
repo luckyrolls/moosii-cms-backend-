@@ -42,9 +42,7 @@ export const DOMAIN: Domain = raw;
 // log and continue — refusing to boot would take the service down for a migration that has
 // not been run yet. Same version-skew reasoning as src/lib/lessonCreateResult.ts.
 export async function assertDomainMatchesDatabase(): Promise<void> {
-  // app_settings is not in the generated types until a regen after 064.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("app_settings")
     .select("value")
     .eq("key", "domain")

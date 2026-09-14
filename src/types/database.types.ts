@@ -289,6 +289,24 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       articles: {
         Row: {
           author_name: string | null
@@ -543,6 +561,13 @@ export type Database = {
             foreignKeyName: "completed_items_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "completed_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -779,6 +804,13 @@ export type Database = {
             foreignKeyName: "content_findings_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "content_findings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -926,6 +958,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_images_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
           },
           {
             foreignKeyName: "content_images_lesson_id_fkey"
@@ -1251,6 +1290,222 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      fact_entry_map: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          fact_key: string
+          id: string
+          lesson_id: string | null
+          segment_id: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          fact_key: string
+          id?: string
+          lesson_id?: string | null
+          segment_id?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          fact_key?: string
+          id?: string
+          lesson_id?: string | null
+          segment_id?: string | null
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fact_entry_map_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_lesson_id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_segment_counts_with_track"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_with_track_name"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_questions"
+            referencedColumns: ["parent_segment_id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "user_segment_progress"
+            referencedColumns: ["segment_id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "v_segment_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fact_entry_map_value_fkey"
+            columns: ["fact_key", "value"]
+            isOneToOne: true
+            referencedRelation: "fact_values"
+            referencedColumns: ["fact_key", "value"]
+          },
+        ]
+      }
+      fact_keys: {
+        Row: {
+          created_at: string
+          description: string | null
+          fact_key: string
+          kind: string
+          label: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          fact_key: string
+          kind: string
+          label: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          fact_key?: string
+          kind?: string
+          label?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      fact_track_rules: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          fact_key: string
+          id: string
+          track_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          fact_key: string
+          id?: string
+          track_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          fact_key?: string
+          id?: string
+          track_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fact_track_rules_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fact_track_rules_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+          {
+            foreignKeyName: "fact_track_rules_value_fkey"
+            columns: ["fact_key", "value"]
+            isOneToOne: false
+            referencedRelation: "fact_values"
+            referencedColumns: ["fact_key", "value"]
+          },
+        ]
+      }
+      fact_values: {
+        Row: {
+          created_at: string
+          fact_key: string
+          label: string
+          sort_order: number
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          fact_key: string
+          label: string
+          sort_order?: number
+          value: string
+        }
+        Update: {
+          created_at?: string
+          fact_key?: string
+          label?: string
+          sort_order?: number
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fact_values_fact_key_fkey"
+            columns: ["fact_key"]
+            isOneToOne: false
+            referencedRelation: "fact_keys"
+            referencedColumns: ["fact_key"]
+          },
+        ]
       }
       faqs: {
         Row: {
@@ -1746,6 +2001,13 @@ export type Database = {
             foreignKeyName: "lesson_source_documents_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_source_documents_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -1813,6 +2075,13 @@ export type Database = {
             foreignKeyName: "lesson_tags_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -1853,7 +2122,7 @@ export type Database = {
           image_url: string | null
           internal_name: string | null
           is_published: boolean | null
-          lesson_name: string | null
+          lesson_name: string
           max_child_age: number | null
           max_questionnaire_score_range: number | null
           min_child_age: number | null
@@ -1885,7 +2154,7 @@ export type Database = {
           image_url?: string | null
           internal_name?: string | null
           is_published?: boolean | null
-          lesson_name?: string | null
+          lesson_name?: string
           max_child_age?: number | null
           max_questionnaire_score_range?: number | null
           min_child_age?: number | null
@@ -1917,7 +2186,7 @@ export type Database = {
           image_url?: string | null
           internal_name?: string | null
           is_published?: boolean | null
-          lesson_name?: string | null
+          lesson_name?: string
           max_child_age?: number | null
           max_questionnaire_score_range?: number | null
           min_child_age?: number | null
@@ -3034,6 +3303,13 @@ export type Database = {
             foreignKeyName: "questions_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -3240,6 +3516,13 @@ export type Database = {
             foreignKeyName: "quiz_response_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "quiz_response_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -3312,6 +3595,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_user_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
           },
           {
             foreignKeyName: "quiz_user_progress_lesson_id_fkey"
@@ -3655,6 +3945,13 @@ export type Database = {
             foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -3749,6 +4046,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "starred_items_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
           },
           {
             foreignKeyName: "starred_items_lesson_id_fkey"
@@ -4526,6 +4830,47 @@ export type Database = {
           },
         ]
       }
+      user_facts: {
+        Row: {
+          created_at: string
+          fact_key: string
+          id: string
+          observed_at: string
+          source: string
+          source_ref: string | null
+          user_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          fact_key: string
+          id?: string
+          observed_at?: string
+          source: string
+          source_ref?: string | null
+          user_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          fact_key?: string
+          id?: string
+          observed_at?: string
+          source?: string
+          source_ref?: string | null
+          user_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_facts_value_fkey"
+            columns: ["fact_key", "value"]
+            isOneToOne: false
+            referencedRelation: "fact_values"
+            referencedColumns: ["fact_key", "value"]
+          },
+        ]
+      }
       user_lesson_progress: {
         Row: {
           created_at: string
@@ -4572,6 +4917,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
           },
           {
             foreignKeyName: "user_lesson_progress_lesson_id_fkey"
@@ -5698,6 +6050,13 @@ export type Database = {
             foreignKeyName: "questions_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "questions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -5757,6 +6116,63 @@ export type Database = {
           track_id: string | null
           track_name: string | null
           with_quiz: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "v_lesson_details"
+            referencedColumns: ["track_id"]
+          },
+        ]
+      }
+      lessons_review_status: {
+        Row: {
+          archived_at: string | null
+          cards_awaiting_clinical: number | null
+          cards_awaiting_editorial: number | null
+          cards_total: number | null
+          content_last_edited_at: string | null
+          content_state: string | null
+          is_published: boolean | null
+          lesson_id: string | null
+          lesson_name: string | null
+          quiz_questions_unapproved: number | null
+          track_id: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          cards_awaiting_clinical?: never
+          cards_awaiting_editorial?: never
+          cards_total?: never
+          content_last_edited_at?: never
+          content_state?: never
+          is_published?: boolean | null
+          lesson_id?: string | null
+          lesson_name?: string | null
+          quiz_questions_unapproved?: never
+          track_id?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          cards_awaiting_clinical?: never
+          cards_awaiting_editorial?: never
+          cards_total?: never
+          content_last_edited_at?: never
+          content_state?: never
+          is_published?: boolean | null
+          lesson_id?: string | null
+          lesson_name?: string | null
+          quiz_questions_unapproved?: never
+          track_id?: string | null
         }
         Relationships: [
           {
@@ -6055,6 +6471,13 @@ export type Database = {
             foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -6125,6 +6548,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lessons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
           },
           {
             foreignKeyName: "segments_lesson_id_fkey"
@@ -6243,6 +6673,26 @@ export type Database = {
           weight: number | null
         }
         Relationships: []
+      }
+      user_facts_latest: {
+        Row: {
+          fact_key: string | null
+          observation_id: string | null
+          observed_at: string | null
+          source: string | null
+          source_ref: string | null
+          user_id: string | null
+          value: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_facts_value_fkey"
+            columns: ["fact_key", "value"]
+            isOneToOne: false
+            referencedRelation: "fact_values"
+            referencedColumns: ["fact_key", "value"]
+          },
+        ]
       }
       user_feed_posts: {
         Row: {
@@ -6397,6 +6847,13 @@ export type Database = {
             foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -6510,6 +6967,13 @@ export type Database = {
             foreignKeyName: "lesson_tags_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "lesson_tags_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -6572,6 +7036,13 @@ export type Database = {
             foreignKeyName: "segments_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false
+            referencedRelation: "lessons_review_status"
+            referencedColumns: ["lesson_id"]
+          },
+          {
+            foreignKeyName: "segments_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
             referencedRelation: "lessons_with_track_name"
             referencedColumns: ["id"]
           },
@@ -6617,6 +7088,7 @@ export type Database = {
       create_lessons_with_segments: {
         Args: { p_lessons: Json }
         Returns: {
+          created: boolean
           description: string
           id: string
           lesson_name: string
@@ -6624,6 +7096,10 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      lesson_with_quiz_derive: {
+        Args: { p_lesson_id: string }
+        Returns: boolean
+      }
       rebuild_user_mlp: {
         Args: { p_items: Json; p_user_id: string }
         Returns: number
@@ -6644,6 +7120,15 @@ export type Database = {
           p_from_state: string
           p_new_state: string
           p_seg_id: string
+        }
+        Returns: Json
+      }
+      set_lesson_published: {
+        Args: {
+          p_actor_id: string
+          p_actor_role: string
+          p_lesson_id: string
+          p_published: boolean
         }
         Returns: Json
       }

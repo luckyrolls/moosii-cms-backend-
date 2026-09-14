@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 071: user_facts_latest — latest-wins resolution — APPLIED financial 2026-09-14 · PENDING moosii
+-- MIGRATION 071: user_facts_latest — latest-wins resolution — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14
 -- ============================================================================
 -- RATIONALE: "the user's current facts" is DERIVED from the append-only log, never
 -- stored. Same discipline as user_active_tracks (derived) and milestone suppression

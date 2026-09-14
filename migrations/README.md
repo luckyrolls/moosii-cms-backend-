@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 073 · Moosii 068** (main) + **0008**
-(prompt track). Both projects share 008..068.
+(Current APPLIED high-water, per project from 069: **financial 073 · Moosii 073** (main) + **0008**
+(prompt track). Both projects share 008..073.
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -193,9 +193,10 @@ Main track:
   it. The route's pre-068 fallback is now dead code and can be removed in a later cleanup.
 - **069–073 — facts v1 schema** (`docs/drafts/facts-v1/README.md`; contract draft
   `docs/drafts/facts-v1/contract-facts-intake.draft.md`). **APPLIED financial (2026-09-14) ·
-  PENDING moosii.** First batch under the Claude-applies process. Applied with psql in order; per
-  file PRE-CHECK → migration → VERIFICATION (rolled back), all clean; post-state 0 rows in every new
-  table. Nothing reads these yet — 074 (the resolution arm) is still a draft.
+  APPLIED moosii (2026-09-14).** First batch under the Claude-applies process. Applied with psql in
+  order, on each project; per file PRE-CHECK → migration → VERIFICATION (rolled back), all clean
+  on both (financial PG 17.6, Moosii PG 15.8); post-state 0 rows in every new table on both.
+  Nothing reads these yet — 074 (the resolution arm) is still a draft.
   - **069** — `fact_keys` + `fact_values`: closed vocabulary; the "no amounts" CHECKs. Verified:
     RLS on; `1200`, `$40`, `0.82`, `Low` rejected.
   - **070** — `user_facts`: append-only observation log; FK to the vocabulary `ON UPDATE RESTRICT ON

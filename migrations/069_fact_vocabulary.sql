@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 069: fact vocabulary — fact_keys + fact_values — APPLIED financial 2026-09-14 · PENDING moosii
+-- MIGRATION 069: fact vocabulary — fact_keys + fact_values — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14
 -- ============================================================================
 -- RATIONALE: a fact's legal (key, value) pairs are a CLOSED, CMS-authored vocabulary,
 -- so "is this a real fact?" is answered by a foreign key rather than by app code.

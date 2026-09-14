@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 070: user_facts — append-only observation history — APPLIED financial 2026-09-14 · PENDING moosii
+-- MIGRATION 070: user_facts — append-only observation history — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14
 -- ============================================================================
 -- RATIONALE: financial facts are NOT monotonic. "has an emergency buffer" can become
 -- false; a subscription lapses. The existing child-fact model (child_milestones) is
