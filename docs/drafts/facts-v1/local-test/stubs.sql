@@ -28,16 +28,20 @@ CREATE TABLE lessons  (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 CREATE TABLE segments (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                        lesson_id uuid REFERENCES lessons(id));
 
-CREATE TABLE demographic_questions (id uuid PRIMARY KEY, is_active boolean);
-CREATE TABLE demographic_answers   (id uuid PRIMARY KEY, is_active boolean);
+CREATE TABLE demographic_questions (id uuid PRIMARY KEY, is_active boolean,
+                                    prompt_text text, sort_order integer);
+CREATE TABLE demographic_answers   (id uuid PRIMARY KEY, is_active boolean, display_text text);
 CREATE TABLE demographic_track_rules (answer_id uuid, track_id uuid REFERENCES tracks(id) ON DELETE RESTRICT);
 CREATE TABLE user_demographic_responses (user_id uuid, question_id uuid, answer_id uuid);
 CREATE TABLE user_mlp_data (user_id uuid);   -- a view in production; a table is enough here
 CREATE TABLE new_user_tracks (track_id uuid REFERENCES tracks(id) ON DELETE RESTRICT);
+CREATE TABLE questionnaire (id uuid PRIMARY KEY, questionnaire_name text);
 CREATE TABLE questionnaire_responses_tracks (user_id uuid, track_id uuid, tag_id uuid,
-                                             add boolean, action_at timestamptz);
+                                             add boolean, action_at timestamptz,
+                                             questionnaire_id uuid, response_id uuid, score numeric);
 CREATE TABLE track_tag_map (tag_id uuid, track_id uuid);
-CREATE TABLE user_mlp_mods (user_id uuid, track_id uuid, action text,
+CREATE TABLE user_mlp_mods (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                            user_id uuid, track_id uuid, action text,
                             created_at timestamptz NOT NULL DEFAULT now());
 
 -- Fixtures -------------------------------------------------------------------

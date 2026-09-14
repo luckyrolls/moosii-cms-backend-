@@ -207,12 +207,22 @@ Prompt track:
   migrations — someone must re-apply the hand-run ones, **in order**, via the SQL
   editor.
 
-## Applying a new migration (current process)
-1. Add a numbered `NNN_description.sql` file here (next number in sequence).
-2. Run it in the Supabase SQL editor.
-3. If it changed the schema, regenerate `src/types/database.types.ts` (PostgREST
-   introspection) and drop any temporary `(supabase as any)` bridge.
-4. Bump the "reconciliation list" high-water number in the file header.
+## Applying a new migration (current process, from 2026-09-14)
+1. Add a numbered `NNN_description.sql` file here (next number in sequence) as **DRAFT**, with a
+   PRE-CHECK block and a VERIFICATION block.
+2. **Mark gives a go for a batch** (one or more files).
+3. **Claude applies the batch to FINANCIAL** with `psql` (`FINANCIAL_DB_URL` in `.env`), per file:
+   PRE-CHECK → the migration (`-v ON_ERROR_STOP=1`) → VERIFICATION. Any failure stops the batch
+   there. Claude first confirms the connection reaches the right project (the `postgres.<ref>`
+   user and `pg_control_system().system_identifier`), then reports the per-file results.
+4. **Mark gives a second go; Claude repeats the batch on MOOSII** (`MOOSII_DB_URL`) and reports.
+5. Each project's apply is recorded in its reconciliation entry
+   (`APPLIED financial (date) · APPLIED moosii (date)`) and the high-water, in its own commit.
+6. After the MOOSII apply, if the schema changed, regenerate `src/types/database.types.ts` — the
+   types come from Moosii (`SUPABASE_URL`) — and drop any temporary `(supabase as any)` bridge.
+
+Mark may still apply a file by hand in the SQL editor; the entry then flips only on his
+confirmation that he ran it.
 
 Migrations are written idempotent where practical (`IF NOT EXISTS`,
 `ON CONFLICT DO NOTHING`, `CREATE OR REPLACE`) so a re-run is safe.
@@ -230,9 +240,9 @@ is not hypothetical: 062 applied cleanly and still broke `create_lessons_with_se
 Moosii for every caller until 067 fixed it — exactly the class of failure a first apply on an
 empty project would have caught.
 
-**The apply gate now has two confirmations per migration.** A reconciliation entry from 069 on
-records both, e.g. `APPLIED financial (date) · APPLIED moosii (date)`, and a file is only
-"applied" once BOTH are confirmed. An entry reading `APPLIED financial · PENDING moosii` is a
+**The apply gate has two go's per batch** — one before financial, one before Moosii (process
+above). A reconciliation entry from 069 on records both, e.g.
+`APPLIED financial (date) · APPLIED moosii (date)`, and a file is only "applied" once BOTH are done. An entry reading `APPLIED financial · PENDING moosii` is a
 normal intermediate state, not an error.
 
 **Migrations ≤ 068 were applied to Moosii; financial inherited them from a schema dump**

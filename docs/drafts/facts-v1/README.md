@@ -11,7 +11,8 @@ Note this deviates from the standing convention in `CLAUDE.md` (Doc maintenance)
 migration file is normally committed **into `migrations/` as DRAFT (pending apply)** and
 its reconciliation entry flips on Mark's confirmation. On apply these files should **move
 to `migrations/` proper** and get their README entries + high-water bump there. Flagging so
-the deviation is deliberate rather than a precedent.
+the deviation is deliberate rather than a precedent. **069–073 have moved to `migrations/`**
+(2026-09-14) as the first apply batch; 074–076 stay here until their own go.
 
 ---
 
@@ -87,11 +88,12 @@ them all: the twins disagreed by role, with no error. As a plain view, the authe
 sees the fact track exactly as it sees every other arm's, and a direct
 `SELECT FROM user_facts_latest` is still refused. Do not "harden" it back.
 
-**What does change for clients.** `user_active_tracks_for_user()` is SECURITY INVOKER, so an
-anon/authenticated **call of the function** fails after 074 with `permission denied for view
-user_facts_latest` — on Moosii too, since 074 applies to both. Reading the view is unaffected.
-The backend calls the function as service_role only; 074's pre-check 5 asks Postgres whether
-anything else does (D7).
+**What this means for clients — resolved by a helper (D7, 2026-09-14).**
+`user_active_tracks_for_user()` is SECURITY INVOKER, so reading `user_facts_latest` inside it would
+have made every anon/authenticated **call of the function** fail — and Moosii's
+`pg_stat_statements` shows `authenticated` calling it. 074 therefore reads facts through
+`user_fact_track_ids(uuid)`, a SECURITY DEFINER helper that returns track ids only. Callers keep
+exactly today's access; raw facts stay unreadable (tested locally).
 
 **Add all of these to `docs/rls-sweep.md` when applied** — that file is the running list and
 the standing rule is to add a table when its migration lands.
@@ -146,18 +148,16 @@ apply-both rule exists to keep SCHEMAS identical, which 069–074 already do. **
 financial only**, so a Moosii vocabulary screen never lists six financial facts. Both is
 harmless if you prefer symmetry.
 
-**D7 — two consumers 074 affects beyond its twins.**
-- **Function callers.** After 074, an anon/authenticated *call* of
-  `user_active_tracks_for_user()` fails on both projects (§2). The backend is service_role.
-  Whether the app calls it with a user token is a question for the moosii-rn seat, and
-  074's pre-check 5 answers it from `pg_stat_statements`. If something does, the options are to
-  move that caller to the view, or to keep the function callable by making the fact arm read
-  through a narrow SECURITY DEFINER helper. Decide once the answer is known.
-- **`user_active_tracks_with_reason`.** A third derivation of active tracks that exists live
-  but in no repo migration. It matches `user_active_tracks` exactly on Moosii today, but only
-  the `new_user_default` arm is exercised. If it re-derives the arms, it will be missing every
-  fact-granted track after 074 and needs a `fact` reason arm in the same transaction. 074's
-  pre-check 6 dumps its definition, and that is the input for this decision.
+**D7 — DECIDED 2026-09-14.** Answered from the live databases, then decided by Mark:
+- **Function callers** — Moosii: service_role 148, authenticated 9, postgres 1. → 074 reads facts
+  through the SECURITY DEFINER helper `user_fact_track_ids(uuid)` (track ids only), so every caller
+  keeps working.
+- **`user_active_tracks_with_reason`** — it READS `user_active_tracks` (so fact tracks would appear,
+  labelled `unknown`). → 074 replaces it with its live text plus a `fact_match` reason, in the same
+  transaction. It is the CMS inspector's read: verify the inspector after the apply.
+- **Follow-up (077, to propose after 074):** `user_active_tracks` + its dependents move to
+  `security_invoker` with RLS on the underlying tables (user reads own, admin/service all, anon
+  none). The live survey found anon reading `user_active_tracks` by `user_id` ~2,600 times.
 
 **D8 — require `observed_at` for platform facts?** Without it, a retried call writes duplicate
 history rows (tested; contract "Redelivery and conflicts"). Recommended: required when

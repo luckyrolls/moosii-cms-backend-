@@ -94,6 +94,13 @@ DO $$ BEGIN
   IF pg_temp.twin_diff() <> 0 THEN RAISE EXCEPTION 'FAIL 074 twins differ with zero rules'; END IF;
   RAISE NOTICE 'PASS 074 no-op: zero rules -> resolution identical to the 045 snapshot; twins agree';
 END $$;
+DO $$ BEGIN
+  IF (SELECT count(*) FROM (SELECT * FROM user_active_tracks_with_reason EXCEPT SELECT * FROM _snap_reason) d) <> 0
+     OR (SELECT count(*) FROM (SELECT * FROM _snap_reason EXCEPT SELECT * FROM user_active_tracks_with_reason) d) <> 0 THEN
+    RAISE EXCEPTION 'FAIL 074 with_reason changed with zero rules';
+  END IF;
+  RAISE NOTICE 'PASS 074 with_reason no-op: zero rules -> row-for-row identical to the live-definition snapshot';
+END $$;
 
 -- sole source: rule saving_for_home=true -> Fact track; u2 gains it, then loses it on clearing
 INSERT INTO fact_track_rules (fact_key, value, track_id)
@@ -104,6 +111,14 @@ DO $$ BEGIN
   IF pg_temp.has_track('00000000-0000-0000-0000-0000000000a2', '10000000-0000-0000-0000-000000000002') <> 'true/true'
      OR pg_temp.twin_diff() <> 0 THEN RAISE EXCEPTION 'FAIL 074 grant'; END IF;
   RAISE NOTICE 'PASS 074 grant: matching fact adds the track in BOTH function and view';
+END $$;
+DO $$ DECLARE r record; BEGIN
+  SELECT active_reason, reason_detail INTO r FROM user_active_tracks_with_reason
+   WHERE user_id = '00000000-0000-0000-0000-0000000000a2' AND track_id = '10000000-0000-0000-0000-000000000002';
+  IF r.active_reason IS DISTINCT FROM 'fact_match' OR r.reason_detail IS DISTINCT FROM 'Fact: saving_for_home = true' THEN
+    RAISE EXCEPTION 'FAIL 074 with_reason label: % / %', r.active_reason, r.reason_detail;
+  END IF;
+  RAISE NOTICE 'PASS 074 with_reason labels the fact-granted track fact_match / "Fact: saving_for_home = true"';
 END $$;
 INSERT INTO user_facts (user_id, fact_key, value, source, observed_at)
 VALUES ('00000000-0000-0000-0000-0000000000a2', 'saving_for_home', 'false', 'platform_api', '2026-02-02');
@@ -215,10 +230,34 @@ EXCEPTION WHEN insufficient_privilege THEN
   RAISE NOTICE 'PROBE authenticated SELECT user_active_tracks (view): DENIED (%)', SQLERRM;
 END $$;
 DO $$ DECLARE n int; BEGIN
-  SELECT count(*) INTO n FROM user_active_tracks_for_user('00000000-0000-0000-0000-0000000000a3');
-  RAISE NOTICE 'PROBE authenticated user_active_tracks_for_user(): OK, % rows', n;
+  SELECT count(*) INTO n FROM user_active_tracks_with_reason
+   WHERE user_id = '00000000-0000-0000-0000-0000000000a3' AND active_reason = 'fact_match';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL 074 with_reason fact_match hidden from authenticated (CMS inspector path)'; END IF;
+  RAISE NOTICE 'PASS 074 authenticated with_reason read (the CMS inspector path) shows fact_match';
+END $$;
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM user_active_tracks_for_user('00000000-0000-0000-0000-0000000000a3')
+   WHERE track_id = '10000000-0000-0000-0000-000000000002';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL 074 authenticated function call lost the fact track'; END IF;
+  RAISE NOTICE 'PASS 074 authenticated CALL of user_active_tracks_for_user works and includes the fact track (via helper)';
+END $$;
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM user_fact_track_ids('00000000-0000-0000-0000-0000000000a3');
+  RAISE NOTICE 'PROBE authenticated user_fact_track_ids(): % track id(s); the helper returns ids only', n;
+END $$;
+RESET ROLE;
+SET ROLE anon;
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM user_active_tracks_for_user('00000000-0000-0000-0000-0000000000a3')
+   WHERE track_id = '10000000-0000-0000-0000-000000000002';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL 074 anon function call changed'; END IF;
+  RAISE NOTICE 'PASS 074 anon CALL behaves as today (still works — 077 is where anon loses it)';
+END $$;
+DO $$ BEGIN
+  PERFORM 1 FROM user_facts_latest LIMIT 1;
+  RAISE EXCEPTION 'FAIL anon can read user_facts_latest';
 EXCEPTION WHEN insufficient_privilege THEN
-  RAISE NOTICE 'PROBE authenticated user_active_tracks_for_user(): DENIED (%)', SQLERRM;
+  RAISE NOTICE 'PASS anon SELECT user_facts_latest refused';
 END $$;
 RESET ROLE;
 SET ROLE service_role;
