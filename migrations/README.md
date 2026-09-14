@@ -235,6 +235,19 @@ Main track:
     (the driver refuses it there). Verified: 6 keys, 13 values, 0 rules, 0 entry-map rows — the 074
     arm stays a no-op until rules are authored.
   Types regenerated from Moosii after the batch (adds `user_fact_track_ids`).
+- **078** — **DRAFT (pending apply; needs decision R1)**: the active-tracks views read with the
+  CALLER's rights under per-user RLS. Closes the hole where `user_active_tracks`,
+  `user_active_tracks_with_reason`, `user_mlp_data` and `questionnaire_responses_tracks` are plain
+  postgres-owned views (postgres has BYPASSRLS), so the anon key reads any user's tracks and every
+  user's `user_mlp_data` (profile + child ages). In one transaction: `is_admin()`/`is_super_admin()`
+  become SECURITY DEFINER (required — 213 policies on 64 tables call them, and dropping `user`'s blanket
+  read policy would otherwise recurse); drop the blanket `USING (true)` read policies on `children`,
+  `completed_items`, `user`; widen the own-row SELECT policies to `is_admin()`; authenticated read on
+  `new_user_tracks` + `fact_track_rules`; own-or-admin on `user_facts`; `security_invoker` on all five
+  views; the function reads facts directly again and 074's helper is dropped. ⚠ R1: signed-in users can
+  then read their OWN raw facts (reverses 071's posture). Tested locally against a schema-only dump of
+  Moosii (`docs/drafts/rls-078/`). Surfaces to confirm: the app (moosii-rn) reads tracks with the
+  user's session; the CMS inspector after applying.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
