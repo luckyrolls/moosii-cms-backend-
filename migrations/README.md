@@ -22,7 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water: **068** (main) + **0008** (prompt track).
+(Current APPLIED high-water, per project from 069: **financial 073 · Moosii 068** (main) + **0008**
+(prompt track). Both projects share 008..068.
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -190,6 +191,24 @@ Main track:
   inverts `logApproval`'s "never block the action" rule **for this action only**. Verified live:
   the null-actor guard fires, and the CMS has written real `lesson` publish/unpublish rows through
   it. The route's pre-068 fallback is now dead code and can be removed in a later cleanup.
+- **069–073 — facts v1 schema** (`docs/drafts/facts-v1/README.md`; contract draft
+  `docs/drafts/facts-v1/contract-facts-intake.draft.md`). **APPLIED financial (2026-09-14) ·
+  PENDING moosii.** First batch under the Claude-applies process. Applied with psql in order; per
+  file PRE-CHECK → migration → VERIFICATION (rolled back), all clean; post-state 0 rows in every new
+  table. Nothing reads these yet — 074 (the resolution arm) is still a draft.
+  - **069** — `fact_keys` + `fact_values`: closed vocabulary; the "no amounts" CHECKs. Verified:
+    RLS on; `1200`, `$40`, `0.82`, `Low` rejected.
+  - **070** — `user_facts`: append-only observation log; FK to the vocabulary `ON UPDATE RESTRICT ON
+    DELETE RESTRICT`. Applied as **D1 option (a): no FK on `user_id`** (pre-check re-confirmed
+    `children.parent_id` still has none); adding the `auth.users` FK later is one ALTER while the
+    table is empty. Verified: unknown pair / amount / source rejected; clearing keeps history;
+    renaming an in-use value refused.
+  - **071** — `user_facts_latest`: latest-wins, a PLAIN view (not `security_invoker`, see its
+    header); REVOKE from anon/authenticated. Verified: no SELECT for anon/authenticated, SELECT for
+    service_role; a late-arriving older observation does not win.
+  - **072** — `fact_track_rules`: (fact_key, value) → track, `ON DELETE RESTRICT` on the track.
+  - **073** — `fact_entry_map`: (fact_key, value) → exactly one lesson or segment; nothing reads it
+    in v1.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

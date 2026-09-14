@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 072: fact_track_rules — (fact_key, value) → track (NOT APPLIED)
+-- MIGRATION 072: fact_track_rules — (fact_key, value) → track — APPLIED financial 2026-09-14 · PENDING moosii
 -- ============================================================================
 -- RATIONALE: the direct analogue of demographic_track_rules (migration 008): a bare
 -- mapping table, CMS-authored, no is_active flag, no weight, no ordering. A user gets

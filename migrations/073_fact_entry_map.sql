@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 073: fact_entry_map — (fact_key, value) → ONE lesson or segment (NOT APPLIED)
+-- MIGRATION 073: fact_entry_map — (fact_key, value) → ONE lesson or segment — APPLIED financial 2026-09-14 · PENDING moosii
 -- ============================================================================
 -- RATIONALE: a track is the broad response to a fact (072); this is the NARROW one —
 -- "this exact fact should drop the user at this exact piece of content". Distinct from
