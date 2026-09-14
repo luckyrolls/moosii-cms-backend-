@@ -12,7 +12,8 @@ migration file is normally committed **into `migrations/` as DRAFT (pending appl
 its reconciliation entry flips on Mark's confirmation. On apply these files should **move
 to `migrations/` proper** and get their README entries + high-water bump there. Flagging so
 the deviation is deliberate rather than a precedent. **069–073 have moved to `migrations/`**
-(2026-09-14) as the first apply batch; 074–076 stay here until their own go.
+(2026-09-14) as the first apply batch; 074, 075 and the new 076 (D1's FK) followed as the second.
+Only the optional `077_user_external_ids` stays here.
 
 ---
 
@@ -39,7 +40,8 @@ Run in this order. Each file has its own header rationale, a **PRE-CHECK** block
 | 073 | `073_fact_entry_map.sql` | `(fact_key, value) → exactly one lesson or segment`, exactly-one enforced by `num_nonnulls(...) = 1`. **Nothing reads it in v1** — authoring config ahead of a forced-entry mechanism that does not exist. |
 | 074 | `074_user_active_tracks_facts_arm.sql` | The additive arm on `user_active_tracks_for_user` **and its view twin**, joining `user_facts_latest` to `fact_track_rules`. The one change that makes facts do anything. **Must be applied last** — it will not compile without 071 and 072. |
 | 075 | `075_seed_demo_vocabulary.sql` | Seeds the six demo keys + 13 values. Data only, separate from DDL, idempotent. No rules or entry-map rows: which track a fact grants is a content decision. |
-| — | `076_user_external_ids.OPTIONAL.sql` | **Decision required, probably do not apply.** Only needed if `POST /facts` must accept a partner id. See §3. |
+| 076 | `migrations/076_user_facts_user_id_fk.sql` | **D1 decided (b):** `user_facts.user_id` → `auth.users(id)` ON DELETE CASCADE. Needs only 070; applied BEFORE 074. |
+| — | `077_user_external_ids.OPTIONAL.sql` | **Decision required, probably do not apply.** Only needed if `POST /facts` must accept a partner id. See §3. |
 
 Independence: 072 and 073 need only 069. 070 → 071 → 074 is the chain. 075 can run any
 time after 069.
@@ -102,7 +104,7 @@ the standing rule is to add a table when its migration lands.
 
 ## 3. Decisions needed from Mark
 
-**D1 — `user_facts.user_id` FK target.** The brief said "FKs the same target
+**D1 — `user_facts.user_id` FK target. DECIDED 2026-09-14: option (b), added as migration 076.** The brief said "FKs the same target
 `children.parent_id` does". Verified: **`children.parent_id` has no FK at all** — bare uuid
 in the auth-uid space (`database.types.ts`, children `Relationships: []`). So "the same
 target" is literally "no constraint". Options, drafted as (a):
@@ -116,13 +118,13 @@ target" is literally "no constraint". Options, drafted as (a):
   for legitimate users. Not recommended.
 
 **D2 — `external_user_id`.** Nothing maps a partner id to a Supabase uid. Either drop the
-field from v1 (partner sends `user_id`; nothing to build) or apply draft 076 **and** decide
-what populates it in the signup flow. Drafted 076 so the option is concrete, but it should
+field from v1 (partner sends `user_id`; nothing to build) or apply draft 077 **and** decide
+what populates it in the signup flow. Drafted 077 so the option is concrete, but it should
 not be applied on its own — an empty mapping table plus a contract that 404s is worse than
 not having the field. **New input (2026-09-12):** the cadence decision has partner provisioning
 supply each financial user's timezone, which means the partner provisions the accounts. If that
 provisioning goes through us, the partner can be handed the Supabase uid at that moment — which
-makes **dropping `external_user_id` (076 unapplied)** the natural fit.
+makes **dropping `external_user_id` (077 unapplied)** the natural fit.
 
 **D3 — clearing semantics.** See §4. The brief states v1 behaviour as "a cleared fact stops
 adding the track but does not remove it." That is **only half true** as drafted, and the
@@ -143,7 +145,7 @@ and is a quick way to confirm the schema landed. Detail in `contract-facts-intak
 §8c-domain. Financial's `app_settings.domain` is confirmed `'financial'`, so the gate has a
 correct value to key off on both projects.
 
-**D6 — run 075 (demo vocabulary seeds) on financial ONLY?** 075 is data, not schema, and the
+**D6 — run 075 (demo vocabulary seeds) on financial ONLY? DECIDED 2026-09-14: financial only.** 075 is data, not schema, and the
 apply-both rule exists to keep SCHEMAS identical, which 069–074 already do. **Recommended:
 financial only**, so a Moosii vocabulary screen never lists six financial facts. Both is
 harmless if you prefer symmetry.
@@ -155,7 +157,7 @@ harmless if you prefer symmetry.
 - **`user_active_tracks_with_reason`** — it READS `user_active_tracks` (so fact tracks would appear,
   labelled `unknown`). → 074 replaces it with its live text plus a `fact_match` reason, in the same
   transaction. It is the CMS inspector's read: verify the inspector after the apply.
-- **Follow-up (077, to propose after 074):** `user_active_tracks` + its dependents move to
+- **Follow-up (078, to propose after 074):** `user_active_tracks` + its dependents move to
   `security_invoker` with RLS on the underlying tables (user reads own, admin/service all, anon
   none). The live survey found anon reading `user_active_tracks` by `user_id` ~2,600 times.
 
@@ -240,7 +242,7 @@ proves the SQL and the semantics, not that the live objects still match 045 — 
 | 074 clear when another arm also grants: track stays · archived target inert · admin `delete` beats a live fact | PASS |
 | 072 rule on an unknown value refused · deleting a rule-targeted track refused | PASS |
 | 073 exactly one target · one entry point per pair | PASS |
-| 076 both uniqueness directions, per-partner namespaces, shape CHECKs · D1 option (b) FK compiles and cascades | PASS |
+| 077 (optional) both uniqueness directions, per-partner namespaces, shape CHECKs · D1 option (b) FK compiles and cascades | PASS |
 
 **Defects the run found, now fixed in the drafts:**
 1. **071 `security_invoker` hid fact tracks from authenticated readers of `user_active_tracks`**,

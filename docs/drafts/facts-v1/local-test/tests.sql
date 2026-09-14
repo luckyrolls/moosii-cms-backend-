@@ -1,4 +1,4 @@
--- Exercises the facts-v1 drafts after 069-076 are applied. PASS/FAIL lines are NOTICEs;
+-- Exercises the facts-v1 drafts after 069-077 are applied. PASS/FAIL lines are NOTICEs;
 -- an assertion that does not hold RAISEs and stops the run (ON_ERROR_STOP).
 \set ON_ERROR_STOP 1
 \set QUIET 1
@@ -251,7 +251,7 @@ DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM user_active_tracks_for_user('00000000-0000-0000-0000-0000000000a3')
    WHERE track_id = '10000000-0000-0000-0000-000000000002';
   IF n <> 1 THEN RAISE EXCEPTION 'FAIL 074 anon function call changed'; END IF;
-  RAISE NOTICE 'PASS 074 anon CALL behaves as today (still works — 077 is where anon loses it)';
+  RAISE NOTICE 'PASS 074 anon CALL behaves as today (still works — 078 is where anon loses it)';
 END $$;
 DO $$ BEGIN
   PERFORM 1 FROM user_facts_latest LIMIT 1;
@@ -335,43 +335,45 @@ DO $$ BEGIN
 EXCEPTION WHEN no_data_found THEN NULL;
 END $$;
 
--- ---- D1 option (b) compiles and cascades ---------------------------------------------
+-- ---- 076: user_facts.user_id -> auth.users ON DELETE CASCADE (D1) --------------------
 DO $$ BEGIN
-  DELETE FROM user_facts WHERE user_id NOT IN (SELECT id FROM auth.users);
-  ALTER TABLE user_facts ADD CONSTRAINT user_facts_user_id_fkey
-    FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE;
+  BEGIN
+    INSERT INTO user_facts (user_id, fact_key, value, source)
+    VALUES (gen_random_uuid(), 'has_direct_deposit', 'true', 'manual');
+    RAISE EXCEPTION 'FAIL 076 a fact for a user with no auth account was accepted';
+  EXCEPTION WHEN foreign_key_violation THEN NULL; END;
   DELETE FROM auth.users WHERE id = '00000000-0000-0000-0000-0000000000a3';
   IF EXISTS (SELECT 1 FROM user_facts WHERE user_id = '00000000-0000-0000-0000-0000000000a3') THEN
-    RAISE EXCEPTION 'FAIL D1(b) cascade';
+    RAISE EXCEPTION 'FAIL 076 cascade';
   END IF;
-  RAISE NOTICE 'PASS D1 option (b) FK to auth.users compiles and cascades on user delete';
+  RAISE NOTICE 'PASS 076 FK: a fact for an unknown user is refused; deleting the auth user cascades its facts';
   RAISE EXCEPTION USING ERRCODE = 'P0002';
 EXCEPTION WHEN no_data_found THEN NULL;
 END $$;
 
--- ---- 076 --------------------------------------------------------------------------
+-- ---- 077 (optional) --------------------------------------------------------------------------
 DO $$ BEGIN
   INSERT INTO user_external_ids (partner, external_user_id, user_id)
   VALUES ('demo', 'ext-1', '00000000-0000-0000-0000-000000000001'),
          ('other', 'ext-1', gen_random_uuid());
   BEGIN
     INSERT INTO user_external_ids (partner, external_user_id, user_id) VALUES ('demo', 'ext-1', gen_random_uuid());
-    RAISE EXCEPTION 'FAIL 076 dup ext id';
+    RAISE EXCEPTION 'FAIL 077 dup ext id';
   EXCEPTION WHEN unique_violation THEN NULL; END;
   BEGIN
     INSERT INTO user_external_ids (partner, external_user_id, user_id)
     VALUES ('demo', 'ext-2', '00000000-0000-0000-0000-000000000001');
-    RAISE EXCEPTION 'FAIL 076 two ids for one user';
+    RAISE EXCEPTION 'FAIL 077 two ids for one user';
   EXCEPTION WHEN unique_violation THEN NULL; END;
   BEGIN
     INSERT INTO user_external_ids (partner, external_user_id, user_id) VALUES ('demo', '   ', gen_random_uuid());
-    RAISE EXCEPTION 'FAIL 076 blank';
+    RAISE EXCEPTION 'FAIL 077 blank';
   EXCEPTION WHEN check_violation THEN NULL; END;
   BEGIN
     INSERT INTO user_external_ids (partner, external_user_id, user_id) VALUES ('Bad Partner', 'x', gen_random_uuid());
-    RAISE EXCEPTION 'FAIL 076 partner shape';
+    RAISE EXCEPTION 'FAIL 077 partner shape';
   EXCEPTION WHEN check_violation THEN NULL; END;
-  RAISE NOTICE 'PASS 076 both uniqueness directions, per-partner namespaces, shape CHECKs';
+  RAISE NOTICE 'PASS 077 both uniqueness directions, per-partner namespaces, shape CHECKs';
   RAISE EXCEPTION USING ERRCODE = 'P0002';
 EXCEPTION WHEN no_data_found THEN NULL;
 END $$;

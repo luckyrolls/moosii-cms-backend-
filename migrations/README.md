@@ -142,7 +142,7 @@ Main track:
     141 of 153 lessons flip true→false, including 5 published ones whose single quiz question
     is unapproved.
   ⚠ These four took the numbers the unapplied `docs/drafts/facts-v1/` set had claimed
-  (060–067). Facts v1 has since been renumbered to 069–076.
+  (060–067). Facts v1 has since been renumbered to 069–076 (and the optional partner-id mapping to 077 when D1's FK took 076).
 - **064–066 — APPLIED (2026-09-11): published-content edit policy**
   (FINDINGS-published-edit.md). Design slice; nothing is built on top of them yet.
   - **064** — `app_settings` (one row: `domain`) + `content_edit_policy_guard()` on

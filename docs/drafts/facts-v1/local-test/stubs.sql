@@ -1,5 +1,5 @@
 -- Minimal Supabase-shaped stubs for exercising the facts-v1 drafts. NOT the real schema:
--- only the columns 069-076 and the 045 function/view actually touch.
+-- only the columns 069-077 and the 045 function/view actually touch.
 \set ON_ERROR_STOP 1
 
 -- Supabase roles. service_role bypasses RLS; anon/authenticated do not.

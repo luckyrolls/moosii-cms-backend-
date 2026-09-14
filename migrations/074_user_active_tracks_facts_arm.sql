@@ -41,7 +41,7 @@
 -- stay unreadable. EXECUTE mirrors the function's current ACL (anon, authenticated,
 -- service_role) so nothing that works today breaks. ⚠ That includes anon — which, like the
 -- view's existing owner-rights read, lets the anon key see which tracks a user's facts grant.
--- The follow-up RLS migration (077, proposed) removes anon from both.
+-- The follow-up RLS migration (078, proposed) removes anon from both.
 -- The VIEW twin keeps reading user_facts_latest directly: a plain view runs with its owner's
 -- rights, so the REVOKE does not touch it (tested).
 --

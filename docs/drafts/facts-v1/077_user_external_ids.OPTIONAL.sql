@@ -1,5 +1,5 @@
 -- ============================================================================
--- DRAFT 076 (OPTIONAL — DECISION REQUIRED): user_external_ids (NOT APPLIED)
+-- DRAFT 077 (OPTIONAL — DECISION REQUIRED): user_external_ids (NOT APPLIED)
 -- ============================================================================
 -- ⚠ THIS FILE EXISTS BECAUSE THE CONTRACT ASKS FOR SOMETHING THE SCHEMA CANNOT DO.
 -- The facts-intake body is specified as `{ external_user_id | user_id, ... }`, but
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS public.user_external_ids (
   CONSTRAINT user_external_ids_partner_shape CHECK (partner ~ '^[a-z][a-z0-9_]{1,31}$'),
   CONSTRAINT user_external_ids_external_nonempty CHECK (length(btrim(external_user_id)) > 0)
 
-  -- Match whatever user_id FK decision is made for user_facts (070) — the two must agree.
+  -- D1 DECIDED (b) in migration 076: UNCOMMENT this FK before applying — the two must agree.
   -- , CONSTRAINT user_external_ids_user_id_fkey
   --     FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS public.user_external_ids (
 CREATE INDEX IF NOT EXISTS user_external_ids_user_id_idx ON public.user_external_ids (user_id);
 
 COMMENT ON TABLE public.user_external_ids IS
-  'OPTIONAL (facts v1, draft 076): partner external_user_id <-> Supabase user_id. Exists '
+  'OPTIONAL (facts v1, draft 077): partner external_user_id <-> Supabase user_id. Exists '
   'only to let POST /facts accept external_user_id. Unpopulated unless the signup flow '
   'writes it — decide that before applying.';
 

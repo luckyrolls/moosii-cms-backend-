@@ -54,7 +54,7 @@ Content-Type: application/json
 
 Body: {
   user_id?:          string,   // Supabase auth uid — SEE THE IDENTITY DECISION BELOW
-  external_user_id?: string,   // partner's own id; requires draft 076 to resolve
+  external_user_id?: string,   // partner's own id; requires draft 077 to resolve
   facts: [
     { key: string, value: string, observed_at?: string }   // ISO 8601; defaults to now() — see "Redelivery" (D8)
   ]
@@ -157,7 +157,7 @@ A user with no facts returns `200` with three empty arrays, never a 404.
 
 ### 8c-domain. Domain gating — a new decision
 
-Migrations 069–076 are meant to apply to **both** Supabase projects, so the schema stays
+Migrations 069–074 and 076 apply to **both** Supabase projects (075, the demo seeds, is financial-only), so the schema stays
 identical (with no rules authored, the 074 arm is a no-op). But `POST /facts` is a financial
 intake: a partner has no business writing facts into the Moosii deployment. Since slice 1 the
 backend knows which deployment it is (`DOMAIN`, boot-validated and cross-checked against
@@ -169,6 +169,6 @@ for checking the schema landed. **Decision D5 for Mark.**
 ### 8d. Identity — the open decision
 
 `external_user_id` cannot be resolved today: no table maps a partner id to a Supabase uid.
-Either the partner sends `user_id` and the field is dropped from v1, or draft 076
+Either the partner sends `user_id` and the field is dropped from v1, or draft 077
 (`user_external_ids`) is applied AND something in the signup flow populates it. Until that
 is settled, treat `POST /facts` as accepting `user_id` only.

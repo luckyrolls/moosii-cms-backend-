@@ -21,8 +21,9 @@ BASE = [PSQL, "-h", "localhost", "-p", os.environ.get("PGPORT", "55432"), "-U", 
         "-v", "ON_ERROR_STOP=1", "-X"]
 ORDER = ["069_fact_vocabulary.sql", "070_user_facts.sql", "071_user_facts_latest.sql",
          "072_fact_track_rules.sql", "073_fact_entry_map.sql",
+         "076_user_facts_user_id_fk.sql",          # applied before 074 (D1)
          "074_user_active_tracks_facts_arm.sql", "075_seed_demo_vocabulary.sql",
-         "076_user_external_ids.OPTIONAL.sql"]
+         "077_user_external_ids.OPTIONAL.sql"]
 
 
 def find(name):
@@ -44,7 +45,7 @@ def psql(args, db=DB, label=""):
 
 def build_045_baseline():
     """074's sections 1 (function) and 2 (view) with the fact edits stripped = migration 045."""
-    src = io.open(find(ORDER[5]), encoding="utf-8").read()
+    src = io.open(find("074_user_active_tracks_facts_arm.sql"), encoding="utf-8").read()
     fn = src[src.index("-- ---- 1. Per-user function"): src.index("COMMENT ON FUNCTION user_active_tracks_for_user")]
     vw = src[src.index("-- ---- 2. The view twin"): src.index("-- ---- 3. user_active_tracks_with_reason")]
     body = fn + vw
