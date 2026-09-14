@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 078: active-tracks views read with the CALLER's rights, under per-user RLS
---                — DRAFT (pending apply; R1 and the admin widening ACCEPTED 2026-09-14)
+--                — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14 (R1 + admin widening accepted)
 -- ============================================================================
 -- THE HOLE. user_active_tracks, user_active_tracks_with_reason and the two views under them
 -- (user_mlp_data, questionnaire_responses_tracks) are PLAIN views owned by postgres, and postgres

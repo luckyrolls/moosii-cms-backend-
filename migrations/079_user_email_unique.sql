@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 079: UNIQUE (email) on public."user", NULLs allowed — DRAFT (pending apply)
+-- MIGRATION 079: UNIQUE (email) on public."user", NULLs allowed — APPLIED financial 2026-09-14 · APPLIED moosii 2026-09-14
 -- ============================================================================
 -- WHY. The app's only duplicate-account guard is a client-side lookup of ANOTHER user's row by
 -- email (moosii-rn app/(onboarding)/verify.tsx:78-82). Migration 078 makes that row invisible to the

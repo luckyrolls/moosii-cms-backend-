@@ -7143,12 +7143,6 @@ export type Database = {
           weight: number
         }[]
       }
-      user_fact_track_ids: {
-        Args: { p_user_id: string }
-        Returns: {
-          track_id: string
-        }[]
-      }
     }
     Enums: {
       account_type:

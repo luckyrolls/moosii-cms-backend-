@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 076 · Moosii 076** (main) + **0008**
-(prompt track). Both projects share 008..074 and 076; **075 is financial-only** (decision D6).
+(Current APPLIED high-water, per project from 069: **financial 079 · Moosii 079** (main) + **0008**
+(prompt track). Both projects share 008..074 and 076..079; **075 is financial-only** (decision D6).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -235,7 +235,7 @@ Main track:
     (the driver refuses it there). Verified: 6 keys, 13 values, 0 rules, 0 entry-map rows — the 074
     arm stays a no-op until rules are authored.
   Types regenerated from Moosii after the batch (adds `user_fact_track_ids`).
-- **078** — **DRAFT (pending apply) — R1 and the admin widening ACCEPTED 2026-09-14**: the active-tracks views read with the
+- **078** — **APPLIED financial (2026-09-14) · APPLIED moosii (2026-09-14)** — R1 and the admin widening accepted: the active-tracks views read with the
   CALLER's rights under per-user RLS. Closes the hole where `user_active_tracks`,
   `user_active_tracks_with_reason`, `user_mlp_data` and `questionnaire_responses_tracks` are plain
   postgres-owned views (postgres has BYPASSRLS), so the anon key reads any user's tracks and every
@@ -248,13 +248,24 @@ Main track:
   then read their OWN raw facts (reverses 071's posture). Tested locally against a schema-only dump of
   Moosii (`docs/drafts/rls-078/`). Surfaces to confirm: the app (moosii-rn) reads tracks with the
   user's session; the CMS inspector after applying.
-- **079** — **DRAFT (pending apply)**: `UNIQUE NULLS DISTINCT (email)` on `public."user"`
+  **Apply results.** Pre-check on both: post-074 function/view/with_reason md5, policy fingerprint
+  (68), admin checks not yet definer, no FORCE RLS, only the function read the helper. Verify on both:
+  admin checks SECURITY DEFINER, 5 views security_invoker, 3 blanket read policies gone, helper dropped,
+  twins agree (Moosii 5 users). Roles on Moosii (rolled back): anon 0 rows from the four views, the facts
+  view and `user`, no error; an admin sees all 50 rows; an ordinary user sees only their own 10 rows,
+  identical to the service view, and 1 `user` row. Service view `user_active_tracks` 50 rows and
+  `with_reason` 50 rows identical before/after. Financial: catalog + anon only (no users). Types
+  regenerated after (drops `user_fact_track_ids`).
+- **079** — **APPLIED financial (2026-09-14) · APPLIED moosii (2026-09-14)**: `UNIQUE NULLS DISTINCT (email)` on `public."user"`
   (`user_email_key`). Moves the duplicate-account guard into the database: after 078 the app's
   client-side lookup of another user's row by email (moosii-rn `verify.tsx:78-82`) sees nothing.
   Case-sensitive; NULL emails stay allowed. The body refuses to add the constraint while non-NULL
   duplicates exist. Pre-check 2026-09-14: 0 duplicate groups on both projects (financial 0 users,
   Moosii 5), 0 case-insensitive duplicates. ⚠ App effect: the duplicate-auth-account path now fails its
   insert with 23505 — flag for the moosii-rn seat.
+  **Apply results.** Pre-check re-run inside the apply: 0 duplicate groups (as specified), 0 non-NULL,
+  0 case-insensitive, on both (financial 0 users, Moosii 5). Verify on both: `UNIQUE (email)` with NULLs
+  distinct; a duplicate non-NULL email refused with 23505 (rolled back).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
