@@ -267,13 +267,17 @@ Main track:
   0 case-insensitive, on both (financial 0 users, Moosii 5). Verify on both: `UNIQUE (email)` with NULLs
   distinct; a duplicate non-NULL email refused with 23505 (rolled back).
 - **080–083 — child health in classify** (docs/drafts/child-health/PROPOSAL.md; decided by Mark
-  2026-09-15). **DRAFT (pending apply).** Apply order = number order; proposal labels in brackets.
+  2026-09-15). **080–081 APPLIED financial (2026-09-15); 080–083 PENDING moosii.** Apply order =
+  number order; proposal labels in brackets.
   Tested locally on a schema-only dump of Moosii (post-079): all four apply cleanly twice, and the
   constraint, RLS and prompt assertions hold.
-  - **080 [H1] — both projects**: `health_red_flags` (vocabulary rendered into the prompt) +
+  - **080 [H1] — both projects** — financial: pre-check, apply and verify clean (RLS on + 4
+    policies; unknown flag, bad band, inverted age range refused): `health_red_flags` (vocabulary rendered into the prompt) +
     `health_urgency_rules` (flag + age [min,max) months + optional min °C / min hours → band;
     `rule_key` unique). Signed-in read, `is_admin()` write.
-  - **081 [H3] — both projects**: `health_responses` (one fixed row per band),
+  - **081 [H3] — both projects** — financial: pre-check (025 check definition confirmed), apply and
+    verify clean (silent-none distress row refused, strain downgrade accepted, safety downgrade
+    refused, silent health row refused, `health_detections` RLS on with no policy): `health_responses` (one fixed row per band),
     `health_detections` (backend-only audit; a row is a band OR a parse failure),
     `user_update_events.health_band`, `distress_detections.downgraded_from` (strain|overwhelm, never
     safety), and 025's unnamed row check `distress_detections_check` replaced by
