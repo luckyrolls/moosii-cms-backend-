@@ -835,7 +835,7 @@ DELETE /questionnaires/:id?dry_run=true
     facts are monotonic, with no un-record path.
 
 **Not in scope (deliberate):** track delete (tracks stay archive-only — the migration-040
-`ON DELETE RESTRICT` wall blocks a track with any lesson/questionnaire/rule with `23001`);
+`ON DELETE RESTRICT` wall blocks a track with any lesson/questionnaire/rule with `23503`);
 segment/card delete (card delete is §1a-del); bulk/multi-entity teardown.
 
 ---
@@ -2048,8 +2048,9 @@ backend must preserve and the frontend leans on:
   plus `questionnaire.track_id`, `demographic_track_rules.track_id`, `track_tag_map.track_id`,
   and `questionnaire_response.track_id` (040 flipped these four from silent `CASCADE`/`SET
   NULL`). Deleting a track that still has lessons, a hosted questionnaire, a demographic/tag
-  rule, or a targeting response rule now returns `23001` (restrict_violation; RESTRICT
-  raises 23001, not the 23503 that NO ACTION does) — clear those first. Only per-user
+  rule, or a targeting response rule now returns `23503` (foreign_key_violation — RESTRICT raises
+  the same code as NO ACTION, not 23001 restrict_violation; verified on PG 17, 2026-09-12) —
+  clear those first. Only per-user
   state FKs (`user_track`, `user_mlp_mods`) still `CASCADE` (that state is meant to die with
   the track).
 - **Questionnaire age gate wired into `mlp_item_pool` (migration 041):** the view's

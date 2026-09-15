@@ -253,6 +253,7 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
 - `docs/provisional-clinical-decisions.md` — distress + child-health decisions pending credentialed review.
 - `docs/architecture-notes.md` — column rationale, content-phase roadmap, parked work (multi-age MLP).
 - `docs/questionnaire-evolution-roadmap.md` — forward plan for questionnaire mechanics.
+- `docs/backlog.md` — prioritised unscheduled work (P1–P3).
 - `FINDINGS-*.md` (repo root) — investigation reports; `docs/drafts/` — proposals and test harnesses.
 
 ## Doc maintenance (part of DoD)

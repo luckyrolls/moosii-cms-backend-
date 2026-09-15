@@ -65,6 +65,8 @@ at least 09-11), shown once it reappeared in the live list. The badge reads
 
 ## Follow-ups (not done)
 
+Items 1 and 2 are backlogged as P3 in `docs/backlog.md` (2026-09-15).
+
 1. A card or quiz reset leaves no trace of when or why. A `content_approvals` row (action
    `review_reset`, actor null or from the JWT) written from `sub_segments_reset_review` /
    `quiz_reset_review`, and from `resetCardsAndReport`, would have answered this in one query.
