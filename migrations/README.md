@@ -266,6 +266,26 @@ Main track:
   **Apply results.** Pre-check re-run inside the apply: 0 duplicate groups (as specified), 0 non-NULL,
   0 case-insensitive, on both (financial 0 users, Moosii 5). Verify on both: `UNIQUE (email)` with NULLs
   distinct; a duplicate non-NULL email refused with 23505 (rolled back).
+- **080–083 — child health in classify** (docs/drafts/child-health/PROPOSAL.md; decided by Mark
+  2026-09-15). **DRAFT (pending apply).** Apply order = number order; proposal labels in brackets.
+  Tested locally on a schema-only dump of Moosii (post-079): all four apply cleanly twice, and the
+  constraint, RLS and prompt assertions hold.
+  - **080 [H1] — both projects**: `health_red_flags` (vocabulary rendered into the prompt) +
+    `health_urgency_rules` (flag + age [min,max) months + optional min °C / min hours → band;
+    `rule_key` unique). Signed-in read, `is_admin()` write.
+  - **081 [H3] — both projects**: `health_responses` (one fixed row per band),
+    `health_detections` (backend-only audit; a row is a band OR a parse failure),
+    `user_update_events.health_band`, `distress_detections.downgraded_from` (strain|overwhelm, never
+    safety), and 025's unnamed row check `distress_detections_check` replaced by
+    `distress_detections_row_is_notable` (still refuses a silent-none row). Before 082 because 082
+    seeds `health_responses`.
+  - **082 [H2] — MOOSII ONLY**: provisional seed from AAP when-to-call guidance: 20 flags, 24 rules,
+    3 responses, every row `is_provisional` with `source_ref`. Poisoning = emergency, source
+    "AAP poison guidance — verify page", Poison Control 1-800-222-1222 in the emergency copy.
+  - **083 [H4] — MOOSII ONLY**: `classify_update` prompt: 024's text + distress rule 6 (parent state,
+    not child symptoms; never applies to safety) + a CHILD HEALTH extraction block; `output_schema`
+    gains required `child_health`. Guarded on the live md5 (`4a3e23cf…` → `fc44fb5c…`). ⚠ The live row
+    stores the prompt with **CRLF** line endings (applied via the SQL editor); 083 preserves CRLF.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
