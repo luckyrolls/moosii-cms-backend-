@@ -22,6 +22,8 @@ import classifyUpdateRouter from "./routes/classifyUpdate";
 import quizRouter from "./routes/quiz";
 import mlpRouter from "./routes/mlp";
 import sourceDocumentsRouter from "./routes/sourceDocuments";
+import factsRouter from "./routes/facts";
+import { checkFactsConfig } from "./facts/config";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
 import { getVersionInfo } from "./lib/version";
@@ -70,11 +72,24 @@ app.use("/source-documents", jwtAuthMiddleware, sourceDocumentsRouter);
 app.use("/classify-update", classifyUpdateRouter);
 app.use("/mlp", mlpRouter);
 
+// Facts (api-contract.md §8). Each route carries its own auth: POST is the partner intake
+// (FACTS_API_KEY, 404 unless DOMAIN=financial); GET /:user_id is the admin inspector.
+app.use("/facts", factsRouter);
+
 // Job creation — accepts the internal shared secret (server-to-server) OR a
 // CMS admin's Supabase JWT (browser).
 app.use("/jobs", jobsAuthMiddleware, jobsRouter);
 
 async function start() {
+  // FACTS_API_KEY is required (and must be distinct from INTERNAL_API_KEY) on the financial
+  // deployment, where POST /facts exists; ignored elsewhere. Checked before anything listens.
+  const factsConfig = checkFactsConfig(DOMAIN, process.env.FACTS_API_KEY, process.env.INTERNAL_API_KEY);
+  if (factsConfig.kind === "fatal") {
+    console.error(factsConfig.message);
+    process.exit(1);
+  }
+  if (factsConfig.kind === "ignored") console.warn(factsConfig.message);
+
   // Fail fast at boot if any image prompt file is malformed, so a bad prompt
   // breaks the deploy (Render keeps the old version) rather than a user's job.
   await validateImagePrompts();

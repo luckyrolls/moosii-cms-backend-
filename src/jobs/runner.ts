@@ -75,6 +75,48 @@ export async function enqueueRebuildAllIfIdle(
   }
 }
 
+// Enqueue a single-user `rebuild_mlp { user_id }` unless one for that user is still QUEUED.
+// Used by POST /facts. NEVER throws (same contract as enqueueRebuildAllIfIdle).
+//
+// Coalesces into QUEUED only, never RUNNING: a running rebuild may already have read the
+// user's facts before the caller's write committed, so folding into it could miss that write.
+// A duplicate rebuild is harmless (derive-and-overwrite); a missed one is not. Fails toward
+// enqueuing when the check itself errors.
+export async function enqueueRebuildUserIfIdle(
+  userId: string,
+  ctx: { reason: string; correlationId?: string }
+): Promise<{ enqueued: boolean; jobId?: string; coalescedInto?: string }> {
+  try {
+    const { data: existing, error } = await supabase
+      .from("jobs")
+      .select("id")
+      .eq("type", "rebuild_mlp")
+      .eq("status", "queued")
+      .contains("input", { user_id: userId })
+      .limit(1);
+
+    if (!error && existing && existing.length > 0) {
+      const into = existing[0].id as string;
+      console.log(`[rebuild-trigger] user ${userId} coalesced into queued ${into} — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
+      return { enqueued: false, coalescedInto: into };
+    }
+    if (error) {
+      console.warn(`[rebuild-trigger] user coalescing check failed (${ctx.reason}); enqueuing anyway (harmless dup): ${error.message}`);
+    }
+
+    const jobId = await createAndStartJob("rebuild_mlp", {
+      user_id: userId,
+      triggered_by: ctx.reason,
+      correlation_id: ctx.correlationId ?? null,
+    });
+    console.log(`[rebuild-trigger] enqueued ${jobId} user ${userId} — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
+    return { enqueued: true, jobId };
+  } catch (e) {
+    console.error(`[rebuild-trigger] user enqueue errored (${ctx.reason}), non-fatal: ${e instanceof Error ? e.message : String(e)}`);
+    return { enqueued: false };
+  }
+}
+
 // Run a list of job IDs through a worker pool capped at `concurrency`.
 // Spawns min(concurrency, n) workers; each drains the shared queue until empty.
 // Fire-and-forget: errors per job are already caught inside runJob.

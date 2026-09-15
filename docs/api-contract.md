@@ -2082,3 +2082,99 @@ live or write to:
   `questionnaire_responses_tracks` is a VIEW joining `completed_items` to these rules
   on `questionnaire_id` where the answer score is in band (§3). Don't confuse with
   `questionnaire_user_answers` (real user answers).
+
+---
+
+## 8. Facts intake — DELIVERED
+
+Platform-supplied facts about a user (financial domain). A fact is **boolean or a short enum, never
+an amount**. The vocabulary (`fact_keys` / `fact_values`, migration 069) and the append-only log
+(`user_facts`, 070; `user_id` FK `auth.users` ON DELETE CASCADE, 076) enforce that in the database
+too. Facts add tracks through the derived resolution (`user_active_tracks_for_user` + its view twin,
+074); nothing is stamped. Decisions applied: D2 (no `external_user_id`), D4 (`FACTS_API_KEY`),
+D5 (domain gate), D8 (`observed_at` required). Code: `src/facts/`, wired in `src/routes/facts.ts`.
+Both routes read and write through the service-role client, like every other route.
+
+### 8a. Auth
+
+- **`POST /facts`** — `Authorization: Bearer <FACTS_API_KEY>`. The existing bearer-shared-secret
+  scheme with its **own key, scoped to this one route**. `INTERNAL_API_KEY` is **rejected** here (it
+  also unlocks `POST /jobs`, i.e. arbitrary AI spend, and this key is held by an outside partner).
+  Constant-time compare. Each request logs a 6-char SHA-256 fingerprint of the key, never the key.
+  `FACTS_API_KEY` is **required at boot when `DOMAIN=financial`** (≥ 32 chars, distinct from
+  `INTERNAL_API_KEY`; boot exits otherwise) and ignored elsewhere.
+- **`GET /facts/:user_id`** — admin Supabase JWT (`jwtAuthMiddleware`), like every CMS read. The
+  facts key does not grant it.
+
+### 8b. `POST /facts` — record observations, enqueue the rebuild
+
+```
+POST /facts
+Authorization: Bearer <FACTS_API_KEY>
+Content-Type: application/json
+
+Body: {
+  user_id: string,                    // Supabase auth uid (uuid)
+  facts: [                            // 1..100 entries
+    { key: string,                    // a fact_keys.fact_key
+      value: string,                  // a fact_values.value for that key
+      observed_at: string,            // REQUIRED. ISO 8601 with a time zone ("2026-09-15T14:00:00Z")
+      source?: "platform_api" | "cms" | "manual" }   // default "platform_api"
+  ]
+}
+
+→ 200 { written: number, rebuild_enqueued: boolean }
+→ 400 invalid_request        — body/entry shape, user_id not a uuid, >100 facts, external_user_id sent
+→ 400 missing_observed_at    — an entry has no observed_at
+→ 400 invalid_observed_at    — not a full ISO 8601 instant with a zone
+→ 400 invalid_source         — source outside the three values
+→ 400 unknown_fact           — unknown key, unknown value for the key, or a numeric-looking value
+→ 400 duplicate_fact         — the same key twice at the same instant in one call
+→ 401 unauthorized           — missing / wrong key (including INTERNAL_API_KEY)
+→ 404 not_found              — DOMAIN is not 'financial' (the route does not exist there; checked BEFORE auth)
+→ 404 unknown_user           — user_id has no auth account (FK, migration 076)
+→ 409 conflicting_observation — that key is already recorded at that observed_at with a DIFFERENT value
+→ 500 facts_write_failed
+```
+
+- **All-or-nothing.** The whole batch is validated before anything is written; the error names the
+  **first** offending entry and its position, e.g.
+  `{ "error": { "code": "unknown_fact", "message": "facts[1]: unknown value \"extreme\" for key \"credit_utilization_band\"" } }`.
+- **One transaction.** Every row is inserted by a single multi-row `INSERT … ON CONFLICT (user_id,
+  fact_key, observed_at) DO NOTHING`, so the batch lands entirely or not at all.
+- **Redelivery is safe.** An identical batch re-sent is a no-op: `200 { written: 0,
+  rebuild_enqueued: true }`, no duplicate rows. `written` counts rows actually inserted. A
+  **different** value at an already-recorded `(user, key, observed_at)` is not a redelivery — it is
+  refused with `409` and nothing in the call is written (otherwise the conflict clause would drop it
+  silently). `observed_at` is normalized to UTC milliseconds, so the same instant written in another
+  zone is the same observation.
+- **Append-only.** A fact that CLEARS is an ordinary new observation with the new value; history is
+  kept, and `user_facts_latest` resolves the current value (latest `observed_at` wins; a late-arriving
+  older observation does not).
+- **Then the rebuild.** After the write commits, a single-user `rebuild_mlp { user_id }` job is
+  enqueued (`triggered_by: "facts_intake"`, the request's `correlation_id`), coalescing into an
+  already-**queued** job for that user but never into a running one (a running rebuild may have read
+  the facts before this write). `rebuild_enqueued` is `true` when a job was enqueued or coalesced,
+  `false` only if the enqueue itself failed — the facts stay written either way, and any later
+  recompute picks them up. The rebuild is asynchronous: poll `jobs` if you need its outcome.
+- **Scope:** one user per call.
+
+### 8c. `GET /facts/:user_id` — CMS inspector
+
+```
+GET /facts/:user_id?limit=<1..1000, default 200>     // limit applies to history
+Authorization: Bearer <admin Supabase JWT>
+
+→ 200 {
+    user_id: string,
+    latest:  [ { fact_key, value, observed_at, source, source_ref } ],              // user_facts_latest, one per key, by fact_key
+    history: [ { fact_key, value, observed_at, source, source_ref, created_at } ]   // user_facts, newest observed_at first
+  }
+→ 400 invalid_request (user_id not a uuid, bad limit) · 401 · 403 (non-admin) · 500 facts_read_failed
+```
+Available on every domain (an empty inspector is harmless). A user with no facts is `200` with empty
+arrays, never a 404.
+
+**Direct client reads — decision R1, migration 078.** Separately from this endpoint, a signed-in
+user can SELECT their OWN rows from `user_facts` / `user_facts_latest` through PostgREST, an admin all
+rows, anon none (RLS). This endpoint remains the CMS inspector's read.

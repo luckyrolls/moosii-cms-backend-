@@ -294,6 +294,9 @@ what metadata content rows may need to carry (reviewer identity, review status).
   a hardcoded route list drifts.
 - **Server-to-server** (`/jobs`): `INTERNAL_API_KEY` shared secret
   (`Authorization: Bearer <key>`). Internal tooling/testing only; never sent by the SPA.
+- **Partner intake** (`POST /facts`, financial domain only): `FACTS_API_KEY`, the same bearer
+  scheme with its OWN key scoped to that one route — `INTERNAL_API_KEY` is rejected there. Required
+  at boot when `DOMAIN=financial`. See `docs/api-contract.md` §8.
 - `/health` is unauthenticated.
 
 ## API conventions

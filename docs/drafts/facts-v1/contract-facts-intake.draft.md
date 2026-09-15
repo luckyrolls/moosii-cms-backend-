@@ -1,5 +1,9 @@
 # DRAFT contract section — facts intake
 
+> **SUPERSEDED 2026-09-15 — delivered as `docs/api-contract.md` §8.** That section is canonical.
+> This draft is kept for its decision history; where they differ (synchronous recompute → enqueued
+> rebuild, response shape, `observed_at` now required), §8 is what was built.
+
 **Status: `[DESIGN]`, nothing built, nothing applied.** This is written to be pasted into
 `docs/api-contract.md` as a new `§8. Facts intake` when the slice is actually built. It is
 NOT in `api-contract.md` yet, deliberately: that file's own preamble says items marked
