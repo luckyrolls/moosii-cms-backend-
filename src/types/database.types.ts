@@ -1222,6 +1222,7 @@ export type Database = {
           child_id: string | null
           correlation_id: string | null
           created_at: string
+          downgraded_from: string | null
           event_id: string | null
           evidence_span: string | null
           id: string
@@ -1233,6 +1234,7 @@ export type Database = {
           child_id?: string | null
           correlation_id?: string | null
           created_at?: string
+          downgraded_from?: string | null
           event_id?: string | null
           evidence_span?: string | null
           id?: string
@@ -1244,6 +1246,7 @@ export type Database = {
           child_id?: string | null
           correlation_id?: string | null
           created_at?: string
+          downgraded_from?: string | null
           event_id?: string | null
           evidence_span?: string | null
           id?: string
@@ -1859,6 +1862,193 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      health_detections: {
+        Row: {
+          band: string | null
+          child_age_months: number | null
+          child_id: string | null
+          correlation_id: string | null
+          created_at: string
+          event_id: string | null
+          findings: Json
+          id: string
+          matched_rule_ids: string[]
+          parse_failed: boolean
+          rules_version: string | null
+          unknown_flags: string[]
+          unmatched_flags: string[]
+          user_id: string
+        }
+        Insert: {
+          band?: string | null
+          child_age_months?: number | null
+          child_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_id?: string | null
+          findings?: Json
+          id?: string
+          matched_rule_ids?: string[]
+          parse_failed?: boolean
+          rules_version?: string | null
+          unknown_flags?: string[]
+          unmatched_flags?: string[]
+          user_id: string
+        }
+        Update: {
+          band?: string | null
+          child_age_months?: number | null
+          child_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_id?: string | null
+          findings?: Json
+          id?: string
+          matched_rule_ids?: string[]
+          parse_failed?: boolean
+          rules_version?: string | null
+          unknown_flags?: string[]
+          unmatched_flags?: string[]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_detections_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "user_update_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      health_red_flags: {
+        Row: {
+          created_at: string
+          description: string
+          is_active: boolean
+          is_provisional: boolean
+          key: string
+          label: string
+          source_ref: string | null
+          updated_at: string
+          uses_duration: boolean
+          uses_temperature: boolean
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          is_active?: boolean
+          is_provisional?: boolean
+          key: string
+          label: string
+          source_ref?: string | null
+          updated_at?: string
+          uses_duration?: boolean
+          uses_temperature?: boolean
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          is_active?: boolean
+          is_provisional?: boolean
+          key?: string
+          label?: string
+          source_ref?: string | null
+          updated_at?: string
+          uses_duration?: boolean
+          uses_temperature?: boolean
+        }
+        Relationships: []
+      }
+      health_responses: {
+        Row: {
+          band: string
+          created_at: string
+          id: string
+          is_provisional: boolean
+          message: string
+          resources: Json
+          updated_at: string
+        }
+        Insert: {
+          band: string
+          created_at?: string
+          id?: string
+          is_provisional?: boolean
+          message: string
+          resources?: Json
+          updated_at?: string
+        }
+        Update: {
+          band?: string
+          created_at?: string
+          id?: string
+          is_provisional?: boolean
+          message?: string
+          resources?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      health_urgency_rules: {
+        Row: {
+          band: string
+          created_at: string
+          id: string
+          is_active: boolean
+          is_provisional: boolean
+          max_age_months: number | null
+          min_age_months: number
+          min_duration_hours: number | null
+          min_temperature_c: number | null
+          notes: string | null
+          red_flag_key: string
+          rule_key: string
+          source_ref: string
+          updated_at: string
+        }
+        Insert: {
+          band: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_provisional?: boolean
+          max_age_months?: number | null
+          min_age_months?: number
+          min_duration_hours?: number | null
+          min_temperature_c?: number | null
+          notes?: string | null
+          red_flag_key: string
+          rule_key: string
+          source_ref: string
+          updated_at?: string
+        }
+        Update: {
+          band?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_provisional?: boolean
+          max_age_months?: number | null
+          min_age_months?: number
+          min_duration_hours?: number | null
+          min_temperature_c?: number | null
+          notes?: string | null
+          red_flag_key?: string
+          rule_key?: string
+          source_ref?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_urgency_rules_flag_fkey"
+            columns: ["red_flag_key"]
+            isOneToOne: false
+            referencedRelation: "health_red_flags"
+            referencedColumns: ["key"]
+          },
+        ]
       }
       image_assets: {
         Row: {
@@ -5745,6 +5935,7 @@ export type Database = {
           correlation_id: string | null
           created_at: string
           distress_tier: string | null
+          health_band: string | null
           id: string
           processing_status: string
           raw_text: string
@@ -5756,6 +5947,7 @@ export type Database = {
           correlation_id?: string | null
           created_at?: string
           distress_tier?: string | null
+          health_band?: string | null
           id?: string
           processing_status?: string
           raw_text: string
@@ -5767,6 +5959,7 @@ export type Database = {
           correlation_id?: string | null
           created_at?: string
           distress_tier?: string | null
+          health_band?: string | null
           id?: string
           processing_status?: string
           raw_text?: string

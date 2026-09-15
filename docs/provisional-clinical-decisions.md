@@ -61,6 +61,19 @@ the HIGHER one. **Rationale:** under-tiering a distressed parent is the failure
 mode; over-tiering costs only an unnecessary supportive message. **Status:**
 AWAITING CLINICAL REVIEW.
 
+**PROPOSED CHANGE (2026-09-15, child health — live in migration 083 + code):**
+conservative-upward no longer applies when the ONLY evidence is the child's symptom wording.
+Two layers: (1) prompt rule 6 — distress measures the PARENT's state; symptom-only text is tier
+none and belongs to child_health; strain/overwhelm evidence must quote the parent's own feeling
+or coping words; (2) a code backstop (`src/classify/distressNarrowing.ts`) — if the model still
+returns strain/overwhelm and every clause of its evidence lies inside the child-health symptom
+text, the tier becomes none, **marked** (`distress.downgraded_from`) and **audited**
+(`distress_detections` row with `downgraded_from`). **SAFETY IS NEVER DOWNGRADED** by either
+layer — the prompt rule says so explicitly and the code passes safety through by construction.
+Mixed updates ("fever for days and I can't cope anymore") keep their distress tier AND get a
+health band. **Status:** AWAITING CLINICAL REVIEW — audited per event so review can measure
+exactly what the narrowing removes.
+
 ### D3 — Safety-tier determinism (no weighing against positive content)
 **Decision (2026-07-03):** any safety-language endorsement → tier `safety`, full
 stop — NOT weighed against upbeat content elsewhere in the update (a happy
@@ -75,6 +88,11 @@ ambiguity resolves TOWARD concern, and no borderline detection is silently dropp
 to none. False positives acceptable; false negatives are the failure. **Rationale:**
 a missed distress is the only unacceptable error here. **Status:** AWAITING
 CLINICAL REVIEW.
+
+**PROPOSED CHANGE (2026-09-15, with D2's):** "no confidence floor" is narrowed — a description
+of the child's symptoms with no parent-state language is not "plausibly present distress". The
+narrowing is recorded on every event it touches (see D2), so its effect is measurable.
+**Status:** AWAITING CLINICAL REVIEW.
 
 ## Response model
 
@@ -152,6 +170,67 @@ console preview input is TEST data; auditing test detections would pollute the
 safety log. Slice-4 app submissions always persist (`apply=true` forces persist),
 so every REAL detection is always audited. **Status:** AWAITING CLINICAL REVIEW
 (informational; revisit if the app ever previews real parent input un-persisted).
+
+## Child health in classify (decided by Mark 2026-09-15 — ALL PROVISIONAL)
+
+Built 2026-09-15: migrations 080–083, `src/classify/`. The classifier EXTRACTS child-health
+findings (red flags from `health_red_flags`, temperature and duration as written); CODE decides an
+urgency band from the classified child's age and `health_urgency_rules`; a fixed
+`health_responses` row per band is shown. Every flag, rule and response row is
+`is_provisional = true` with a `source_ref`. The launch gate is unchanged. Sources (fetched
+2026-09-15): AAP *Fever: When to Call the Pediatrician*; AAP *Urgent Care, ER or Pediatrician?*;
+AAP *When to Call EMS*; AAP *Signs of Dehydration* (full URLs in migration 082).
+
+### H-D1 — Three bands and the AAP → band mapping
+**Decision:** bands `emergency | same_day | routine`. AAP "ER / call 911" → emergency; "call your
+doctor right away" and "urgent care" → same_day; "call pediatrician same/next day" and "manage at
+home" → routine. Where two AAP pages disagree, the HIGHER band (e.g. fever ≥ 38.0 °C under 3 months:
+the fever page says call right away, the ER guide lists it under ER → emergency). 20 flags / 24
+rules seeded. **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D2 — Unknown values
+**Decision:** a fever with NO stated temperature MEETS temperature thresholds; a MISSING duration
+NEVER escalates; a single ≥ 40 °C report counts as AAP's "rises above 104°F repeatedly".
+**Consequence to review:** because the 40 °C same_day rule applies at every age, a reported fever
+with no number resolves **same_day** for any child 3 months or older (emergency under 3 months), not
+routine. **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D3 — Unknown child age
+**Decision:** when the child's birth year/month is missing or invalid, every rule for the flag is
+evaluated regardless of age and the highest band wins (a fever at unknown age → emergency, since the
+child could be under 3 months). **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D4 — A recognised flag with no rule at this age → routine
+**Decision:** routine, recorded in `health_detections.unmatched_flags` as a seed gap. A described
+concern that matches no flag at all is also routine. **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D5 — No combination rules in v1
+**Decision:** each finding resolves on its own and the highest band wins; no "fever + X" or
+chronic-condition rules. **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D6 — Extraction-only model, triage in code
+**Decision:** the model never judges urgency and is never told the child's age; bands come only
+from rules. **Rationale:** a model's urgency call varies run to run; a rule table is reviewable and
+editable. **Status:** AWAITING CLINICAL REVIEW (informational).
+
+### H-D7 — Response precedence
+**Decision:** safety distress > emergency > same_day > overwhelm/strain > routine > ack. Mixed
+updates show BOTH the distress and the health response, in that order. same_day and emergency
+REPLACE the ack; routine is order-only (the usual ack still accompanies it); strain+ distress still
+suppresses the ack. **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D8 — Provisional copy and resources per band
+**Decision:** neutral voice (D12).
+- **emergency** — call 911 / nearest ER now; resources 911, Poison Control 1-800-222-1222 (24/7).
+- **same_day** — call the child's doctor today (nurse line after hours); ER if worse; resource 911.
+- **routine** — watch at home, mention to the doctor if it continues; no resources.
+**Poisoning** is seeded as emergency with source "AAP poison guidance — verify page" — the page was
+NOT among those fetched; **verify before relying on it.** **Status:** AWAITING CLINICAL REVIEW.
+
+### H-D9 — Unreadable child-health output
+**Decision:** re-asked with the classifier's other retries (up to 3), then marked
+`child_health.parse_failed = true` and audited (`health_detections.parse_failed`), never a silent
+"no concern". **Status:** AWAITING CLINICAL REVIEW (informational).
 
 ## Product / voice decisions
 

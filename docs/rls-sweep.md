@@ -72,3 +72,14 @@ now actually binds every client read of them. `is_admin()` / `is_super_admin()` 
 Admin widening (a plain `admin`, not only `super_admin`, reads all of the above) accepted 2026-09-14.
 Write policies are unchanged. Known app gap: moosii-rn `app/(onboarding)/verify.tsx:78-82` looks up
 another user's row by email; after 078 that lookup returns nothing (see migration 079).
+
+## Child health (migrations 080–081, 2026-09-15)
+
+| Table | Posture | Note |
+|---|---|---|
+| `health_red_flags` | RLS on; signed-in SELECT; `is_admin()` write | reference content rendered into the classify prompt; provisional |
+| `health_urgency_rules` | RLS on; signed-in SELECT; `is_admin()` write | clinical thresholds; provisional |
+| `health_responses` | RLS on; signed-in SELECT; `is_admin()` write | fixed copy per band; provisional |
+| `health_detections` | RLS on, **no policy** — backend-only | sensitive audit, like `distress_detections` |
+
+`distress_detections` (backend-only) gained `downgraded_from`; `user_update_events` gained `health_band`.

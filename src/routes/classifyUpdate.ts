@@ -8,6 +8,19 @@ import { assembleCatalog, renderCatalogForPrompt, type Catalog } from "../lib/cl
 import { loadMilestoneIds, resolveMilestoneFacts } from "../lib/milestones";
 import { rebuildOneUser } from "../jobs/handlers/rebuildMlp";
 import { verifyAnyUser, isAdminRole, type AnyUser } from "../middleware/jwtAuth";
+import { resolveClassification, type LlmOut, type LlmSignal, type DistressTier } from "../classify/resolve";
+import { ageMonths } from "../classify/childAge";
+import {
+  HEALTH_BANDS, parseFindings, resolveHealthBand, renderHealthFlagsForPrompt, healthRulesVersion,
+  type HealthBand, type HealthFlag, type HealthFinding, type HealthRule,
+} from "../classify/healthUrgency";
+import { narrowDistress } from "../classify/distressNarrowing";
+import { orderResponses, type ResponseItem } from "../classify/responsePrecedence";
+
+// The retry loop lives in src/classify/resolve.ts (unit-tested without the DB); re-exported here
+// so existing importers keep working.
+export { resolveClassification } from "../classify/resolve";
+export type { DistressTier } from "../classify/resolve";
 
 const db = supabase;
 
@@ -44,75 +57,29 @@ async function loadClassifyPromptRow(): Promise<ClassifyPromptRow> {
   return data as ClassifyPromptRow;
 }
 
-type LlmSignal   = { type: string; value: string; confidence: number; evidence_span: string };
-type LlmProposal = { track_id: string; confidence: number; source_signal: string };
-type LlmDistress = { tier: string; evidence_span: string };
-type LlmOut      = { relevant: boolean; signals: LlmSignal[]; proposed_enrichments: LlmProposal[]; distress?: LlmDistress };
-
 // Distress (slice B). LENIENT by design — see docs/provisional-clinical-decisions.md.
-export type DistressTier = "none" | "strain" | "overwhelm" | "safety";
-const DISTRESS_TIERS: DistressTier[] = ["none", "strain", "overwhelm", "safety"];
 export type DistressResult = {
   detected: boolean;                 // tier !== 'none'
-  tier: DistressTier;
+  tier: DistressTier;                // AFTER the symptom-only narrowing (never applied to safety)
   evidence_span: string | null;
   response: { message: string; resources: unknown } | null;  // distress_responses row; null for none
   parse_failed: boolean;             // true ONLY when the assessment was UNREADABLE after
                                      // retries and defaulted to none — a marked, audited
                                      // "we couldn't read it", NOT "assessed as none".
+  downgraded_from: "strain" | "overwhelm" | null;  // set when narrowed to none (D2/D4 proposed change)
 };
 
-// Recover a near-miss tier ("Safety", "SAFETY ", "overwhelm.") to a canonical value.
-// Returns null ONLY when the value is genuinely unreadable — the caller RE-ASKS on
-// null (never silently defaults), because a garbled safety read must not become none.
-function normalizeTier(raw: unknown): DistressTier | null {
-  if (typeof raw !== "string") return null;
-  const t = raw.trim().toLowerCase().replace(/[^a-z]/g, "");  // case + trailing junk/space/punct
-  return (DISTRESS_TIERS as string[]).includes(t) ? (t as DistressTier) : null;
-}
-
-type GenResult = { text: string; raw: unknown; model: string };
-
-// The normalize → retry → marked-default loop, with the generator INJECTED so it is
-// deterministically testable without a live LLM (P6). A response is "good" only when
-// it parses AND its distress tier is readable (after normalization). An unreadable
-// distress object is a FAILED generation — re-asked up to `attemptsMax` (same
-// discipline as generate_questionnaire) — because defaulting a garbled read to none
-// would violate the slice's core asymmetry (false negatives are the failure mode).
-// Only after exhausting retries do we default to none, and we MARK it (parse_failed).
-export async function resolveClassification(
-  generate: () => Promise<GenResult>,
-  attemptsMax = 3,
-): Promise<{ out: LlmOut; result: GenResult; distressTier: DistressTier; distressParseFailed: boolean; attempts: number }> {
-  let out: LlmOut | null = null;   // latest VALID-JSON parse (usable for signals/proposals)
-  let result!: GenResult;
-  let attempts = 0;
-  for (attempts = 1; attempts <= attemptsMax; attempts++) {
-    result = await generate();
-    let parsed: LlmOut;
-    try {
-      parsed = JSON.parse(result.text) as LlmOut;
-    } catch {
-      console.warn(`[classify_update] attempt ${attempts}: non-JSON response — re-asking`);
-      continue;
-    }
-    out = parsed;  // keep even if distress is unreadable (signals/proposals still usable)
-    const tier = normalizeTier(parsed.distress?.tier);
-    if (tier === null) {
-      console.warn(`[classify_update] attempt ${attempts}: distress tier unreadable (${JSON.stringify(parsed.distress?.tier)}) — re-asking`);
-      continue;
-    }
-    return { out, result, distressTier: tier, distressParseFailed: false, attempts };
-  }
-  // Never got valid JSON at all — a hard failure (as before).
-  if (out === null) {
-    throw new Error(`Classifier returned non-JSON after ${attemptsMax} attempts.\nRaw: ${result.text}`);
-  }
-  // JSON parsed but distress stayed unreadable across all attempts: default to none,
-  // MARKED distinctly so review tells "assessed none" from "couldn't read it".
-  console.error(`[classify_update] distress UNREADABLE after ${attemptsMax} attempts — defaulting tier=none WITH parse_failed marker`);
-  return { out, result, distressTier: "none", distressParseFailed: true, attempts: attemptsMax };
-}
+// Child health (migrations 080–083). Everything clinical is PROVISIONAL (H-D1..H-D9).
+export type ChildHealthResult = {
+  concern: boolean;
+  band: HealthBand | null;           // null = no concern (or unreadable — see parse_failed)
+  age_months_used: number | null;    // null = unknown age → highest band for the flag (H-D3)
+  findings: HealthFinding[];
+  matched_rule_ids: string[];
+  unmatched_flags: string[];
+  response: { message: string; resources: unknown } | null;  // health_responses row for the band
+  parse_failed: boolean;             // unreadable after retries → marked + audited (H-D9)
+};
 
 // The provisional response content for a tier (null for none). Non-throwing.
 async function loadDistressResponse(tier: DistressTier): Promise<{ message: string; resources: unknown } | null> {
@@ -125,6 +92,54 @@ async function loadDistressResponse(tier: DistressTier): Promise<{ message: stri
   if (error) { console.warn(`[classify_update] distress_responses load failed (tier=${tier}): ${error.message}`); return null; }
   if (!data)  { console.warn(`[classify_update] no distress_responses row for tier=${tier}`); return null; }
   return { message: data.message as string, resources: data.resources };
+}
+
+type HealthContext = { flags: HealthFlag[]; rules: HealthRule[]; rulesVersion: string };
+
+// The health vocabulary + rules. Returns null (health disabled for this call, logged) when the
+// tables are missing or empty — so the backend tolerates a project without 080–082 (financial) or a
+// prompt that predates 083.
+async function loadHealthContext(): Promise<HealthContext | null> {
+  const [flagsRes, rulesRes] = await Promise.all([
+    db.from("health_red_flags").select("key, label, description").eq("is_active", true).order("key"),
+    db.from("health_urgency_rules")
+      .select("id, rule_key, red_flag_key, min_age_months, max_age_months, min_temperature_c, min_duration_hours, band")
+      .eq("is_active", true),
+  ]);
+  if (flagsRes.error || rulesRes.error) {
+    console.warn(`[classify_update] health vocabulary unavailable — child health disabled for this call: ${flagsRes.error?.message ?? rulesRes.error?.message}`);
+    return null;
+  }
+  const flags = (flagsRes.data ?? []) as HealthFlag[];
+  if (flags.length === 0) return null;
+  const toNum = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
+  const rules: HealthRule[] = (rulesRes.data ?? [])
+    .filter((r) => (HEALTH_BANDS as string[]).includes(r.band))
+    .map((r) => ({
+      id: r.id, rule_key: r.rule_key, red_flag_key: r.red_flag_key,
+      min_age_months: Number(r.min_age_months), max_age_months: toNum(r.max_age_months),
+      min_temperature_c: toNum(r.min_temperature_c), min_duration_hours: toNum(r.min_duration_hours),
+      band: r.band as HealthBand,
+    }));
+  return { flags, rules, rulesVersion: healthRulesVersion(flags, rules) };
+}
+
+async function loadChildAgeMonths(childId: string): Promise<number | null> {
+  const { data, error } = await db.from("children").select("birth_year, birth_month").eq("id", childId).maybeSingle();
+  if (error) { console.warn(`[classify_update] child age load failed (${childId}); treating age as unknown: ${error.message}`); return null; }
+  return data ? ageMonths(data.birth_year, data.birth_month) : null;
+}
+
+async function loadHealthResponse(band: HealthBand): Promise<{ message: string; resources: unknown } | null> {
+  const { data, error } = await db.from("health_responses").select("message, resources").eq("band", band).maybeSingle();
+  if (error) { console.warn(`[classify_update] health_responses load failed (band=${band}): ${error.message}`); return null; }
+  if (!data)  { console.warn(`[classify_update] no health_responses row for band=${band}`); return null; }
+  return { message: data.message, resources: data.resources };
+}
+
+function schemaRequiresChildHealth(schema: Record<string, unknown>): boolean {
+  const req = (schema as { required?: unknown }).required;
+  return Array.isArray(req) && req.includes("child_health");
 }
 
 export type Enrichment = {
@@ -217,15 +232,15 @@ async function selectVariant(userId: string, key: string, persist: boolean): Pro
   return { id: picked.id, template: picked.template };
 }
 
-// Map the classification OUTCOME to a template key, pick + render a variant. Ack
-// precedence (one rule at the top): distress (strain+) leads — NO ack, the distress
-// response carries the moment. Otherwise key by what was APPLIED this call.
-// {milestone_name} renders milestones.LABEL, never the taxonomy name.
+// Map the classification OUTCOME to a template key, pick + render a variant. Whether an ack is
+// shown at all is decided by orderResponses (H-D7): suppressed under strain+ distress and under a
+// same_day/emergency health band; still shown with a routine band. Otherwise key by what was
+// APPLIED this call. {milestone_name} renders milestones.LABEL, never the taxonomy name.
 async function assembleAck(opts: {
-  userId: string; distressTier: DistressTier;
+  userId: string; ackAllowed: boolean;
   appliedTrackNames: string[]; recordedMilestoneNames: string[]; persist: boolean;
 }): Promise<string | null> {
-  if (opts.distressTier !== "none") return null;   // distress > acks, one rule
+  if (!opts.ackAllowed) return null;
   const tracks = opts.appliedTrackNames;
   const ms = opts.recordedMilestoneNames;
 
@@ -305,10 +320,14 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
   const correlationId = randomUUID();
 
   {
-    const promptRow = await loadClassifyPromptRow();
-    const catalog = await assembleCatalog();
+    const [promptRow, catalog, healthLoaded, childAge] = await Promise.all([
+      loadClassifyPromptRow(), assembleCatalog(), loadHealthContext(), loadChildAgeMonths(child_id),
+    ]);
+    // Child health runs only when BOTH the prompt asks for it (083) and the vocabulary exists (080–082).
+    const health = healthLoaded && schemaRequiresChildHealth(promptRow.output_schema) ? healthLoaded : null;
     const userPrompt =
       `${renderCatalogForPrompt(catalog)}\n\n` +
+      (health ? `${renderHealthFlagsForPrompt(health.flags)}\n\n` : "") +
       `PARENT UPDATE:\n"""${raw_text.trim()}"""\n\n` +
       `Classify this update against the catalog above.`;
 
@@ -317,16 +336,19 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     const llmStart = Date.now();
 
     // Generate + parse with normalize→retry→marked-default (see resolveClassification).
-    const { out, result, distressTier, distressParseFailed, attempts } = await resolveClassification(
-      () => client.generate({
-        instructions:   promptRow.system_message,
-        userPrompt,
-        responseSchema: promptRow.output_schema,
-        ...(promptRow.model && { model: promptRow.model }),
-        ...(promptRow.temperature != null && { temperature: promptRow.temperature }),
-        ...(promptRow.max_tokens != null && { maxTokens: promptRow.max_tokens }),
-      }),
-    );
+    const { out, result, distressTier: modelTier, distressParseFailed, childHealth, childHealthParseFailed, attempts } =
+      await resolveClassification(
+        () => client.generate({
+          instructions:   promptRow.system_message,
+          userPrompt,
+          responseSchema: promptRow.output_schema,
+          ...(promptRow.model && { model: promptRow.model }),
+          ...(promptRow.temperature != null && { temperature: promptRow.temperature }),
+          ...(promptRow.max_tokens != null && { maxTokens: promptRow.max_tokens }),
+        }),
+        3,
+        { expectChildHealth: !!health },
+      );
 
     await logAiCall({
       correlationId,
@@ -337,7 +359,7 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       latencyMs:         Date.now() - llmStart,
       relatedEntityType: null,
       relatedEntityId:   null,
-      notes:             `catalog_version=${catalog.catalog_version}, persist=${persist}, apply=${apply}, attempts=${attempts}`,
+      notes:             `catalog_version=${catalog.catalog_version}, health_rules_version=${health?.rulesVersion ?? "-"}, persist=${persist}, apply=${apply}, attempts=${attempts}`,
     });
 
     const { relevant, signals, proposed_enrichments } = applyGate(out, catalog);
@@ -348,19 +370,61 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     const milestoneFacts =
       signals.length > 0 ? resolveMilestoneFacts(signals, await loadMilestoneIds()) : [];
 
+    // CHILD HEALTH (080–083) — extraction from the model, band from code (age + rules).
+    let childHealthResult: ChildHealthResult | null = null;
+    let unknownFlags: string[] = [];
+    if (health) {
+      if (childHealthParseFailed || !childHealth) {
+        childHealthResult = { concern: false, band: null, age_months_used: childAge, findings: [], matched_rule_ids: [], unmatched_flags: [], response: null, parse_failed: true };
+      } else {
+        const parsed = parseFindings(childHealth, new Set(health.flags.map((f) => f.key)));
+        unknownFlags = parsed.unknown_flags;
+        const concern = childHealth.concern || parsed.findings.length > 0;
+        const resolved = resolveHealthBand(concern, parsed.findings, childAge, health.rules);
+        childHealthResult = {
+          concern,
+          band: resolved.band,
+          age_months_used: childAge,
+          findings: parsed.findings,
+          matched_rule_ids: resolved.matched_rule_ids,
+          unmatched_flags: resolved.unmatched_flags,
+          response: resolved.band ? await loadHealthResponse(resolved.band) : null,
+          parse_failed: false,
+        };
+      }
+    }
+
     // DISTRESS (slice B) — a SEPARATE output, computed on every classification and
     // fully independent of signals/proposals/apply. Tier + parse_failed were resolved
     // in the retry loop above (LENIENT, no silent-none). evidence is null on a parse
-    // failure (there was no readable assessment to quote).
-    const distressEvidence =
+    // failure (there was no readable assessment to quote). Then the symptom-only backstop
+    // (D2/D4 proposed change): strain/overwhelm whose evidence is only the child's symptom
+    // wording is narrowed to none, MARKED + audited. Safety passes through untouched.
+    const modelEvidence =
       !distressParseFailed && out.distress?.evidence_span?.trim() ? out.distress.evidence_span : null;
+    const healthSpans = childHealth
+      ? [childHealth.symptom_span, ...childHealth.findings.map((f) => f.evidence_span ?? "")]
+      : [];
+    const narrowed = narrowDistress(modelTier, modelEvidence, healthSpans);
+    const distressTier = narrowed.tier;
+    const distressEvidence = distressTier === "none" && !narrowed.downgraded_from ? null : modelEvidence;
     const distress: DistressResult = {
       detected: distressTier !== "none",
       tier: distressTier,
-      evidence_span: distressEvidence,
+      evidence_span: distressTier === "none" ? null : distressEvidence,
       response: await loadDistressResponse(distressTier),
       parse_failed: distressParseFailed,
+      downgraded_from: narrowed.downgraded_from,
     };
+
+    // PRECEDENCE (H-D7): safety > emergency > same_day > overwhelm/strain > routine > ack.
+    const order = orderResponses({
+      distressTier,
+      distressResponse: distress.response,
+      healthBand: childHealthResult?.band ?? null,
+      healthResponse: childHealthResult?.response ?? null,
+    });
+    const responses: ResponseItem[] = order.responses;
 
     // apply=true IMPLIES persist=true: an applied classification is ALWAYS logged,
     // because provenance (user_track_activations.source_ref / child_milestones.source_ref)
@@ -375,7 +439,11 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
     if (willPersist) {
       const { data: ev, error: evErr } = await db
         .from("user_update_events")
-        .insert({ user_id, child_id, raw_text, source, processing_status: "classified", correlation_id: correlationId, distress_tier: distressTier })
+        .insert({
+          user_id, child_id, raw_text, source, processing_status: "classified", correlation_id: correlationId,
+          distress_tier: distressTier,
+          ...(health && { health_band: childHealthResult?.band ?? null }),
+        })
         .select("id").single();
       if (evErr) throw new Error(`Failed to write user_update_events: ${evErr.message}`);
       eventId = ev?.id ?? null;
@@ -394,18 +462,34 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
         const { error: sErr } = await db.from("user_update_signals").insert(rows);
         if (sErr) throw new Error(`Failed to write user_update_signals: ${sErr.message}`);
       }
-      // Safety audit (item-10 analog): a strain+ detection OR an UNREADABLE assessment
-      // (parse_failed — the distinction a safety audit exists to preserve). Logged
-      // LOUDLY on failure but never throws — the event already carries distress_tier
-      // as a fallback, and a failed audit must not break a response already carrying
-      // the support content.
-      if (eventId && (distressTier !== "none" || distressParseFailed)) {
+      // Safety audit (item-10 analog): a strain+ detection, an UNREADABLE assessment
+      // (parse_failed), or a symptom-only DOWNGRADE (downgraded_from). Logged LOUDLY on failure
+      // but never throws — the event already carries distress_tier as a fallback, and a failed
+      // audit must not break a response already carrying the support content.
+      if (eventId && (distressTier !== "none" || distressParseFailed || narrowed.downgraded_from)) {
         const { error: ddErr } = await db.from("distress_detections").insert({
           event_id: eventId, user_id, child_id, tier: distressTier,
           evidence_span: distressEvidence, correlation_id: correlationId,
           parse_failed: distressParseFailed,
+          ...(narrowed.downgraded_from && { downgraded_from: narrowed.downgraded_from }),
         });
-        if (ddErr) console.error(`[classify_update] SAFETY AUDIT WRITE FAILED (tier=${distressTier}, parse_failed=${distressParseFailed}, event=${eventId}): ${ddErr.message}`);
+        if (ddErr) console.error(`[classify_update] SAFETY AUDIT WRITE FAILED (tier=${distressTier}, parse_failed=${distressParseFailed}, downgraded_from=${narrowed.downgraded_from}, event=${eventId}): ${ddErr.message}`);
+      }
+      // Child-health audit: a band, or an unreadable assessment. Never a silent "no concern" row.
+      if (eventId && childHealthResult && (childHealthResult.band || childHealthResult.parse_failed)) {
+        const { error: hdErr } = await db.from("health_detections").insert({
+          event_id: eventId, user_id, child_id,
+          band: childHealthResult.band,
+          child_age_months: childAge,
+          findings: childHealthResult.findings as never,
+          matched_rule_ids: childHealthResult.matched_rule_ids,
+          unmatched_flags: childHealthResult.unmatched_flags,
+          unknown_flags: unknownFlags,
+          rules_version: health?.rulesVersion ?? null,
+          parse_failed: childHealthResult.parse_failed,
+          correlation_id: correlationId,
+        });
+        if (hdErr) console.error(`[classify_update] HEALTH AUDIT WRITE FAILED (band=${childHealthResult.band}, parse_failed=${childHealthResult.parse_failed}, event=${eventId}): ${hdErr.message}`);
       }
     }
 
@@ -454,12 +538,12 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       milestoneFacts.map((f) => f.milestone_id)
     );
 
-    // ACK ASSEMBLY (slice 4) — a parent-facing acknowledgment. Distress leads (strain+
-    // → null); otherwise keyed by what was applied, one random active variant excluding
-    // the user's last-served for that key. Additive field; null when distress or no template.
+    // ACK ASSEMBLY (slice 4) — a parent-facing acknowledgment, shown only when orderResponses
+    // allows it (H-D7); keyed by what was applied, one random active variant excluding the
+    // user's last-served for that key. null when suppressed or no template.
     const ack_message = await assembleAck({
       userId: user_id,
-      distressTier,
+      ackAllowed: order.ackAllowed,
       appliedTrackNames: proposed_enrichments.filter((e) => e.applied).map((e) => e.track_name ?? ""),
       recordedMilestoneNames: milestonesRecorded,
       persist: willPersist,
@@ -471,17 +555,22 @@ export async function classifyUpdate(input: ClassifyInput): Promise<unknown> {
       classification: { relevant, signals },
       proposed_enrichments,
       milestones_recorded: milestonesRecorded,  // names of child_milestones written this apply ([] unless apply=true)
-      ack_message,                           // parent-facing ack (slice 4); null under distress or no template
+      ack_message,                           // parent-facing ack (slice 4); null when suppressed (H-D7) or no template
       redundant_questionnaires,              // SUPPRESS (slice 3): questionnaires made redundant by this update.
       // DISTRESS (slice B) — PROVISIONAL: detection live, content provisional, app
       // delivery is slice 4. detected = tier !== 'none'; response is the
       // distress_responses row (null for none). See docs/provisional-clinical-decisions.md.
       distress,
+      // CHILD HEALTH (080–083) — PROVISIONAL. null when not configured on this project/prompt.
+      child_health: childHealthResult,
+      // Parent-facing support responses in precedence order (H-D7). [] when none.
+      responses,
       provenance: {
         model:           result.model,
         prompt_version,
         catalog_version: catalog.catalog_version,
         correlation_id:  correlationId,
+        health_rules_version: health?.rulesVersion ?? null,
       },
     };
   }

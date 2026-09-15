@@ -1076,7 +1076,9 @@ Body: {
   ack_message: string | null,     // parent-facing acknowledgment (slice 4). Outcome → template
                                   //   key → one random ACTIVE response_templates variant (excludes
                                   //   the user's last-served for that key). null when distress is
-                                  //   present (strain+) — the distress response leads — or no template.
+                                  //   present (strain+), when the child-health band is same_day or
+                                  //   emergency (they REPLACE the ack), or no template. Still shown
+                                  //   with a routine band (H-D7).
   redundant_questionnaires: [     // SUPPRESS (slice 3): questionnaires this update makes redundant.
     { questionnaire_id: string,   // mapped (questionnaire.milestone_id) to a milestone this update resolves
       questionnaire_name: string,
@@ -1087,12 +1089,31 @@ Body: {
     tier: 'none'|'strain'|'overwhelm'|'safety',
     evidence_span: string|null,   // verbatim substring that drove the tier; null for none
     response: { message: string, resources: [ {label,value,kind:'phone'|'text'|'url'} ] } | null,
-    parse_failed: boolean         // true ONLY when the assessment was UNREADABLE after retries
-  },                              //   and defaulted to none (marked + audited, never silent none).
+    parse_failed: boolean,        // true ONLY when the assessment was UNREADABLE after retries
+                                  //   and defaulted to none (marked + audited, never silent none).
+    downgraded_from: 'strain'|'overwhelm'|null   // ADDED (083): set when the symptom-only backstop
+  },                              //   narrowed the tier to none (marked + audited). NEVER safety.
                                   // response = the distress_responses row for the tier (null for none)
+  child_health: {                 // ADDED (080–083) — PROVISIONAL. null when not configured on the
+    concern: boolean,             //   project/prompt (e.g. financial).
+    band: 'emergency'|'same_day'|'routine'|null,   // decided in CODE from age + health_urgency_rules
+    age_months_used: number|null, // the classified child's age; null = unknown → highest band for the flag
+    findings: [ { flag: string, temperature_c: number|null, duration_hours: number|null, evidence_span: string } ],
+    matched_rule_ids: string[],
+    unmatched_flags: string[],    // recognised flag with no rule at this age → routine (seed gap)
+    response: { message: string, resources: [ {label,value,kind} ] } | null,  // health_responses row for the band
+    parse_failed: boolean         // unreadable after retries → band null, marked + audited
+  } | null,
+  responses: [                    // ADDED (080–083): support responses in PRECEDENCE order (H-D7):
+    { kind: 'distress'|'health',  //   safety > emergency > same_day > overwhelm/strain > routine.
+      level: string,              //   Mixed updates carry BOTH. [] when none. The ack is separate
+      message: string,            //   (ack_message) and comes after these.
+      resources: [ {label,value,kind} ] }
+  ],
   provenance: {
     model: string, prompt_version: string,
-    catalog_version: string, correlation_id: string
+    catalog_version: string, correlation_id: string,
+    health_rules_version: string|null   // ADDED (080–083): content hash of the active flags + rules
   }
 }
 → error: { error: { code, message } }   // standard envelope (§Conventions)
@@ -1268,6 +1289,28 @@ applied track(s) + milestone → `milestone_recorded`; tracks only →
 name). History I/O is non-fatal — a best-effort ack never breaks a classification.
 CMS editors manage the copy via the `is_admin()`-gated write policy (same gate on
 `distress_responses`).
+
+**Child health — PROVISIONAL DELIVERED** (migrations 080–083, 2026-09-15; decisions H-D1..H-D9 in
+`docs/provisional-clinical-decisions.md`). A third, mandatory, separate extraction on every update.
+The launch gate is unchanged.
+- **Extraction, not triage** — the classifier returns `child_health { concern, symptom_span, findings }`
+  using ONLY keys from `health_red_flags` (rendered into the user message as `HEALTH FLAGS`), with
+  temperature and duration copied as written. It is never told the child's age.
+- **Band in code** (`src/classify/healthUrgency.ts`) from the classified child's age
+  (`children.birth_year/birth_month`, same formula as `user_mlp_data`) and `health_urgency_rules`:
+  a rule matches when age ∈ [min, max) (any age if unknown), temperature ≥ min or NOT STATED, and
+  duration ≥ min (an unstated duration never matches); the highest band wins; a recognised flag with
+  no rule → routine. `response` is the fixed `health_responses` row for the band.
+- **Distress narrowing** (D2/D4 proposed change) — prompt rule 6 plus a code backstop: strain/overwhelm
+  whose only evidence is the child's symptom wording becomes none with `distress.downgraded_from`
+  set and a `distress_detections` audit row. **Safety is never downgraded.**
+- **Precedence** (`responses[]`, H-D7) — safety distress > emergency > same_day > overwhelm/strain >
+  routine > ack. same_day/emergency replace the ack; routine is order-only.
+- **Persistence** (`persist=true`) — `user_update_events.health_band`; a `health_detections` audit row
+  for any band or an unreadable assessment (`parse_failed`, never a silent "no concern").
+- **Never enriches** — child health does not route through tracks, record milestones, or change apply.
+- **Version skew** — on a project without the health tables or the 083 prompt, `child_health` is
+  `null` and everything else behaves exactly as before.
 
 ---
 
