@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 082 (child health H2): PROVISIONAL seed — red flags, urgency rules, response copy
---   — DRAFT (pending apply)   *** MOOSII ONLY *** (financial has no children or classify traffic)
+--   — APPLIED moosii 2026-09-15   *** MOOSII ONLY *** (financial has no children or classify traffic)
 -- ============================================================================
 -- DATA, not schema. Every row is_provisional = true and awaits clinical review
 -- (docs/provisional-clinical-decisions.md H-D1..H-D9). Seeded from AAP when-to-call guidance,

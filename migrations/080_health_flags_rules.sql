@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 080 (child health H1): health_red_flags + health_urgency_rules — APPLIED financial 2026-09-15 · PENDING moosii
+-- MIGRATION 080 (child health H1): health_red_flags + health_urgency_rules — APPLIED financial 2026-09-15 · APPLIED moosii 2026-09-15
 -- ============================================================================
 -- Child health in classify (docs/drafts/child-health/PROPOSAL.md; decided by Mark 2026-09-15).
 -- The classifier EXTRACTS red-flag findings from a parent's update; CODE decides the urgency

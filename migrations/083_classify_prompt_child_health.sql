@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 083 (child health H4): classify_update prompt — child-health extraction + distress
--- narrowing (rule 6) — DRAFT (pending apply)   *** MOOSII ONLY *** (financial has no prompt rows)
+-- narrowing (rule 6) — APPLIED moosii 2026-09-15   *** MOOSII ONLY *** (financial has no prompt rows)
 -- ============================================================================
 -- GENERATED from migration 024's exact text (scratchpad gen_083.py): 024's system_message is kept
 -- byte-for-byte except for TWO insertions, and output_schema gains a required `child_health` object.

@@ -22,8 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 079 · Moosii 079** (main) + **0008**
-(prompt track). Both projects share 008..074 and 076..079; **075 is financial-only** (decision D6).
+(Current APPLIED high-water, per project from 069: **financial 081 · Moosii 083** (main) + **0008**
+(prompt track). Both projects share 008..074 and 076..081; **075 is financial-only** (decision D6);
+**082–083 are Moosii-only** (child-health seeds + classify prompt).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -267,8 +268,11 @@ Main track:
   0 case-insensitive, on both (financial 0 users, Moosii 5). Verify on both: `UNIQUE (email)` with NULLs
   distinct; a duplicate non-NULL email refused with 23505 (rolled back).
 - **080–083 — child health in classify** (docs/drafts/child-health/PROPOSAL.md; decided by Mark
-  2026-09-15). **080–081 APPLIED financial (2026-09-15); 080–083 PENDING moosii.** Apply order =
-  number order; proposal labels in brackets.
+  2026-09-15). **080–081 APPLIED financial (2026-09-15); 080–083 APPLIED moosii (2026-09-15).**
+  Apply order = number order; proposal labels in brackets. Moosii: every pre-check, apply and
+  verification clean (080/081 as on financial; 082 verify 20 flags / 24 rules / 3 responses, all
+  provisional, poisoning emergency; 083 pre-check md5 4a3e23cf → verify fc44fb5c, CRLF kept, rule 6
+  with the safety exemption + CHILD HEALTH block present, child_health required).
   Tested locally on a schema-only dump of Moosii (post-079): all four apply cleanly twice, and the
   constraint, RLS and prompt assertions hold.
   - **080 [H1] — both projects** — financial: pre-check, apply and verify clean (RLS on + 4

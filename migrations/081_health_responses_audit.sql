@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 081 (child health H3): health_responses, health_detections, event band, distress
--- downgrade marker — APPLIED financial 2026-09-15 · PENDING moosii
+-- downgrade marker — APPLIED financial 2026-09-15 · APPLIED moosii 2026-09-15
 -- ============================================================================
 -- Schema only; the provisional copy is seeded in 082 (Moosii only). Applied BEFORE 082, which
 -- needs health_responses.
