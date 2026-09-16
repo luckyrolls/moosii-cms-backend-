@@ -22,10 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 087 · Moosii 086** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 088 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087 are financial-only**
-(084 and 087 APPLIED; 085 still DRAFT).
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–088 are financial-only**
+(084, 087, 088 APPLIED; 085 still DRAFT).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -354,6 +354,16 @@ Main track:
   (financial URL); `lessons` public, 50 MB; rolled-back proof: sign-up → `user` row (unverified,
   provider email, role user) + Getting Oriented; verification → `is_verified`; upload → `image_assets`
   with financial's URL; delete → row removed.
+- **088 — financial: seed `consts` from Moosii** — **APPLIED financial (2026-09-16) · FINANCIAL ONLY.**
+  Data only. Since 087 the sign-up trigger copies `consts` into `user_configurations`; financial's
+  `consts` was empty, so a sign-up got no config row, and without it completing any item FAILS
+  (`trigger_add_moosies` → `moosies + NULL` → NOT NULL violation), `user_mlp_not_completed` (app home
+  plan, CMS classify snapshot) returns nothing, and `unique_items_today_by_user` drops the user.
+  Seeds Moosii's single row (1 | 1.5 | 20 | 50 | 10 | 9.99 | 99.9 | 7 — Moosii's product values).
+  Tested locally: before, no config row / empty plan / completion fails; after, config 20/50/10, plan
+  shows, completion adds 10 moosies; wrong domain refused; applies twice. Financial apply: pre-check
+  consts empty, 0 users without config, sign-up trigger present; verify row = Moosii's; rolled-back
+  sign-up → config row, plan item visible, completion succeeds (+10 moosies).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
