@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 087: financial — attach the auth.users + storage.objects triggers, create the `lessons`
---   bucket, point image sync at financial's own storage URL — DRAFT (pending apply)   *** FINANCIAL ONLY ***
+--   bucket, point image sync at financial's own storage URL — APPLIED financial 2026-09-16   *** FINANCIAL ONLY ***
 -- ============================================================================
 -- WHY: financial was built from a schema-only dump of Moosii's `public` schema. Objects that live in
 -- OTHER schemas did not come across, even when the function they call did. Diffed read-only against

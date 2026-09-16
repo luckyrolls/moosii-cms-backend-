@@ -22,10 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 086 · Moosii 086** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 087 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 are financial-only**
-(084 APPLIED; 085 still DRAFT).
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087 are financial-only**
+(084 and 087 APPLIED; 085 still DRAFT).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -335,8 +335,8 @@ Main track:
   Moosii apply (2026-09-16, PG 15.8): same pre-check (md5 `fb4c390c`, 5 triggers); verify md5 `ba31ffd7`
   (identical on PG 15), 5 triggers, SECURITY DEFINER kept; rolled-back proof: a content UPDATE on a
   published card succeeds — the guard is still inert on the moosii domain.
-- **087 — financial: auth.users + storage.objects triggers, `lessons` bucket** — **DRAFT (pending
-  apply) · FINANCIAL ONLY.** The schema-only dump of `public` did not carry objects in other schemas.
+- **087 — financial: auth.users + storage.objects triggers, `lessons` bucket** — **APPLIED financial
+  (2026-09-16) · FINANCIAL ONLY.** The schema-only dump of `public` did not carry objects in other schemas.
   A read-only diff of both projects' non-public objects (2026-09-16) found these app-created gaps:
   Moosii's 3 `auth.users` triggers (sign-up → `user` row; verification; provider) and 3
   `storage.objects` triggers (`image_assets` sync / delete), and the `lessons` bucket. The trigger
@@ -349,6 +349,11 @@ Main track:
   sign-up creates the `user` row and the default track appears; verification flips `is_verified`; an
   object in `lessons` creates `image_assets` with financial's URL; delete (with Supabase's
   `storage.allow_delete_query`) removes it. **Apply before 085.**
+  **Financial apply (2026-09-16, PG 17.6):** pre-check: none of the six triggers, 0 buckets, privileges
+  granted, 0 auth users. Applied. Verify: six triggers with Moosii's definitions; sync function = 087's
+  (financial URL); `lessons` public, 50 MB; rolled-back proof: sign-up → `user` row (unverified,
+  provider email, role user) + Getting Oriented; verification → `is_verified`; upload → `image_assets`
+  with financial's URL; delete → row removed.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
