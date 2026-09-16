@@ -24,8 +24,8 @@ Each hand-applied file's header carries a line like
 high-water number is bumped as migrations are added.
 (Current APPLIED high-water, per project from 069: **financial 086 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 are financial-only
-and still DRAFT**.
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 are financial-only**
+(084 APPLIED; 085 still DRAFT).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -295,7 +295,7 @@ Main track:
     not child symptoms; never applies to safety) + a CHILD HEALTH extraction block; `output_schema`
     gains required `child_health`. Guarded on the live md5 (`4a3e23cf…` → `fc44fb5c…`). ⚠ The live row
     stores the prompt with **CRLF** line endings (applied via the SQL editor); 083 preserves CRLF.
-- **084–085 — financial content seed** — **DRAFT (pending apply) · FINANCIAL ONLY** (decisions
+- **084–085 — financial content seed** — **084 APPLIED financial (2026-09-16) · 085 DRAFT · FINANCIAL ONLY** (decisions
   D-C1..D-C4, 2026-09-16). Data only. Each file raises unless `app_settings.domain = 'financial'`.
   - **084** — what `generate_lessons` / `generate_segment_content` need on financial, which had no
     such rows: the Plain Money tone (voice block + segment row, §2g) with copied `standard_arc`,
@@ -309,6 +309,13 @@ Main track:
     here. Tested locally on a financial schema restore (after 075 + 086): bad value / bad weight /
     empty value / wrong domain refused with nothing written; applies twice; all verification checks
     hold; a null-age lesson inserts; a fact grants its track. **Apply after 086.**
+    **Financial apply (2026-09-16, PG 17.6):** pre-check: 086 live, 0 rows in every seeded table, 075
+    vocabulary 6/13. Applied. Verify: 1 active lesson + 1 active segment prompt; 4 blocks; 1 size
+    profile; 8 topics; 6 tracks; **7 fact_track_rules, matching brief §6**; default = Getting Oriented;
+    lesson ages nullable; Plain Money fully wired; no parenting wording; rolled-back null-age lesson
+    created on Credit Health. (The first verification run stopped on a bug in the check itself — a
+    PL/pgSQL variable shadowed a table alias — after the migration had committed; the corrected
+    check was re-run on the applied data and passed.)
   - **085** — D-C3: creates/updates Mark's `public."user"` row as `super_admin` with both review
     flags. Needs his financial auth uid (a slot), so it runs after he signs up. Financial has no
     `auth.users` triggers, so sign-up alone creates no `user` row.
@@ -324,7 +331,7 @@ Main track:
   Financial apply (2026-09-16, PG 17.6): pre-check md5 `fb4c390c` + 5 triggers; verify md5 `ba31ffd7`,
   5 triggers, SECURITY DEFINER kept; rolled-back proof: a lesson + segment created through the RPC, a
   card / quiz question / answer written unpublished, then 6/6 content writes refused after publish,
-  metadata still writable. 084–085 remain DRAFT, so financial's applied set skips them for now.
+  metadata still writable. (084 was applied after 086; 085 is still DRAFT.)
   Moosii apply (2026-09-16, PG 15.8): same pre-check (md5 `fb4c390c`, 5 triggers); verify md5 `ba31ffd7`
   (identical on PG 15), 5 triggers, SECURITY DEFINER kept; rolled-back proof: a content UPDATE on a
   published card succeeds — the guard is still inert on the moosii domain.

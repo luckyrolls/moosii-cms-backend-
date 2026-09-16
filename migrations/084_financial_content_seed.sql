@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 084: financial content seed — DATA ONLY — DRAFT (pending apply)   *** FINANCIAL ONLY ***
+-- MIGRATION 084: financial content seed — DATA ONLY — APPLIED financial 2026-09-16   *** FINANCIAL ONLY ***
 -- ============================================================================
 -- WHAT: everything `generate_lessons` and `generate_segment_content` need on the FINANCIAL project,
 -- which today holds no prompt, block, size profile, topic, track or default-track rows at all
