@@ -294,6 +294,28 @@ Main track:
     not child symptoms; never applies to safety) + a CHILD HEALTH extraction block; `output_schema`
     gains required `child_health`. Guarded on the live md5 (`4a3e23cf…` → `fc44fb5c…`). ⚠ The live row
     stores the prompt with **CRLF** line endings (applied via the SQL editor); 083 preserves CRLF.
+- **084–085 — financial content seed** — **DRAFT (pending apply) · FINANCIAL ONLY** (decisions
+  D-C1..D-C4, 2026-09-16). Data only. Each file raises unless `app_settings.domain = 'financial'`.
+  - **084** — what `generate_lessons` / `generate_segment_content` need on financial, which had no
+    such rows: the Plain Money tone (voice block + segment row, §2g) with copied `standard_arc`,
+    `standard_400`, size profile `standard`, and a financial `card_positions_v1` (Moosii's carries
+    parenting wording); the active `lesson` prompt with the domain swapped (ages nullable, D-C1;
+    D-C2 trigger list; not-advice paragraph); 8 topics; 6 tracks; 7 `fact_track_rules`; Getting
+    Oriented as the default track. ⚠ **Not applicable as committed:** the brief's content (voice
+    text, five track names, all track fields, the seven mappings) is in `<<BRIEF: …>>` slots and the
+    file raises until they are filled. Q-Onboard and `fact_entry_map` are deliberately not here.
+  - **085** — D-C3: creates/updates Mark's `public."user"` row as `super_admin` with both review
+    flags. Needs his financial auth uid (a slot), so it runs after he signs up. Financial has no
+    `auth.users` triggers, so sign-up alone creates no `user` row.
+- **086 — `content_edit_policy_guard()` per-table branches** — **DRAFT (pending apply) · both
+  projects, financial first.** Fixes a 064 defect that only the financial domain reaches: the single
+  `CASE` naming `NEW.seg_id` / `NEW.lesson_id` / … fails with `record "new" has no field …` on every
+  guarded write, so on financial no lesson, segment, card or quiz row can be written at all (it blocks
+  `generate_lessons`). Same policy, messages, ERRCODE and HINT; same signature. Guarded on 064's md5
+  `fb4c390c…` → `ba31ffd7…`. Tested locally on a financial schema restore: before, every write fails;
+  after, unpublished writes succeed, six content writes on a published lesson are refused with
+  `published_content_locked`, metadata stays writable, a moosii-domain DB stays inert, and it re-runs.
+  **Apply before 084's content is generated.**
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
