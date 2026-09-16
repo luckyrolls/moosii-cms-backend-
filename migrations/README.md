@@ -22,9 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 086 · Moosii 083** (main) + **0008**
-(prompt track). Both projects share 008..074 and 076..081; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt).
+(Current APPLIED high-water, per project from 069: **financial 086 · Moosii 086** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 are financial-only
+and still DRAFT**.
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -312,7 +313,7 @@ Main track:
     flags. Needs his financial auth uid (a slot), so it runs after he signs up. Financial has no
     `auth.users` triggers, so sign-up alone creates no `user` row.
 - **086 — `content_edit_policy_guard()` per-table branches** — **APPLIED financial (2026-09-16) ·
-  PENDING moosii.** Both projects, financial first. Fixes a 064 defect that only the financial domain reaches: the single
+  APPLIED moosii (2026-09-16).** Both projects, financial first. Fixes a 064 defect that only the financial domain reaches: the single
   `CASE` naming `NEW.seg_id` / `NEW.lesson_id` / … fails with `record "new" has no field …` on every
   guarded write, so on financial no lesson, segment, card or quiz row can be written at all (it blocks
   `generate_lessons`). Same policy, messages, ERRCODE and HINT; same signature. Guarded on 064's md5
@@ -324,6 +325,9 @@ Main track:
   5 triggers, SECURITY DEFINER kept; rolled-back proof: a lesson + segment created through the RPC, a
   card / quiz question / answer written unpublished, then 6/6 content writes refused after publish,
   metadata still writable. 084–085 remain DRAFT, so financial's applied set skips them for now.
+  Moosii apply (2026-09-16, PG 15.8): same pre-check (md5 `fb4c390c`, 5 triggers); verify md5 `ba31ffd7`
+  (identical on PG 15), 5 triggers, SECURITY DEFINER kept; rolled-back proof: a content UPDATE on a
+  published card succeeds — the guard is still inert on the moosii domain.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

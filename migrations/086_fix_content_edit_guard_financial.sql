@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 086: content_edit_policy_guard() — per-table branches, so it runs on financial
---   — APPLIED financial 2026-09-16 · PENDING moosii — both projects (financial first)
+--   — APPLIED financial 2026-09-16 · APPLIED moosii 2026-09-16 — both projects (financial first)
 -- ============================================================================
 -- BUG (found 2026-09-16 testing 084 on a local restore of financial's schema): on the financial
 -- domain EVERY guarded write fails before the policy is even checked, e.g. creating a lesson:
