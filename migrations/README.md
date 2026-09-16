@@ -301,9 +301,13 @@ Main track:
     `standard_400`, size profile `standard`, and a financial `card_positions_v1` (Moosii's carries
     parenting wording); the active `lesson` prompt with the domain swapped (ages nullable, D-C1;
     D-C2 trigger list; not-advice paragraph); 8 topics; 6 tracks; 7 `fact_track_rules`; Getting
-    Oriented as the default track. ⚠ **Not applicable as committed:** the brief's content (voice
-    text, five track names, all track fields, the seven mappings) is in `<<BRIEF: …>>` slots and the
-    file raises until they are filled. Q-Onboard and `fact_entry_map` are deliberately not here.
+    Oriented as the default track. Filled from `docs/drafts/financial-seed/financial-content-seed.md`
+    (§1–§6); the voice block is §2 verbatim plus §1's anti-patterns, and the final card is "one
+    concrete action today" in card positions and the financial `standard_arc`. Q-Onboard (§8: an
+    answer cannot write a fact), `fact_entry_map` (§7) and `screen_help` (§9) are deliberately not
+    here. Tested locally on a financial schema restore (after 075 + 086): bad value / bad weight /
+    empty value / wrong domain refused with nothing written; applies twice; all verification checks
+    hold; a null-age lesson inserts; a fact grants its track. **Apply after 086.**
   - **085** — D-C3: creates/updates Mark's `public."user"` row as `super_admin` with both review
     flags. Needs his financial auth uid (a slot), so it runs after he signs up. Financial has no
     `auth.users` triggers, so sign-up alone creates no `user` row.

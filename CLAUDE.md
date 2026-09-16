@@ -177,7 +177,9 @@ API, not direct Supabase writes. Sanctioned CMS-direct write paths are listed in
 
 ## Auth
 - **CMS admin routes**: Supabase **JWT** (`Authorization: Bearer <jwt>`) verified via
-  `supabase.auth.getUser()`, role from `users_internal` (`src/middleware/jwtAuth.ts`). The route
+  `supabase.auth.getUser()`, role and review capabilities from `public."user"` (`role`,
+  `can_review_editorial`, `can_approve_clinical`; `users_internal` is NOT read —
+  `src/middleware/jwtAuth.ts:6-27`). The route
   set lives in `src/index.ts`; per-route detail in `docs/api-contract.md`.
 - **App-facing** (`/classify-update`, `/mlp`): verify the END-USER's Supabase JWT themselves and
   scope to that user; admin callers get the wider mode. Mounted without the admin gate.
