@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 081 · Moosii 083** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 086 · Moosii 083** (main) + **0008**
 (prompt track). Both projects share 008..074 and 076..081; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -311,8 +311,8 @@ Main track:
   - **085** — D-C3: creates/updates Mark's `public."user"` row as `super_admin` with both review
     flags. Needs his financial auth uid (a slot), so it runs after he signs up. Financial has no
     `auth.users` triggers, so sign-up alone creates no `user` row.
-- **086 — `content_edit_policy_guard()` per-table branches** — **DRAFT (pending apply) · both
-  projects, financial first.** Fixes a 064 defect that only the financial domain reaches: the single
+- **086 — `content_edit_policy_guard()` per-table branches** — **APPLIED financial (2026-09-16) ·
+  PENDING moosii.** Both projects, financial first. Fixes a 064 defect that only the financial domain reaches: the single
   `CASE` naming `NEW.seg_id` / `NEW.lesson_id` / … fails with `record "new" has no field …` on every
   guarded write, so on financial no lesson, segment, card or quiz row can be written at all (it blocks
   `generate_lessons`). Same policy, messages, ERRCODE and HINT; same signature. Guarded on 064's md5
@@ -320,6 +320,10 @@ Main track:
   after, unpublished writes succeed, six content writes on a published lesson are refused with
   `published_content_locked`, metadata stays writable, a moosii-domain DB stays inert, and it re-runs.
   **Apply before 084's content is generated.**
+  Financial apply (2026-09-16, PG 17.6): pre-check md5 `fb4c390c` + 5 triggers; verify md5 `ba31ffd7`,
+  5 triggers, SECURITY DEFINER kept; rolled-back proof: a lesson + segment created through the RPC, a
+  card / quiz question / answer written unpublished, then 6/6 content writes refused after publish,
+  metadata still writable. 084–085 remain DRAFT, so financial's applied set skips them for now.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
