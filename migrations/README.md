@@ -335,6 +335,20 @@ Main track:
   Moosii apply (2026-09-16, PG 15.8): same pre-check (md5 `fb4c390c`, 5 triggers); verify md5 `ba31ffd7`
   (identical on PG 15), 5 triggers, SECURITY DEFINER kept; rolled-back proof: a content UPDATE on a
   published card succeeds — the guard is still inert on the moosii domain.
+- **087 — financial: auth.users + storage.objects triggers, `lessons` bucket** — **DRAFT (pending
+  apply) · FINANCIAL ONLY.** The schema-only dump of `public` did not carry objects in other schemas.
+  A read-only diff of both projects' non-public objects (2026-09-16) found these app-created gaps:
+  Moosii's 3 `auth.users` triggers (sign-up → `user` row; verification; provider) and 3
+  `storage.objects` triggers (`image_assets` sync / delete), and the `lessons` bucket. The trigger
+  functions already exist on financial (the three auth ones only differ by CRLF). The image-sync
+  function hardcodes Moosii's storage URL, so 087 replaces financial's copy with financial's ref.
+  Body guarded on all five function md5s (LF-normalised). Deliberately NOT copied: Moosii's 9 storage
+  policies (two are blanket `allow_all` — see `docs/backlog.md` P1), the five app-side buckets, the
+  realtime publication's tables, the cron purge job, Supabase-managed drift. Tested locally (financial
+  schema restore + stubbed auth/storage): wrong domain and a tampered function refused; applies twice;
+  sign-up creates the `user` row and the default track appears; verification flips `is_verified`; an
+  object in `lessons` creates `image_assets` with financial's URL; delete (with Supabase's
+  `storage.allow_delete_query`) removes it. **Apply before 085.**
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -3,6 +3,21 @@
 Prioritised, not-yet-scheduled work for this repo. P1 = next, P2 = soon, P3 = when convenient.
 An item leaves this file when it ships (record it in `api-contract.md` / `migrations/README.md`).
 
+## P1
+
+### Moosii storage: blanket `allow_all` policies
+**Why:** Moosii has two storage policies with no condition, for role `public` and every command:
+`allow_all` on `storage.buckets` and `allow_all` on `storage.objects`. Policies are OR-ed, so anyone
+holding the anon key can read, upload, overwrite or delete any object in any bucket — including the
+`lessons` images the app shows (the `sub_segments.image` → `image_assets` chain) — and create or alter
+buckets. The narrower policies beside them (`transaction-images` own-folder, `moosi` bucket) are made
+moot. Found 2026-09-16 while diffing Moosii and financial for migration 087; not copied to financial.
+**What:** confirm what legitimately writes storage directly (the backend uses the service role and
+bypasses RLS; the CMS only reads public URLs; the app — moosii-rn seat — may upload to `moosi` /
+`transaction-images` / `onboarding`), then drop both `allow_all` policies in a Moosii migration, keeping
+or adding bucket-scoped ones for the real app paths. Public buckets stay readable by URL without a
+policy. Needs the moosii-rn seat to confirm its upload paths first.
+
 ## P3
 
 ### Audit card and quiz review resets
