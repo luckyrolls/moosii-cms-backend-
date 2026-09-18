@@ -25,7 +25,7 @@ high-water number is bumped as migrations are added.
 (Current APPLIED high-water, per project from 069: **financial 088 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–088 are financial-only**
-(084, 087, 088 APPLIED; 085 still DRAFT).
+(all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -295,7 +295,7 @@ Main track:
     not child symptoms; never applies to safety) + a CHILD HEALTH extraction block; `output_schema`
     gains required `child_health`. Guarded on the live md5 (`4a3e23cf…` → `fc44fb5c…`). ⚠ The live row
     stores the prompt with **CRLF** line endings (applied via the SQL editor); 083 preserves CRLF.
-- **084–085 — financial content seed** — **084 APPLIED financial (2026-09-16) · 085 DRAFT · FINANCIAL ONLY** (decisions
+- **084–085 — financial content seed** — **084 APPLIED financial (2026-09-16) · 085 APPLIED financial (2026-09-18) · FINANCIAL ONLY** (decisions
   D-C1..D-C4, 2026-09-16). Data only. Each file raises unless `app_settings.domain = 'financial'`.
   - **084** — what `generate_lessons` / `generate_segment_content` need on financial, which had no
     such rows: the Plain Money tone (voice block + segment row, §2g) with copied `standard_arc`,
@@ -319,6 +319,10 @@ Main track:
   - **085** — D-C3: creates/updates Mark's `public."user"` row as `super_admin` with both review
     flags. Needs his financial auth uid (a slot), so it runs after he signs up. Financial has no
     `auth.users` triggers, so sign-up alone creates no `user` row.
+    **Financial apply (2026-09-18):** Mark signed up after 087/088, so his `user` row (role `user`,
+    no flags) and config row already existed. Pre-check: financial; his auth user present and the only
+    one. Applied (the ON CONFLICT update). Verify: `super_admin`, `can_review_editorial` and
+    `can_approve_clinical` true; config row intact; the only admin on financial.
 - **086 — `content_edit_policy_guard()` per-table branches** — **APPLIED financial (2026-09-16) ·
   APPLIED moosii (2026-09-16).** Both projects, financial first. Fixes a 064 defect that only the financial domain reaches: the single
   `CASE` naming `NEW.seg_id` / `NEW.lesson_id` / … fails with `record "new" has no field …` on every

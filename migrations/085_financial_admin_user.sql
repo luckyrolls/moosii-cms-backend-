@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 085: Mark's admin profile + both review flags on financial (D-C3) — DATA ONLY
---   — DRAFT (pending apply)   *** FINANCIAL ONLY ***
+--   — APPLIED financial 2026-09-18   *** FINANCIAL ONLY ***
 -- ============================================================================
 -- WHY A SEPARATE FILE: D-C3 gives Mark both review capabilities on financial, but the financial
 -- project has NO auth users yet (checked 2026-09-16), so there is no uid to grant them to. Run this
@@ -13,6 +13,8 @@
 -- admin check (src/middleware/jwtAuth.ts verifyAdminJwt reads user.role and the two flags) refuses
 -- the account. This file creates or updates the row. Attaching the auth triggers on financial is a
 -- separate SCHEMA decision (see the report) — not done here.
+-- UPDATE 2026-09-18: 087 attached those triggers and 088 seeded consts, so Mark's sign-up created his
+-- `user` and `user_configurations` rows; this file only UPDATEd role + flags (the ON CONFLICT branch).
 --
 -- Capabilities live on `public."user"` (can_review_editorial, can_approve_clinical; migration
 -- 056), not on users_internal (which the backend does not read).
@@ -46,7 +48,7 @@ END $$;
 
 -- ---- INPUT: Mark's financial auth uid ----
 CREATE TEMP TABLE seed_085 (auth_uid text NOT NULL) ON COMMIT DROP;
-INSERT INTO seed_085 (auth_uid) VALUES ('<<MARK: financial auth uid>>');
+INSERT INTO seed_085 (auth_uid) VALUES ('13464cb0-8e65-4545-9b03-00075472614b');   -- Mark, financial sign-up 2026-09-18
 
 DO $$
 DECLARE v text := (SELECT auth_uid FROM seed_085);
