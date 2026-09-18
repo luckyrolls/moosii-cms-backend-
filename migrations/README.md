@@ -335,7 +335,7 @@ Main track:
   Financial apply (2026-09-16, PG 17.6): pre-check md5 `fb4c390c` + 5 triggers; verify md5 `ba31ffd7`,
   5 triggers, SECURITY DEFINER kept; rolled-back proof: a lesson + segment created through the RPC, a
   card / quiz question / answer written unpublished, then 6/6 content writes refused after publish,
-  metadata still writable. (084 was applied after 086; 085 is still DRAFT.)
+  metadata still writable. (084 was applied after 086; 085 on 2026-09-18.)
   Moosii apply (2026-09-16, PG 15.8): same pre-check (md5 `fb4c390c`, 5 triggers); verify md5 `ba31ffd7`
   (identical on PG 15), 5 triggers, SECURITY DEFINER kept; rolled-back proof: a content UPDATE on a
   published card succeeds — the guard is still inert on the moosii domain.
