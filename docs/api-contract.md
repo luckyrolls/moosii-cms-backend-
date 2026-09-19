@@ -1451,11 +1451,16 @@ input: { track_id, min_child_age?, max_child_age?, author_instructions? }
   // existing lessons' [min,max] is the FALLBACK when the span is omitted; the span is
   // REQUIRED when the track has zero lessons (tracks carry no age range column to derive from).
   // `age_span_used` in the result reports which span was applied.
+  // NO AGE AXIS (DOMAIN=financial, since 2026-09-18, src/lib/ageAxis.ts): the span is never
+  // required and a supplied one is IGNORED (the CMS sends 0/1200 for its hidden field); the
+  // prompt gets no "Age span to cover" line and maps coverage by subtopic only; the result
+  // carries age_span_used: null and track.min_age/max_age: null, and financial's prompt (089)
+  // returns null proposal ages (D-C1) and "all" in every thin_areas.age_band. Moosii unchanged.
   // author_instructions: authoritative per-run guidance, injected as an AUTHOR INSTRUCTIONS
   // block — same semantics as generate_lessons (overrides on conflict); absent → no block.
 jobs.result: {
   track: { id, name, description, min_age, max_age },
-  age_span_used: { min, max },
+  age_span_used: { min, max } | null,   // null = no age axis (financial)
   coverage_read: { summary, thin_areas: [ { area, age_band, note } ] },
     // The audit's assessment, emitted BEFORE proposing (it's what forces whole-span
     // reasoning). `area` = the subtopic, FREE-FORM prose — deliberately NOT the

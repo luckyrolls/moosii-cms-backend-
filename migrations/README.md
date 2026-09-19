@@ -368,6 +368,20 @@ Main track:
   shows, completion adds 10 moosies; wrong domain refused; applies twice. Financial apply: pre-check
   consts empty, 0 users without config, sign-up trigger present; verify row = Moosii's; rolled-back
   sign-up → config row, plan item visible, completion succeeds (+10 moosies).
+- **089 — financial: the remaining prompt rows** — **DRAFT (pending apply) · FINANCIAL ONLY.** Data only.
+  `coverage_audit`, `quiz`, `review_best_practices` / `review_doc_grounded` / `review_factual_smell`,
+  `questionnaire` — every prompt type the financial CMS can reach that financial lacked (classify is
+  off there). Adapted from Moosii's live rows with parenting wording removed, in 084's voice
+  (`financial-content-seed.md` §1–§3). Real rewrites: coverage_audit (no age axis; ages nullable),
+  questionnaire (never asks for amounts), review_factual_smell (examples). Vocabulary swaps: quiz,
+  review_best_practices (+ takeaway = one concrete action), review_doc_grounded. Schemas, scopes and
+  models copied from Moosii (review_* are gemini-2.5-flash → GEMINI_API_KEY on the financial
+  backend). Refuses to run if any row of these types exists (the handlers read `.single()`).
+  Ships with the coverage-audit code change (`src/lib/ageAxis.ts`): financial audits run with no age
+  span. Tested locally (financial restore after 075/086/084): wrong domain and a pre-existing row
+  refused; applies twice; one active row per type; coverage ages nullable; review card positions →
+  financial's block; no parenting words in any financial prompt. **Apply after 084, and deploy the
+  code first** (without it a financial audit still demands a span).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

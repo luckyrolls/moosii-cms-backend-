@@ -3,6 +3,8 @@ import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
+import { DOMAIN } from "../../lib/domain";
+import { domainHasAgeAxis, resolveCoverageAgeSpan } from "../../lib/ageAxis";
 
 // Untyped alias for the prompts row (this prompt_type postdates database.types),
 // matching generateLessons.ts.
@@ -19,7 +21,8 @@ type Input = {
   track_id: string;
   // Age span override. When supplied, it WINS over the derived span (operator override); when
   // omitted, the span is derived from existing lessons. REQUIRED only when the track has ZERO
-  // existing lessons (nothing to derive from).
+  // existing lessons (nothing to derive from). IGNORED on a domain with no age axis (financial):
+  // the audit runs without a span (src/lib/ageAxis.ts).
   min_child_age?: number;
   max_child_age?: number;
   // Authoritative per-run guidance, injected as an AUTHOR INSTRUCTIONS block — same framing,
@@ -45,8 +48,8 @@ type Proposal = {
   internal_name?: string;   // curator catalog handle (0008) — passes through to jobs.result;
                             // the accept endpoint forwards it, the RPC coalesces to lesson_name
   description: string;
-  min_child_age: number;
-  max_child_age: number;
+  min_child_age: number | null;   // null on a domain with no age axis (financial, D-C1)
+  max_child_age: number | null;
   topic: string;
   priority: number;
   fills_gap: string;
@@ -77,19 +80,20 @@ async function loadCoverageAuditPromptRow(): Promise<CoverageAuditPromptRow> {
 function buildUserMessage(opts: {
   trackName: string;
   trackDescription: string;
-  minAge: number;
-  maxAge: number;
+  minAge: number | null;   // null = no age axis (financial): no span line, no age bands
+  maxAge: number | null;
   topicNames: string[];
   existing: unknown[];
   usedPriorities: number[];
   additionalInfo?: string;
 }): string {
   const parts: string[] = [];
+  const hasSpan = opts.minAge !== null && opts.maxAge !== null;
   parts.push(
     `TRACK\n` +
     `Name: ${opts.trackName}\n` +
-    `Description: ${opts.trackDescription}\n` +
-    `Age span to cover: ${opts.minAge}–${opts.maxAge} months`
+    `Description: ${opts.trackDescription}` +
+    (hasSpan ? `\nAge span to cover: ${opts.minAge}–${opts.maxAge} months` : "")
   );
   parts.push(`AVAILABLE TOPICS\n${opts.topicNames.join("\n")}`);
   if (opts.existing.length > 0) {
@@ -97,12 +101,16 @@ function buildUserMessage(opts: {
     // be given the priority values already used in this track" and forbids collisions —
     // without this line that rule is dead text. Format matches generate_lessons exactly.
     parts.push(
-      `EXISTING LESSONS IN THIS TRACK — map coverage across subtopic AND age band, then propose ` +
+      `EXISTING LESSONS IN THIS TRACK — map coverage across subtopic${hasSpan ? " AND age band" : ""}, then propose ` +
       `ONLY gap-fillers; do not duplicate or closely overlap these:\n${JSON.stringify(opts.existing, null, 2)}\n` +
       `Priority values already in use: ${opts.usedPriorities.join(", ")}`
     );
   } else {
-    parts.push(`EXISTING LESSONS IN THIS TRACK\nNone yet — the audit degenerates to full age-aware ideation across the span.`);
+    parts.push(
+      hasSpan
+        ? `EXISTING LESSONS IN THIS TRACK\nNone yet — the audit degenerates to full age-aware ideation across the span.`
+        : `EXISTING LESSONS IN THIS TRACK\nNone yet — the audit degenerates to full ideation across the track.`
+    );
   }
   // AUTHOR INSTRUCTIONS — mirrored verbatim from generate_lessons (same header, same trim,
   // same trailing position). The prompt's AUTHOR INSTRUCTIONS section makes this authoritative.
@@ -150,20 +158,19 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
   // the author narrows/widens the audit window); DERIVE [min,max] from existing lessons only
   // when the input omits it; REQUIRE it as input on a zero-lesson track (tracks carry no age
   // range column, so there is nothing to derive from). age_span_used reports the outcome.
-  let minAge: number, maxAge: number;
+  // A domain with no age axis (financial) runs with NO span and ignores a supplied one.
   const mins = existingRows.map((l) => l.min_child_age).filter((v): v is number => typeof v === "number");
   const maxs = existingRows.map((l) => l.max_child_age).filter((v): v is number => typeof v === "number");
-  if (typeof min_child_age === "number" && typeof max_child_age === "number") {
-    minAge = min_child_age;
-    maxAge = max_child_age;
-  } else if (mins.length > 0 && maxs.length > 0) {
-    minAge = Math.min(...mins);
-    maxAge = Math.max(...maxs);
-  } else {
-    throw new Error(
-      "No age span available: the track has no existing lessons with age bounds — supply min_child_age and max_child_age in the job input."
-    );
-  }
+  const span = resolveCoverageAgeSpan({
+    hasAgeAxis: domainHasAgeAxis(DOMAIN),
+    suppliedMin: min_child_age,
+    suppliedMax: max_child_age,
+    existingMins: mins,
+    existingMaxs: maxs,
+  });
+  if (span.kind === "error") throw new Error(span.message);
+  const minAge: number | null = span.kind === "span" ? span.min : null;
+  const maxAge: number | null = span.kind === "span" ? span.max : null;
 
   // Prompt + LLM (params + schema from the DB row, like generate_lessons).
   const promptRow = await loadCoverageAuditPromptRow();
@@ -198,7 +205,7 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
     latencyMs: Date.now() - llmStart,
     relatedEntityType: null,
     relatedEntityId: null,
-    notes: `track_id: ${track_id}; age_span: ${minAge}-${maxAge}; existing_lessons: ${existingRows.length}; author_instructions: ${
+    notes: `track_id: ${track_id}; age_span: ${span.kind === "span" ? `${minAge}-${maxAge}` : "none (no age axis)"}; existing_lessons: ${existingRows.length}; author_instructions: ${
       author_instructions && author_instructions.trim() ? JSON.stringify(author_instructions) : "none"
     }`,
   });
@@ -219,7 +226,8 @@ export async function coverageAuditHandler(job: Job): Promise<unknown> {
   // are ephemeral (this result payload) until the human accepts them.
   return {
     track: { id: track_id, name: track.track_name, description: track.description, min_age: minAge, max_age: maxAge },
-    age_span_used: { min: minAge, max: maxAge },
+    // null when the domain has no age axis — the CMS renders the span only when present.
+    age_span_used: span.kind === "span" ? { min: minAge, max: maxAge } : null,
     coverage_read: parsed.coverage_read,
     existing_lessons: existingForPrompt, // echoed for the CMS side-by-side
     proposals: parsed.proposals ?? [],
