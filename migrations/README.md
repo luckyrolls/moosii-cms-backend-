@@ -477,6 +477,44 @@ index build **outside** the editor — via `psql` or a session with autocommit �
 explicitly in the file header, rather than leaving a keyword in a file someone will paste
 into the editor.
 
+## Checklist: a project built from a schema dump (e.g. financial)
+A `pg_dump --schema=public` carries **objects in `public`, not rows and not project settings**. A
+project built that way (financial, 2026-09) starts with the schema and nothing else. Walk this list
+against the source project before anyone signs in. Four of these were hit on financial on
+2026-09-18, and the database-side gaps below cost migrations 087 and 088.
+
+**Dashboard (not in any dump; compare each screen with the source project):**
+- [ ] **Auth → URL Configuration** — Site URL and every Redirect URL (CMS origin, app deep links).
+      A missing entry breaks magic links and OTP redirects.
+- [ ] **Auth → Email / OTP** — OTP length and expiry, email confirmation on or off, secure email change.
+- [ ] **Auth → Email Templates** — every template (confirm sign-up, invite, magic link, change email,
+      reset password, reauthentication). The defaults carry Supabase branding and may send a link
+      where the app expects a code.
+- [ ] **Auth → SMTP** — custom SMTP host, sender name and address. Without it Supabase's shared
+      sender applies, with its very low hourly cap.
+- [ ] **Auth → Rate Limits** — emails and OTPs per hour, sign-ups, token refreshes, verifications.
+- [ ] **Auth → Attack Protection** — CAPTCHA, leaked-password check, minimum password strength.
+- [ ] **Storage → Buckets and policies** — buckets are rows and policies live in `storage`, so neither
+      comes with a `public` dump. Create only the buckets this deployment uses (`lessons` for the
+      backend/CMS, via 087). Do **not** copy Moosii's blanket `allow_all` policies (docs/backlog.md P1).
+- [ ] **Edge Functions** — deployed per project, with their own secrets; nothing carries over.
+- [ ] **Backend env (Render)** — `DOMAIN`, `SUPABASE_URL`, service-role key, `FACTS_API_KEY` (financial),
+      and the CMS build's API base URL pointing at this project's backend.
+
+**Database, outside `public` (not in the dump; migrations 087/088 fixed these on financial):**
+- [ ] **Triggers on `auth.users`** — `new_user_trigger`, `on_auth_user_verified`, `on_user_update`.
+      Without them a sign-up creates no `public."user"` row, so the CMS refuses the account and the
+      app user gets no default track.
+- [ ] **Triggers on `storage.objects`** — the `image_assets` sync/delete pair. Check any function
+      that hardcodes the source project's URL or ref (`sync_image_assets_from_storage` did).
+- [ ] **Seed rows the schema assumes** — `consts` (sign-up copies it into `user_configurations`;
+      without it, completing an item fails and the upcoming-plan view is empty), `app_settings.domain`
+      (must be updated from the dumped `'moosii'`), and any prompt/content rows (084).
+- [ ] **Scheduled jobs, Vault secrets, realtime publication tables** — per project, never shared.
+- [ ] **Diff the non-public objects** of both projects read-only (triggers, functions, policies,
+      buckets, cron jobs, publications, event triggers) and account for every difference. Ignore
+      Supabase-managed drift such as extension versions and platform roles.
+
 ## Cleaning this up (optional, later)
 The reconciliation list disappears if you either:
 - **(a)** backfill `schema_migrations` with the hand-applied versions, so the runner's
