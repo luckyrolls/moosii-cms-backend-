@@ -498,8 +498,12 @@ against the source project before anyone signs in. Four of these were hit on fin
       comes with a `public` dump. Create only the buckets this deployment uses (`lessons` for the
       backend/CMS, via 087). Do **not** copy Moosii's blanket `allow_all` policies (docs/backlog.md P1).
 - [ ] **Edge Functions** — deployed per project, with their own secrets; nothing carries over.
-- [ ] **Backend env (Render)** — `DOMAIN`, `SUPABASE_URL`, service-role key, `FACTS_API_KEY` (financial),
-      and the CMS build's API base URL pointing at this project's backend.
+- [ ] **Backend env (Render)** — `DOMAIN`, `SUPABASE_URL` (the **bare origin**
+      `https://<ref>.supabase.co` — financial had `/rest/v1/` appended on 2026-09-18 and every sign-in
+      got 401), the service-role key **of this same project**, `FACTS_API_KEY` (financial), and the
+      CMS build's `VITE_SUPABASE_URL` / `VITE_API_BASE_URL` pointing at this project and its backend.
+      Since 2026-09-18 the backend refuses to boot if it cannot read `app_settings` for any reason
+      other than the table not existing, so a wrong URL or key now fails the deploy.
 
 **Database, outside `public` (not in the dump; migrations 087/088 fixed these on financial):**
 - [ ] **Triggers on `auth.users`** — `new_user_trigger`, `on_auth_user_verified`, `on_user_update`.

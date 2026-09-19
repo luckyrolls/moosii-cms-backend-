@@ -75,8 +75,11 @@ is code the developer owns and can read, version, and debug. This is non-negotia
 - Build: `npm install && npm run build`; start: `npm start`; tests: `npm test` (new test files
   must be added to the `test` script in `package.json`). Render injects PORT.
 - Auto-deploys on push to `master` (the repo's only/default branch).
-- Boot fails fast on: unset/unknown `DOMAIN`; `DOMAIN` ≠ `app_settings.domain`; a malformed image
-  prompt file; missing/invalid `FACTS_API_KEY` on financial (`src/index.ts:83-101`).
+- Boot fails fast on: unset/unknown `DOMAIN`; `DOMAIN` ≠ `app_settings.domain`; ANY failure to read
+  `app_settings` other than "table does not exist" (42P01/PGRST205 — pre-064 only), which catches a
+  wrong `SUPABASE_URL` (it must be the bare origin, no `/rest/v1`) or a key from another project
+  (`src/lib/domainCheck.ts` `classifyDomainReadError`); a malformed image prompt file;
+  missing/invalid `FACTS_API_KEY` on financial (`src/index.ts:83-101`).
 
 ## Architecture: async job pattern
 Long AI work (image gen 15–30s, LLM 5–60s, chains 1–3 min) does NOT fit Supabase
