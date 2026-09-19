@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 088 · Moosii 086** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 089 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–088 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–089 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -368,7 +368,7 @@ Main track:
   shows, completion adds 10 moosies; wrong domain refused; applies twice. Financial apply: pre-check
   consts empty, 0 users without config, sign-up trigger present; verify row = Moosii's; rolled-back
   sign-up → config row, plan item visible, completion succeeds (+10 moosies).
-- **089 — financial: the remaining prompt rows** — **DRAFT (pending apply) · FINANCIAL ONLY.** Data only.
+- **089 — financial: the remaining prompt rows** — **APPLIED financial (2026-09-18) · FINANCIAL ONLY.** Data only.
   `coverage_audit`, `quiz`, `review_best_practices` / `review_doc_grounded` / `review_factual_smell`,
   `questionnaire` — every prompt type the financial CMS can reach that financial lacked (classify is
   off there). Adapted from Moosii's live rows with parenting wording removed, in 084's voice
@@ -382,6 +382,10 @@ Main track:
   refused; applies twice; one active row per type; coverage ages nullable; review card positions →
   financial's block; no parenting words in any financial prompt. **Apply after 084, and deploy the
   code first** (without it a financial audit still demands a span).
+  **Financial apply (2026-09-18):** code pushed first (88484da). Pre-check: financial held only
+  `lesson` + `segment`; card_positions_v1 present. Verify: one active row per type; coverage ages
+  nullable; review `{{card_positions}}` → financial's block; 0 parenting hits across all 8 financial
+  prompts.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

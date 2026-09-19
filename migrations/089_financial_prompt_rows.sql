@@ -1,5 +1,5 @@
 -- ============================================================================
--- MIGRATION 089: financial — the remaining prompt rows — DATA ONLY — DRAFT (pending apply)
+-- MIGRATION 089: financial — the remaining prompt rows — DATA ONLY — APPLIED financial 2026-09-18
 --   *** FINANCIAL ONLY ***
 -- ============================================================================
 -- WHAT: the six prompt rows financial still lacked, each adapted from Moosii's live row with the
