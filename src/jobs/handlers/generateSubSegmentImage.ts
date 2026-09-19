@@ -7,6 +7,7 @@ import { uploadImage } from "../../storage/upload";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import { resetCardsToDraft } from "../../lib/cardReview";
 import type { Job } from "../registry";
+import { DOMAIN } from "../../lib/domain";
 
 type Input = {
   sub_segment_id: string;
@@ -157,7 +158,8 @@ export async function generateSubSegmentImage(
     topicName,
     metadata,
     instructions_override,
-    sceneOverride
+    sceneOverride,
+    DOMAIN   // prompts/image/<domain>/ when present (financial); moosii resolves from the root as before
   );
 
   // The scene actually used for this image (given or derived) = the userPrompt sent

@@ -110,6 +110,12 @@ The prompt that an LLM uses to WRITE an image prompt is two layers, concatenated
   is in the image, emotional register, topic traps. Keyed by `topics.name`. Not a fallback.
 The SEGMENT CONTENT drives the scene; base+overlay only shape HOW it's depicted. Tuning
 history: `docs/architecture-notes.md`.
+**Domain-scoped (2026-09-18):** a domain with its own folder — `prompts/image/<domain>/` holding
+`base.md`, `topics/<name>.md` and `topics/_generic.md` — resolves entirely from it and never falls
+back to another domain's files (`imagePromptRoot`, `src/prompts/assemble.ts`). Financial has one
+(flat vector, muted palette, hard NO text/numbers/charts/logos). Moosii has none and resolves from the
+root, byte-identically (proven against a 45-case pre-change capture). Boot validation covers every
+domain folder.
 
 ## Model abstraction (general, multi-provider, addressed by name)
 LLM access is a GENERAL primitive: `getLLMClient(provider)` where provider is
