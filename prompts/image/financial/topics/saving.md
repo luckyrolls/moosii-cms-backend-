@@ -1,17 +1,25 @@
 ---
-version: 1
+version: 2
 ---
 
 These rules apply on top of the base instructions for saving sub-segments.
 
-## Subjects that work
-Quiet accumulation and a buffer set aside: a small potted plant on a sunny windowsill, an
-umbrella hanging by the door (ready for a rainy day), a single glass jar on a kitchen shelf
-holding nothing more than a few buttons or a folded note, a closed box on a shelf with room
-around it.
+Saving cards are about a RESERVE kept for later, or the habit that builds it. Choose the
+metaphor whose meaning matches the card.
+
+## Metaphors (options, not a checklist)
+- **Kept ready for weather** — an umbrella by the front door, boots in a porch, a torch on a
+  hallway shelf, a spare blanket folded on a stair. Fits cards about an emergency buffer, what
+  counts as an emergency, why the cushion comes first.
+- **A modest store put by** — a pantry shelf with a few jars of dry goods, a stack of firewood
+  by a back door, a filled water bottle on a windowsill. Fits cards about how much to keep and
+  where to keep it. Jars hold beans, rice or buttons — NEVER coins.
+- **A habit that runs itself** — a plant on a sill with a watering can beside it, a kettle set
+  the night before, a bag packed by the door. Fits cards about automating a transfer, payday
+  routines, saving before spending.
 
 ## Traps specific to this topic
-- NO piggy banks, coin jars full of money, stacks of coins, cash, or gold — the base forbids
-  money clichés, and saving is where the model reaches for them first.
-- NO growth charts, rising arrows or plants shaped like graphs.
-- Keep it modest and ordinary — no treasure chests, no vaults, no luxury goods as a "reward".
+- NO piggy banks, coin jars, stacks of coins, cash, gold, treasure chests or vaults. Saving is
+  where the model reaches for clichés first — refuse them.
+- NO growth charts, rising arrows, or plants arranged as a bar chart.
+- Keep it modest and domestic: no luxury goods, no holidays as a reward.

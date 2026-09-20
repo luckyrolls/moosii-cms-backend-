@@ -39,7 +39,7 @@ test("each financial topic gets its own overlay and the financial base — never
     assert.match(r.instructions, /Financial — Base Image-Prompt Instructions/);
     // Whole words: the base legitimately says money clichés are "infantilising".
     assert.doesNotMatch(r.instructions, /\b(crib|bassinet|nursery|parenting|parents?|baby|babies|infant|newborn|toddler)\b/i, `parenting wording in ${t}`);
-    assert.deepEqual(r.versions, { base: "1", overlay: "1" });
+    assert.deepEqual(r.versions, { base: "2", overlay: "2" });   // financial base + overlays are at v2
   }
 });
 
