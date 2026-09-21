@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 090 · Moosii 086** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 091 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–090 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–091 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -394,6 +394,10 @@ Main track:
   their shared general-education paragraph; md5-guarded (`ac42bce2` → `c49d8ef4`, `41b080af` →
   `aa42b50a`). Tested locally (wrong domain / edited description refused; applies; re-run no-op).
   Not changed: the 3 Getting Oriented lessons generated 2026-09-19 under the old description.
+- **091 — financial: no-app-features rule in the segment prompt** — **APPLIED financial (2026-09-21) ·
+  FINANCIAL ONLY.** Data only (Mark, 2026-09-21). 090's sentence, word for word, added to the `segment`
+  prompt (id …0301, writes the card text) directly after the same anchor; md5-guarded (`bf582c55` →
+  `9b85fd1d`). Tested as a rolled-back dry run on financial (applies once; a second run is a no-op).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
