@@ -172,10 +172,15 @@ Body: { approved_by?: string }
 Wraps the atomic `approve_content_image(p_public_url, p_storage_path, ...)`
 Postgres function. One transaction: supersede prior approved → approve target →
 write `sub_segments.image` + `image_path`. The response returns `public_url`
-directly so the frontend can update optimistically. Approving does NOT change the card's
-`review_state`: the card was reset to draft when the candidate was generated/uploaded, and
-writing `sub_segments.image` is not a review-resetting edit (migration 092 — before it, 066's
-trigger reset the card on this write).
+directly so the frontend can update optimistically. Effect on the card's `review_state`:
+- **Different picture on a `clinically_approved` card → `editorial_reviewed`** (awaiting clinical
+  review; the text needs no re-edit) and `seg_status` is recomputed — so the segment leaves
+  `complete` until a clinician approves again (migration 093, a trigger on `sub_segments.image`; it
+  also covers the generate job's `auto_approve`).
+- **Same picture re-written, or a card not yet clinically approved → unchanged.** The card was
+  already reset to draft when the candidate was generated/uploaded (migration 092 — before it,
+  066's trigger reset the card on this write).
+The response shape is unchanged; the CMS must re-read the card/lesson after approving.
 
 ### 1d. Reject a candidate
 ```
@@ -208,10 +213,14 @@ app showed "no questions").** This bulk approve crosses all three gates together
 `approve` fans out to the lesson's segment(s) and per segment (atomically, via
 `approve_segment_bundle`, migration 029): sets `seg_status='complete'`, flips every
 `quiz_questions.answer_status → 'approved'`, and approves the **latest candidate**
-image per card (reusing `approve_content_image` → writes `sub_segments.image`; since
-migration 092 that write no longer resets the cards the bundle just approved — before it, the
-route answered `complete` while every card with a new image was left `draft`). Cards
-with no candidate stay imageless (valid); a segment with no content cards is refused
+image per card (reusing `approve_content_image` → writes `sub_segments.image`). Order
+(migration 093): the cards that are `editorial_reviewed` when the call starts are remembered; the
+quiz and images are approved; THEN only those remembered cards are promoted to
+`clinically_approved`. So a new picture arriving with this sign-off ends clinically approved
+(092: that write no longer resets the card), while a card that was ALREADY clinically approved and
+gets a DIFFERENT picture drops to `editorial_reviewed` (1c's rule) and the segment's `seg_status`
+comes back `pending` — the route reports it as returned, it is not an error; approving the lesson
+again promotes it. Cards with no candidate stay imageless (valid); a segment with no content cards is refused
 (409). **Pre-check:** `sub_segments.image` FKs to `image_assets.url` (populated by the
 out-of-backend storage-upload flow); before approving, each candidate's URL is verified
 present there — if any isn't, approve returns **409 `image_not_linkable`** naming the

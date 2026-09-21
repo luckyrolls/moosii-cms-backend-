@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 092 · Moosii 092** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086 and 092; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 093 · Moosii 092** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092 and 093; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–091 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -408,6 +408,19 @@ Main track:
   8-card financial segment and a 9-card Moosii segment — before: bundle says `complete`, all cards
   `draft`, segment `pending`; after: all `clinically_approved`, `complete`; a text edit still resets
   exactly one card; segment and image fingerprints identical before and after each run.
+- **093 — a picture swap on a clinically approved card needs clinical review again** — **APPLIED
+  financial (2026-09-21) · Moosii: pending.** BOTH PROJECTS, schema only (Mark's decision 2026-09-21).
+  New trigger `sub_segments_image_swap_review_trg` (AFTER UPDATE OF image, WHEN the image changed to a
+  non-null value on a `clinically_approved` card) → `editorial_reviewed` + recompute; SECURITY DEFINER
+  like 066. A trigger, not the approve function, because it sees OLD vs NEW and also catches the
+  generate job's `auto_approve` direct write. `approve_segment_bundle` (pre md5 `9d331c9b` → `1243e207`,
+  ACL kept) now approves images BEFORE promoting, and promotes only the cards that were
+  `editorial_reviewed` at the start — otherwise every fresh image would be demoted right after its
+  sign-off (the 092 bug again). Proof (`docs/drafts/093-swap-proof.sql`, each case rolled back, same
+  segments as 092): fresh images + bundle → all approved/complete; swap by single approve AND by bundle →
+  that card `editorial_reviewed`, segment `pending`; bundle with existing images + same URL re-written →
+  nothing moves; swap on an editorial / draft card → stage unchanged; text edit → draft. Before 093 the
+  swap cases stayed `clinically_approved`. Fingerprints identical before and after.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -18,6 +18,17 @@ bypasses RLS; the CMS only reads public URLs; the app — moosii-rn seat — may
 or adding bucket-scoped ones for the real app paths. Public buckets stay readable by URL without a
 policy. Needs the moosii-rn seat to confirm its upload paths first.
 
+### Approval RPCs are executable by `anon` (both projects)
+**Why:** `approve_segment_bundle` and both `approve_content_image` overloads carry the default PUBLIC
+EXECUTE grant (`=X/postgres`, plus explicit `anon` / `authenticated`), so they are callable through
+PostgREST with the anon key. They are SECURITY INVOKER, so RLS on `sub_segments` / `content_images` /
+`quiz_questions` should stop an anon caller — not verified. `recompute_seg_status` (SECURITY DEFINER)
+also shows `anon` / `authenticated` EXECUTE, though 056 meant it to be service-role only. Found
+2026-09-21 while fingerprinting for 093.
+**What:** list every public function with an anon / authenticated / PUBLIC grant; test the approval
+ones under `SET LOCAL ROLE anon` (rolled back); REVOKE EXECUTE from PUBLIC, anon, authenticated on
+backend-only RPCs (the backend calls them as service_role), both projects.
+
 ## P3
 
 ### Audit card and quiz review resets
