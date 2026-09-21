@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 092: approving an image no longer un-approves its card — BOTH PROJECTS
---   — APPLIED financial 2026-09-21 · Moosii: pending
+--   — APPLIED financial 2026-09-21 · APPLIED Moosii 2026-09-21
 -- ============================================================================
 -- BUG (FINDINGS-cover-image.md §0, proven on live Moosii in rolled-back probes 2026-09-21):
 -- POST /lessons/:id/approve reports the segment "complete" but leaves every card with a new image
