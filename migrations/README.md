@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 094 · Moosii 093** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 094 · Moosii 094** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086 and 092..094; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–091 are financial-only**
 (all APPLIED).
@@ -422,7 +422,7 @@ Main track:
   nothing moves; swap on an editorial / draft card → stage unchanged; text edit → draft. Before 093 the
   swap cases stayed `clinically_approved`. Fingerprints identical before and after.
 - **094 — approval RPCs and `recompute_seg_status`: service_role only** — **APPLIED financial
-  (2026-09-21) · Moosii: pending.** BOTH PROJECTS, privileges only (backlog P1). EXECUTE revoked from
+  (2026-09-21) · APPLIED Moosii (2026-09-21).** BOTH PROJECTS, privileges only (backlog P1). EXECUTE revoked from
   PUBLIC, anon, authenticated on both `approve_content_image` overloads, `approve_segment_bundle`,
   `recompute_seg_status`; granted to service_role. Callers checked first: backend only (the CMS and app
   call none of them; the in-DB callers of recompute are SECURITY DEFINER). Proof

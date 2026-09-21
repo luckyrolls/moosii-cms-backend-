@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 094: approval RPCs and recompute_seg_status — service_role only — BOTH PROJECTS
---   — APPLIED financial 2026-09-21 · Moosii: pending
+--   — APPLIED financial 2026-09-21 · APPLIED Moosii 2026-09-21
 -- ============================================================================
 -- WHY (backlog P1, found 2026-09-21 while fingerprinting for 093): both approve_content_image
 -- overloads, approve_segment_bundle and recompute_seg_status carried EXECUTE for PUBLIC, anon and
