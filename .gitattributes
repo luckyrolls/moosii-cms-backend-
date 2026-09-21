@@ -4,3 +4,7 @@
 migrations/0006_coverage_audit_prompt_seed.sql -text
 # Same reason for 0007: it inserts CRLF-wrapped sentences into that same system_message.
 migrations/0007_coverage_audit_empty_band_delta.sql -text
+
+# Shell hooks must keep LF line endings: with core.autocrlf=true a CRLF checkout breaks
+# `set -eu`, and the fail-closed .env hook would then refuse every commit.
+.githooks/* text eol=lf
