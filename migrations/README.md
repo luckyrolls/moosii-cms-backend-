@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 089 · Moosii 086** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 090 · Moosii 086** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–089 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–090 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -386,6 +386,14 @@ Main track:
   `lesson` + `segment`; card_positions_v1 present. Verify: one active row per type; coverage ages
   nullable; review `{{card_positions}}` → financial's block; 0 parenting hits across all 8 financial
   prompts.
+- **090 — financial: Getting Oriented is about the reader's money, not the app** — **APPLIED financial
+  (2026-09-21) · FINANCIAL ONLY.** Data only (Mark, 2026-09-21). Getting Oriented's description → Mark's
+  text (guarded on 084's seed md5 `429e58bf`); one sentence — never describe, promise, or give
+  instructions for the partner app's features — added to BOTH the `lesson` prompt (asked for) and the
+  `coverage_audit` prompt (the one the CMS's generate-lessons button actually runs), directly after
+  their shared general-education paragraph; md5-guarded (`ac42bce2` → `c49d8ef4`, `41b080af` →
+  `aa42b50a`). Tested locally (wrong domain / edited description refused; applies; re-run no-op).
+  Not changed: the 3 Getting Oriented lessons generated 2026-09-19 under the old description.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

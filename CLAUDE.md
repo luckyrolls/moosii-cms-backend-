@@ -270,6 +270,8 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
   dump of Moosii (stub `anon`/`authenticated`/`service_role`/`authenticator` roles; `auth.uid()` /
   `auth.role()` copied from live). Harnesses: `docs/drafts/rls-078/`, `docs/drafts/facts-v1/local-test/`.
   Trap: `pg_ctl start` hangs unless its stdout/stderr are redirected.
+  Trap: set `PGCLIENTENCODING=UTF8` for the local psql, or on Windows it reads migration files as a
+  code page, stores `—` as mojibake, and every prompt-md5 guard disagrees with live.
 - **Prompt-rewrite migrations are hash-guarded.** They RAISE unless the live `system_message` md5
   is exactly the expected prior text, and they preserve the row's line endings (live rows may be
   CRLF — compare and write after normalizing). Worked example: 083.
