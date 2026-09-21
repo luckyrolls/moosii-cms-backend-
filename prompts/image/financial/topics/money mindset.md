@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 These rules apply on top of the base instructions for money-mindset sub-segments.
@@ -14,7 +14,7 @@ yourself about it. Choose the metaphor whose meaning matches the card.
 - **A pause taken on purpose** — a chair turned toward a window with a mug on the sill, a back
   step with a cooling cup, a bus window seat with the world going past. Fits cards about
   slowing down, deciding without panic, letting a decision wait a day.
-- **A room you can live in as it is** — an unmade bed with morning light across it, a kitchen
+- **A room you can live in as it is** — an unmade bed with morning light across it, a hallway
   mid-tidy, a coat half hung. Fits cards about not needing to catch up, starting where you
   are, imperfect progress.
 

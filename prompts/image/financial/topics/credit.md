@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 These rules apply on top of the base instructions for credit sub-segments.
@@ -11,7 +11,7 @@ not through credit-card imagery. Pick the metaphor that matches; invent one if n
 - **Headroom in a space** — a shelf, a doorway, a cupboard or a hallway with clearly unused
   room left. Fits cards about limits, balances, utilization, how much room is left.
 - **Something kept over time** — a well-worn chair by a window, a coat hook with an old coat
-  still on it, the oldest mug in a cupboard of newer ones, a doorframe worn smooth at the
+  still on it, the oldest pair of boots in a porch of newer ones, a doorframe worn smooth at the
   handle height. Fits cards about account age, credit history, why keeping an old account open
   matters.
 - **A small slip, easily recovered** — a letter that has slid under a hall table, keys left in

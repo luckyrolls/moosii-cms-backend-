@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 These rules apply on top of the base instructions for debt sub-segments.

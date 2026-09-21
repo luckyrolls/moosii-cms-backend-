@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 # Financial — Base Image-Prompt Instructions
@@ -31,8 +31,7 @@ This is the rule most easily lost. Every image is a small scene in a real, ordin
 a corner of a home or a moment in a day — not a product shot. Before writing, decide and
 then state in the prompt:
 
-1. **The setting** — name a specific, ordinary place: a kitchen corner, a hallway by the front
-   door, a bedside table, a bus window seat, a laundry alcove, a stairwell, a back step, a
+1. **The setting** — name a specific, ordinary place: a hallway by the front door, a porch, a bedside table, a bus window seat, a laundry alcove, a stairwell, a back step, a
    desk under a window, a café table by the glass. Name it in words; do not leave it implied.
 2. **The light** — name a direction and a quality: morning light falling from a window on the
    left, a warm lamp glow from the upper right, flat overcast daylight from behind the viewer,
@@ -43,13 +42,36 @@ then state in the prompt:
    viewer must be able to tell where the floor is.
 4. **Depth in at least three layers** — foreground (an object nearer the viewer, possibly
    cropped by the frame edge), middle ground (the subject), background (a wall, a window, a
-   doorway, a distant line of cupboards). Build depth by OVERLAPPING flat shapes and by the
+   doorway, a distant staircase). Build depth by OVERLAPPING flat shapes and by the
    junction lines of floor, wall and furniture — never with gradients, blur or perspective
    tricks.
 
 The subject still reads clearly and the image stays calm and uncluttered — but it is
 inhabited. Rooms are lived in: a chair pushed back, a coat over a hook, a plant that needs
-turning. Vary the setting from card to card; do not settle into one room.
+turning.
+
+## Vary the setting — the kitchen is the exception, not the default
+You cannot see the other images in the lesson, so the only way the set stays varied is if
+every prompt resists the obvious room. The kitchen is the room every model reaches for first;
+treat it as rare.
+- Use a kitchen ONLY when the card itself is about food, groceries, cooking or meals. For any
+  other card, choose a different place — even when a kitchen would be the easy fit.
+- Draw instead from the whole of an ordinary life: a hallway by the front door, a porch or
+  back step, a stairwell or landing, a bedroom corner or bedside table, a bathroom shelf, a
+  laundry alcove, a garden path or shed door, a bus window seat, a station bench, a café table
+  by the glass, a car parked at the kerb, a small balcony, a desk under a window.
+- If the metaphor you chose happens in a kitchen (a tap, a counter, a kettle), move it to one
+  of these places that carries the same meaning — a garden tap, a bathroom basin, a flask on a
+  back step — rather than defaulting to the kitchen.
+
+## The reference image
+The approved house example is **keys on hooks in a hallway**: a hallway wall in muted slate
+blue with three keys hanging from simple hooks and a small shelf beneath, an open door to a
+lighter room at the left, a doormat on the floor in the foreground and a window-light block on
+the wall. It works because it is a real place with a floor, a wall and a doorway; the light
+has a direction; there are three layers (doormat, keys and shelf, the room beyond); and the
+subject means something — every account visible at once, each on its own hook. Aim every
+image at that standard: that much place, that much depth, that directness of meaning.
 
 ## People
 Prefer objects, spaces and traces of people to people themselves. If a figure appears, it is
@@ -125,19 +147,19 @@ Scan one month of transactions for anything that repeats and you don't recognise
 GOOD prompt:
 "Minimalist flat vector illustration, clean 2D with simple geometric shapes, soft rounded
 corners and flat blocks of colour, no gradients, textures or shadows; calm and matter-of-fact,
-not photorealistic. A small kitchen corner in the morning: a narrow table against a wall below
-a window, with light falling from the window on the left as a flat pale block across the table
-and the floor. On the table, a mug sits beside a phone lying face-down; a single kitchen chair
-is pushed back at an angle, seen partly cropped in the foreground. Behind the table, the wall
-meets a run of low cupboards, and a tap drips into a shallow bowl on the counter — the same
-small drip, over and over. Three clear layers: the cropped chair in front, the table and mug in
-the middle, the cupboards and window behind. Warm off-white ground (#F6F3EE); the cupboards in
-muted slate blue (#5E7288), the chair in soft sage green (#93A58C), the mug and the light block
-in soft ochre (#C9A45C); deeper tints of the same colours where the floor meets the wall. No
+not photorealistic. A small bathroom in the morning: a basin below a frosted window, with light
+falling from the window on the left as a flat pale block across the basin and the floor. The
+tap drips, a single drop caught mid-fall above the basin — the same small drip, over and over.
+A phone lies face-down on the narrow shelf above the basin; a towel on a rail is seen partly
+cropped in the foreground. Behind, the wall meets the floor at a clear line and a half-open
+door shows the hallway beyond. Three clear layers: the cropped towel in front, the basin and
+shelf in the middle, the doorway behind. Warm off-white ground (#F6F3EE); the wall in muted
+slate blue (#5E7288), the towel in soft sage green (#93A58C), the light block and the shelf in
+soft ochre (#C9A45C); deeper tints of the same colours where the floor meets the wall. No
 text, no letters, no numbers, no currency symbols, no charts or graphs, no logos, no icons or
 symbols, no floating shapes."
 name: "The drip you stop noticing"
-tags: ["subscriptions", "kitchen corner", "dripping tap", "morning light", "flat vector", "calm"]
+tags: ["subscriptions", "bathroom basin", "dripping tap", "morning light", "flat vector", "calm"]
 
 BAD prompt for the same content (do NOT do this):
 "A single closed folder centred on a plain desk surface with generous empty space around it,

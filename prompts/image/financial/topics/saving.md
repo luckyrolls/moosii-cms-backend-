@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 These rules apply on top of the base instructions for saving sub-segments.
@@ -11,11 +11,11 @@ metaphor whose meaning matches the card.
 - **Kept ready for weather** — an umbrella by the front door, boots in a porch, a torch on a
   hallway shelf, a spare blanket folded on a stair. Fits cards about an emergency buffer, what
   counts as an emergency, why the cushion comes first.
-- **A modest store put by** — a pantry shelf with a few jars of dry goods, a stack of firewood
+- **A modest store put by** — a shed shelf with a few jars of seeds and screws, a stack of firewood
   by a back door, a filled water bottle on a windowsill. Fits cards about how much to keep and
-  where to keep it. Jars hold beans, rice or buttons — NEVER coins.
-- **A habit that runs itself** — a plant on a sill with a watering can beside it, a kettle set
-  the night before, a bag packed by the door. Fits cards about automating a transfer, payday
+  where to keep it. Jars hold seeds, screws or buttons — NEVER coins.
+- **A habit that runs itself** — a plant on a sill with a watering can beside it, boots left
+  by the door the night before, a bag packed by the door. Fits cards about automating a transfer, payday
   routines, saving before spending.
 
 ## Traps specific to this topic

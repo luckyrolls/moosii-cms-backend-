@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 These rules apply on top of the base instructions for planning sub-segments.
@@ -9,7 +9,7 @@ meaning matches the card.
 
 ## Metaphors (options, not a checklist)
 - **Ready the night before** — a bag packed by the front door, clothes over a chair back, a
-  kettle and a single mug set out on a dark counter. Fits cards about preparing, making the
+  flask and a scarf set out on the stairs. Fits cards about preparing, making the
   next step easy, removing friction.
 - **One thing chosen from many** — one coat taken from a full rail, a single chair pulled out
   from a table of four, one drawer open in a run of closed ones. Fits cards about picking a

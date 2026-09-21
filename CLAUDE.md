@@ -229,6 +229,10 @@ The backend bypasses RLS (service role); RLS governs the app's and CMS's direct 
   NEVER in code, NEVER committed, NEVER sent to any frontend.
 - Always verify staged files before committing — confirm `.env` is excluded. Never print tokens,
   user emails or connection strings in output (redact `postgres(ql)://…`).
+- **Enforced by `.githooks/pre-commit` (fails closed):** any staged `.env` / `.env.*` at any depth,
+  except `.env.example`, refuses the commit; so does any failure to read the staged list.
+  `core.hooksPath=.githooks` is set by `npm install` (`prepare`). `.gitignore` covers `.env*` too.
+  Never bypass it with `--no-verify` for a `.env` file.
 - **The ONE sanctioned secret in the database: a job-scoped key in Supabase Vault.** `pg_net`
   must authenticate the `pg_cron` tick, so each project's Vault holds a key (`CRON_API_KEY`,
   same value as that project's backend env) that gates ONE enqueue-only route

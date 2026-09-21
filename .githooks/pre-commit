@@ -1,0 +1,46 @@
+#!/bin/sh
+# Refuse any commit that adds or changes a .env file — anything named `.env` or `.env.<anything>`
+# at any depth — except the committed template `.env.example`. These files hold the service-role
+# key and database URLs (CLAUDE.md, "Secrets discipline").
+#
+# FAILS CLOSED: if the staged file list cannot be read, the commit is refused. Matching is plain
+# shell `case` (no grep whose error exit could be swallowed), so there is no path where a failure
+# inside this check lets the commit through.
+#
+# Enabled by `git config core.hooksPath .githooks` (set by `npm install` via the `prepare` script).
+# Bypassing it with `git commit --no-verify` is a deliberate act; never do it for a .env file.
+
+set -eu
+
+fail() {
+  echo "pre-commit: BLOCKED — $1" >&2
+  echo "pre-commit: unstage it with: git restore --staged <file>" >&2
+  exit 1
+}
+
+# Added, copied, modified, renamed (new name) or type-changed paths in the index.
+if ! staged=$(git diff --cached --name-only --diff-filter=ACMRT); then
+  fail "could not read the staged file list, so the .env check could not run"
+fi
+
+bad=""
+set -f            # no glob expansion of file names in the loop
+old_ifs=$IFS
+IFS='
+'
+for f in $staged; do
+  name=${f##*/}
+  case "$name" in
+    .env.example) ;;
+    .env|.env.*) bad="$bad
+  $f" ;;
+  esac
+done
+IFS=$old_ifs
+set +f
+
+if [ -n "$bad" ]; then
+  fail "a .env file is staged for commit:$bad"
+fi
+
+exit 0
