@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 091 · Moosii 086** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081 and 086; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 092 · Moosii 086** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086 and 092; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–091 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -398,6 +398,16 @@ Main track:
   FINANCIAL ONLY.** Data only (Mark, 2026-09-21). 090's sentence, word for word, added to the `segment`
   prompt (id …0301, writes the card text) directly after the same anchor; md5-guarded (`bf582c55` →
   `9b85fd1d`). Tested as a rolled-back dry run on financial (applies once; a second run is a no-op).
+- **092 — approving an image no longer un-approves its card** — **APPLIED financial (2026-09-21) ·
+  Moosii: pending.** BOTH PROJECTS, schema only. `sub_segments_reset_review_trg` (066) drops `image`
+  from its column list (now title, content, sequence + insert/delete); function body unchanged
+  (`a6387d29`). Fixes POST /lessons/:id/approve answering `complete` while `approve_content_image`'s
+  pointer write reset every card with a new image to `draft` (FINDINGS-cover-image.md §0). No reset
+  is lost: no CMS/app path writes `image`; new images reset in code; pointer clears ride on a delete,
+  a content write or an explicit draft. Proof (`docs/drafts/092-approve-proof.sql`, rolled back): an
+  8-card financial segment and a 9-card Moosii segment — before: bundle says `complete`, all cards
+  `draft`, segment `pending`; after: all `clinically_approved`, `complete`; a text edit still resets
+  exactly one card; segment and image fingerprints identical before and after each run.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

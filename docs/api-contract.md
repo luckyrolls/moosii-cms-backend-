@@ -172,7 +172,10 @@ Body: { approved_by?: string }
 Wraps the atomic `approve_content_image(p_public_url, p_storage_path, ...)`
 Postgres function. One transaction: supersede prior approved → approve target →
 write `sub_segments.image` + `image_path`. The response returns `public_url`
-directly so the frontend can update optimistically.
+directly so the frontend can update optimistically. Approving does NOT change the card's
+`review_state`: the card was reset to draft when the candidate was generated/uploaded, and
+writing `sub_segments.image` is not a review-resetting edit (migration 092 — before it, 066's
+trigger reset the card on this write).
 
 ### 1d. Reject a candidate
 ```
@@ -205,7 +208,9 @@ app showed "no questions").** This bulk approve crosses all three gates together
 `approve` fans out to the lesson's segment(s) and per segment (atomically, via
 `approve_segment_bundle`, migration 029): sets `seg_status='complete'`, flips every
 `quiz_questions.answer_status → 'approved'`, and approves the **latest candidate**
-image per card (reusing `approve_content_image` → writes `sub_segments.image`). Cards
+image per card (reusing `approve_content_image` → writes `sub_segments.image`; since
+migration 092 that write no longer resets the cards the bundle just approved — before it, the
+route answered `complete` while every card with a new image was left `draft`). Cards
 with no candidate stay imageless (valid); a segment with no content cards is refused
 (409). **Pre-check:** `sub_segments.image` FKs to `image_assets.url` (populated by the
 out-of-backend storage-upload flow); before approving, each candidate's URL is verified

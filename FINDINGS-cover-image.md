@@ -34,6 +34,9 @@ Evidence: `approve_segment_bundle` (live def: cards first, then the image loop);
 `approve_content_image(uuid,uuid,text,text)` step 3; `migrations/066_content_edit_review_reset.sql:111-114`;
 `src/routes/lessons.ts:94-146` (the route that calls the bundle).
 
+**FIXED 2026-09-21 by migration 092** (applied both projects; `image` dropped from the trigger's
+column list; proof in the 092 README entry).
+
 **Recommended fix (separate slice, both projects, before any cover work):** take `image` out of the
 066 trigger's column list. Every path that legitimately changes a card's picture already resets
 review explicitly in code (`generateSubSegmentImage.ts:292-296` on a new candidate,
