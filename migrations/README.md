@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 093 · Moosii 093** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092 and 093; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 094 · Moosii 093** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086 and 092..094; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–091 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -421,6 +421,17 @@ Main track:
   that card `editorial_reviewed`, segment `pending`; bundle with existing images + same URL re-written →
   nothing moves; swap on an editorial / draft card → stage unchanged; text edit → draft. Before 093 the
   swap cases stayed `clinically_approved`. Fingerprints identical before and after.
+- **094 — approval RPCs and `recompute_seg_status`: service_role only** — **APPLIED financial
+  (2026-09-21) · Moosii: pending.** BOTH PROJECTS, privileges only (backlog P1). EXECUTE revoked from
+  PUBLIC, anon, authenticated on both `approve_content_image` overloads, `approve_segment_bundle`,
+  `recompute_seg_status`; granted to service_role. Callers checked first: backend only (the CMS and app
+  call none of them; the in-DB callers of recompute are SECURITY DEFINER). Proof
+  (`docs/drafts/094-anon-proof.sql` / `.sh`): before, every anon/authenticated call executed (anon key
+  over HTTP on Moosii too); after, 42501 (HTTP 401); service_role approve and the admin CMS-direct edit →
+  066 recompute still work. Audit of the rest + drafted 095: `FINDINGS-rpc-grants.md`.
+- **095 — backend-only RPCs: service_role only** — **DRAFT (pending apply; needs a go).** BOTH
+  PROJECTS. `set_card_review_state` (anon can clinically approve any lesson — proven, rolled back),
+  `apply_classification`, `rebuild_user_mlp`, `unapprove_segment_bundle`.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -285,6 +285,12 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
   leaves an INVALID index. Use the plain form inside `BEGIN`/`COMMIT`.
 - **A function return-type change needs DROP + CREATE in ONE transaction** —
   `CREATE OR REPLACE` fails with 42P13; re-grant any explicit privileges the DROP discards.
+- **Backend-only functions are EXECUTE service_role only.** Supabase's default privileges grant
+  anon/authenticated EXECUTE on every NEW function, and PostgREST exposes all of `public` at
+  `/rest/v1/rpc/*` — a SECURITY DEFINER function there bypasses RLS for anyone with the anon key. A
+  migration that creates or DROP+CREATEs one must `REVOKE … FROM PUBLIC, anon, authenticated` and
+  `GRANT … TO service_role` (094; audit `FINDINGS-rpc-grants.md`). Keep `is_admin`/`is_super_admin`
+  open — RLS policies call them as the querying role.
 - **FK errors are 23503** for both RESTRICT and NO ACTION; unique violations are 23505.
 - Full rules and worked examples: `migrations/README.md` ("Applying a new migration").
 
