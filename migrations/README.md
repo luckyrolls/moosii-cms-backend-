@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 093 · Moosii 092** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 093 · Moosii 093** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092 and 093; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085 and 087–091 are financial-only**
 (all APPLIED).
@@ -409,7 +409,7 @@ Main track:
   `draft`, segment `pending`; after: all `clinically_approved`, `complete`; a text edit still resets
   exactly one card; segment and image fingerprints identical before and after each run.
 - **093 — a picture swap on a clinically approved card needs clinical review again** — **APPLIED
-  financial (2026-09-21) · Moosii: pending.** BOTH PROJECTS, schema only (Mark's decision 2026-09-21).
+  financial (2026-09-21) · APPLIED Moosii (2026-09-21).** BOTH PROJECTS, schema only (Mark's decision 2026-09-21).
   New trigger `sub_segments_image_swap_review_trg` (AFTER UPDATE OF image, WHEN the image changed to a
   non-null value on a `clinically_approved` card) → `editorial_reviewed` + recompute; SECURITY DEFINER
   like 066. A trigger, not the approve function, because it sees OLD vs NEW and also catches the

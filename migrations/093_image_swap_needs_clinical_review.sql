@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 093: a picture swap on a clinically-approved card needs clinical review again
---   — APPLIED financial 2026-09-21 · Moosii: pending — BOTH PROJECTS
+--   — APPLIED financial 2026-09-21 · APPLIED Moosii 2026-09-21 — BOTH PROJECTS
 -- ============================================================================
 -- DECISION (Mark, 2026-09-21): approving a DIFFERENT image on a card whose review_state is
 -- 'clinically_approved' drops that card to 'editorial_reviewed' (awaiting clinical review) — not to
