@@ -62,13 +62,18 @@ SELECT is replaced by column SELECT plus a `TO anon` policy; `authenticated` is 
 | `segments` | id, lesson_id, segment_order, seg_status | `seg_status='complete'` of a visible lesson |
 | `sub_segments` | id, seg_id, title, content, image, sequence | cards of such a segment |
 | `app_settings` | key, value | `key='domain'` |
+| `lessons` (097) | + is_published, archived_at | unchanged — 096's policy |
+| `quiz_questions` (097) | question_id, segment_id, question_text, question_explanation, type, answer_status | `answer_status='approved'` on a `complete` segment of a visible lesson |
+| `quiz_answers` (097) | id, question_id, answer_text, is_correct, response | answers of such a question |
 
-Quiz tables: slice 2. ⚠ **Known gap (pre-existing, both projects, not fixed by 096):** plain
+`quiz_answers.is_correct` is readable by anon on purpose: the reader grades client-side. ⚠ **Known gap (pre-existing, both projects, not fixed by 096):** plain
 (non-`security_invoker`) views over these tables are anon-SELECTable and run as their owner, so they
 bypass both the policies and the column grants — `v_lesson_details`, `v_segment_details`,
 `lessons_with_track_name`, `lesson_segment_counts_with_track`, `sub_segment_image_fallback`,
 `sub_segments_image_fallback`, `mlp_item_pool`, `user_mlp_not_completed` (checked 2026-09-26 on
-financial: as anon, `v_lesson_details` returns 3 lessons, 2 unpublished).
+financial: as anon, `v_lesson_details` returns 3 lessons, 2 unpublished). `lesson_questions` was
+checked for 097 and is **not** in this gap: it is `security_invoker=on` and reads `questions_legacy`
+(not `quiz_questions`); as anon it returns 0 rows (financial, 2026-09-26).
 
 ## Backend-only functions — EXECUTE service_role only (094, 095; both projects)
 

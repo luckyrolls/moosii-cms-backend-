@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 097: moosii-reader slice 2 — anon read of approved quizzes + lesson gating columns
---   — DRAFT (pending apply)   *** FINANCIAL ONLY ***
+--   — APPLIED financial 2026-09-26   *** FINANCIAL ONLY ***
 -- ============================================================================
 -- WHY (Mark, 2026-09-26): extends 096 for moosii-reader slice 2 (quiz). Design:
 -- moosii-reader/DESIGN-web-reader.md §3.1, §3.2, §5. The SQL below is Mark's brief, verbatim; only

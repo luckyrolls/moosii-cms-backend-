@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 096 · Moosii 095** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 097 · Moosii 095** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086 and 092..095; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091 and 096 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091 and 096–097 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -449,6 +449,14 @@ Main track:
   financial, then applied; as anon: 1 lesson (06eef3f3…), `curator_note` → permission denied, 1 `complete`
   segment, `app_settings` → domain/financial only. ⚠ Not fixed: anon-readable plain views bypass it
   (`docs/rls-sweep.md`).
+- **097 — moosii-reader slice 2: anon read of approved quizzes** — **APPLIED financial (2026-09-26) ·
+  FINANCIAL ONLY.** Privileges + policies, no schema or rows. anon gets column SELECT on
+  `lessons.is_published`/`archived_at` (no row widened — 096's policy still gates rows); anon's table
+  SELECT on `quiz_questions`/`quiz_answers` replaced by column SELECT on the reader columns; two `TO anon`
+  policies: approved questions on a `complete` segment of a visible lesson, and those questions'
+  answers (`is_correct` exposed on purpose — the reader grades client-side). Written and dry-run
+  (rolled back) by another seat (0570fea); dry-run again, then applied. Live, as anon: lessons →
+  1 row `t`/null; quiz_questions → 1 approved row; quiz_answers → 4; `lesson_id` → permission denied.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
