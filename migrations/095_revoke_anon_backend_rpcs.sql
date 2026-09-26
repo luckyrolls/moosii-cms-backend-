@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 095: backend-only RPCs — service_role only — BOTH PROJECTS
---   — DRAFT (pending apply; needs Mark's go)
+--   — APPLIED financial 2026-09-26 · APPLIED Moosii 2026-09-26
 -- ============================================================================
 -- WHY (FINDINGS-rpc-grants.md §2–3, 2026-09-21): four functions the anon key can call through
 -- PostgREST that only the backend should:

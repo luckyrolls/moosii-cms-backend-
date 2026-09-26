@@ -70,6 +70,21 @@ bypass both the policies and the column grants — `v_lesson_details`, `v_segmen
 `sub_segments_image_fallback`, `mlp_item_pool`, `user_mlp_not_completed` (checked 2026-09-26 on
 financial: as anon, `v_lesson_details` returns 3 lessons, 2 unpublished).
 
+## Backend-only functions — EXECUTE service_role only (094, 095; both projects)
+
+PostgREST exposes every `public` function at `/rest/v1/rpc/*`, and Supabase grants anon/authenticated
+EXECUTE on new functions by default, so a SECURITY DEFINER function there bypasses RLS for anyone with
+the anon key. These are revoked from PUBLIC, anon and authenticated (proacl `{postgres=X,service_role=X}`):
+
+| Function | Migration |
+|---|---|
+| `approve_content_image` (both overloads), `approve_segment_bundle`, `recompute_seg_status` | 094 |
+| `set_card_review_state`, `apply_classification`, `rebuild_user_mlp`, `unapprove_segment_bundle` | 095 |
+
+Deliberately still callable: `is_admin` / `is_super_admin` (policies call them as the querying role),
+`reader_lesson_visible` (096, anon reader, financial only), `renumber_track_*` (the CMS calls them;
+anon revoke is open low-priority hygiene — `docs/backlog.md`). Audit: `FINDINGS-rpc-grants.md`.
+
 ## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
 
 The active-tracks views (`user_active_tracks`, `user_active_tracks_with_reason`, `user_mlp_data`,

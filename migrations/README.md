@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 096 (095 pending) · Moosii 094** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086 and 092..094; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 096 · Moosii 095** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086 and 092..095; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091 and 096 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -429,9 +429,16 @@ Main track:
   (`docs/drafts/094-anon-proof.sql` / `.sh`): before, every anon/authenticated call executed (anon key
   over HTTP on Moosii too); after, 42501 (HTTP 401); service_role approve and the admin CMS-direct edit →
   066 recompute still work. Audit of the rest + drafted 095: `FINDINGS-rpc-grants.md`.
-- **095 — backend-only RPCs: service_role only** — **DRAFT (pending apply; needs a go).** BOTH
-  PROJECTS. `set_card_review_state` (anon can clinically approve any lesson — proven, rolled back),
-  `apply_classification`, `rebuild_user_mlp`, `unapprove_segment_bundle`.
+- **095 — backend-only RPCs: service_role only** — **APPLIED financial (2026-09-26) · APPLIED Moosii
+  (2026-09-26).** BOTH PROJECTS, privileges only. EXECUTE revoked from PUBLIC, anon, authenticated on
+  `set_card_review_state` (anon could clinically approve any lesson — proven, rolled back),
+  `apply_classification`, `rebuild_user_mlp`, `unapprove_segment_bundle`; granted to service_role. File
+  unchanged from the draft. Callers re-checked 2026-09-26 in all three repos: backend only, service-role
+  client (`cardReview.ts:33`, `classifyUpdate.ts:499`, `rebuildMlp.ts:677`, `lessons.ts:184`); moosii-cms
+  and moosii-rn only carry generated types; the one in-DB caller (`approve_segment_bundle` →
+  `set_card_review_state`) is invoker and service_role-only since 094. Each project: rolled-back dry run,
+  then apply; after, proacl `{postgres=X, service_role=X}` on all four; as anon → `permission denied for
+  function set_card_review_state`; as service_role (dry run) the call still executes.
 - **096 — moosii-reader slice 1: anon read of published content** — **APPLIED financial (2026-09-26) ·
   FINANCIAL ONLY.** Privileges + policies, no schema or rows (Mark's brief; design
   moosii-reader/DESIGN-web-reader.md §3.2). New `reader_lesson_visible(uuid)` (SECURITY DEFINER; published,

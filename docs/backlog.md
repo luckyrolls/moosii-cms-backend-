@@ -18,14 +18,10 @@ bypasses RLS; the CMS only reads public URLs; the app — moosii-rn seat — may
 or adding bucket-scoped ones for the real app paths. Public buckets stay readable by URL without a
 policy. Needs the moosii-rn seat to confirm its upload paths first.
 
-### Anon can approve any lesson via `set_card_review_state` — apply 095 (both projects)
-**Why:** the approval RPCs were closed by 094, but `set_card_review_state` (SECURITY DEFINER, no caller
-check) is still executable by anon through PostgREST: proven (rolled back) to clinically approve every
-card of a draft lesson. `apply_classification` and `rebuild_user_mlp` let anon write into any user's
-plan; `unapprove_segment_bundle` lets anon un-approve any lesson. `FINDINGS-rpc-grants.md` §2–3.
-**What:** migration 095 is drafted (service_role only for the four); needs a go, then financial →
-Moosii with a rolled-back anon proof. Low-priority hygiene from the same audit: revoke anon on the two
-`renumber_track_*` functions (CMS keeps authenticated).
+### Revoke anon on the two `renumber_track_*` functions (hygiene)
+Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real holes (095 applied both
+projects 2026-09-26). Both are guarded by `is_admin()`, so anon EXECUTE is inert; revoke anon, keep
+authenticated (the CMS calls them).
 
 ## P3
 

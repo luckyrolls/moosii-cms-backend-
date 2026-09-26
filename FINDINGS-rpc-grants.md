@@ -42,7 +42,7 @@ as the caller, so RLS emptied the list — and 094 now refuses the call outright
 `unapprove_segment_bundle` (SECURITY INVOKER, still anon-executable) calls it too: anon can send any
 lesson back to draft.
 
-**Migration 095 is drafted for this (DRAFT, not applied — needs a go).**
+**Migration 095 closes this — APPLIED financial and Moosii 2026-09-26.**
 
 ## 3. The audit — SECURITY DEFINER in `public`, EXECUTE held by anon AND authenticated (both projects)
 
