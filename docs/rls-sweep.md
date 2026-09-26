@@ -22,7 +22,7 @@ for internal/authoring/licensed data.
 | `lesson_source_documents` | Lesson↔doc linkage; internal review config. | 036 |
 | `content_findings` | AI review findings for internal human judgment — not app-facing. | 035 |
 | `content_approvals` | Append-only approval/attribution audit (who approved/published what). Written backend-only (service role via `logApproval`); never app-facing. A future CMS read-UI should go through a backend route (or needs an admin read policy — like `screen_help`, not a blanket deny). | 043 |
-| `app_settings` | One row (`domain`) the DATABASE itself reads to pick the published-content edit policy (064). Backend-mediated; the guard function is SECURITY DEFINER so it reads the table regardless of RLS. No client has any reason to see it. | 064 |
+| `app_settings` | One row (`domain`) the DATABASE itself reads to pick the published-content edit policy (064). Backend-mediated; the guard function is SECURITY DEFINER so it reads the table regardless of RLS. **Exception, financial only (096):** anon reads `key, value` of the `domain` row (moosii-reader) — see below. | 064 |
 | `screen_help` | Per-screen CMS help content (panels + concept markers). Internal authoring UI only — the app has no reason to read it. Readable content, admin-writable via the CMS. **CMS-direct — needs an admin POLICY, not blanket-deny (see Notes).** | 039 |
 
 ## Notes
@@ -49,6 +49,26 @@ for internal/authoring/licensed data.
       with check (exists (select 1 from users_internal ui where ui.id = auth.uid()));
     ```
     (Adjust the `users_internal` match to how that table keys to the auth user.)
+
+## Anon reader — published content, FINANCIAL ONLY (migration 096, 2026-09-26)
+
+moosii-reader (public web lesson reader) reads with the anon key. On financial only, anon's table
+SELECT is replaced by column SELECT plus a `TO anon` policy; `authenticated` is untouched. Moosii
+(parenting) has none of this — anon reads nothing there.
+
+| Table | anon columns | anon rows |
+|---|---|---|
+| `lessons` | id, lesson_name, description, with_quiz, quiz_onboarding_text, quiz_onboarding_image, points | `reader_lesson_visible(id)`: published, lesson and track unarchived |
+| `segments` | id, lesson_id, segment_order, seg_status | `seg_status='complete'` of a visible lesson |
+| `sub_segments` | id, seg_id, title, content, image, sequence | cards of such a segment |
+| `app_settings` | key, value | `key='domain'` |
+
+Quiz tables: slice 2. ⚠ **Known gap (pre-existing, both projects, not fixed by 096):** plain
+(non-`security_invoker`) views over these tables are anon-SELECTable and run as their owner, so they
+bypass both the policies and the column grants — `v_lesson_details`, `v_segment_details`,
+`lessons_with_track_name`, `lesson_segment_counts_with_track`, `sub_segment_image_fallback`,
+`sub_segments_image_fallback`, `mlp_item_pool`, `user_mlp_not_completed` (checked 2026-09-26 on
+financial: as anon, `v_lesson_details` returns 3 lessons, 2 unpublished).
 
 ## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
 
