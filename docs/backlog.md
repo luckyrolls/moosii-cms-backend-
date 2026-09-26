@@ -18,12 +18,31 @@ bypasses RLS; the CMS only reads public URLs; the app — moosii-rn seat — may
 or adding bucket-scoped ones for the real app paths. Public buckets stay readable by URL without a
 policy. Needs the moosii-rn seat to confirm its upload paths first.
 
+### RLS disabled + anon full CRUD on 15 `public` tables (both projects)
+**Why:** `content_approvals` (publish audit), `prompt_blocks`, `prompt_block_versions`, `ai_generation_log`,
+`source_documents`, `lesson_source_documents`, `image_assets`, `content_edits`, `screen_help`, `topics`,
+`notification_log`, `subscription_plans` and three leftovers have RLS off, and anon holds S/I/U/D/T on
+all of them. Anyone with the anon key can rewrite prompts or delete the audit through PostgREST.
+`FINDINGS-anon-views.md` §6.
+**What:** caller sweep per table (backend-only vs CMS-direct vs app), then RLS on: no policy for
+backend-only; admin policy for CMS-direct; signed-in read for `topics`. Drop the `_MM_unused` and dedupe leftovers.
+
+### Anon-readable plain views → 098 (both projects)
+**Why:** eight owner-run views give anon every row (on Moosii, every user's `user_mlp_not_completed`).
+**What:** the 098 SQL in `FINDINGS-anon-views.md` §5 (invoker + revoke anon + `user_mlp_sel` → `is_admin()`);
+needs a go. Also simulate and add `questionnaire_user_score` / `questionnaire_with_track_name`.
+
 ### Revoke anon on the two `renumber_track_*` functions (hygiene)
 Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real holes (095 applied both
 projects 2026-09-26). Both are guarded by `is_admin()`, so anon EXECUTE is inert; revoke anon, keep
 authenticated (the CMS calls them).
 
 ## P3
+
+### Drop the six no-caller views
+`v_lesson_details`, `v_segment_details`, `lessons_with_track_name`, `lesson_segment_counts_with_track`,
+`sub_segment_image_fallback`, `sub_segments_image_fallback` — no code callers in any repo
+(`FINDINGS-anon-views.md` §1). After 098, and after confirming nothing outside the repos reads them.
 
 ### Audit card and quiz review resets
 **Why:** a reset of `review_state` / `answer_status` leaves no trace, so "who or what cleared these
