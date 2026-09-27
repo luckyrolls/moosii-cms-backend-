@@ -22,15 +22,11 @@ policy. Needs the moosii-rn seat to confirm its upload paths first.
 **Why:** `content_approvals` (publish audit), `prompt_blocks`, `prompt_block_versions`, `ai_generation_log`,
 `source_documents`, `lesson_source_documents`, `image_assets`, `content_edits`, `screen_help`, `topics`,
 `notification_log`, `subscription_plans` and three leftovers have RLS off, and anon holds S/I/U/D/T on
-all of them. Anyone with the anon key can rewrite prompts or delete the audit through PostgREST.
+all of them. Anyone with the anon key could rewrite prompts or delete the audit through PostgREST —
+anon is revoked by 099 (tourniquet); authenticated still has full access, RLS still off.
 `FINDINGS-anon-views.md` §6.
 **What:** caller sweep per table (backend-only vs CMS-direct vs app), then RLS on: no policy for
 backend-only; admin policy for CMS-direct; signed-in read for `topics`. Drop the `_MM_unused` and dedupe leftovers.
-
-### Anon-readable plain views → 098 (both projects)
-**Why:** eight owner-run views give anon every row (on Moosii, every user's `user_mlp_not_completed`).
-**What:** the 098 SQL in `FINDINGS-anon-views.md` §5 (invoker + revoke anon + `user_mlp_sel` → `is_admin()`);
-needs a go. Also simulate and add `questionnaire_user_score` / `questionnaire_with_track_name`.
 
 ### Revoke anon on the two `renumber_track_*` functions (hygiene)
 Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real holes (095 applied both

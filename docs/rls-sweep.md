@@ -66,14 +66,34 @@ SELECT is replaced by column SELECT plus a `TO anon` policy; `authenticated` is 
 | `quiz_questions` (097) | question_id, segment_id, question_text, question_explanation, type, answer_status | `answer_status='approved'` on a `complete` segment of a visible lesson |
 | `quiz_answers` (097) | id, question_id, answer_text, is_correct, response | answers of such a question |
 
-`quiz_answers.is_correct` is readable by anon on purpose: the reader grades client-side. ⚠ **Known gap (pre-existing, both projects, not fixed by 096):** plain
-(non-`security_invoker`) views over these tables are anon-SELECTable and run as their owner, so they
-bypass both the policies and the column grants — `v_lesson_details`, `v_segment_details`,
-`lessons_with_track_name`, `lesson_segment_counts_with_track`, `sub_segment_image_fallback`,
-`sub_segments_image_fallback`, `mlp_item_pool`, `user_mlp_not_completed` (checked 2026-09-26 on
-financial: as anon, `v_lesson_details` returns 3 lessons, 2 unpublished). `lesson_questions` was
-checked for 097 and is **not** in this gap: it is `security_invoker=on` and reads `questions_legacy`
-(not `quiz_questions`); as anon it returns 0 rows (financial, 2026-09-26).
+`quiz_answers.is_correct` is readable by anon on purpose: the reader grades client-side.
+
+The plain-view bypass that was open here (owner-run views returning every row to anon) is closed by 098
+— see the next section.
+
+## Views — security_invoker, no anon (migration 098, both projects)
+
+Every `public` view that anon could SELECT and that ran as its owner is now `security_invoker = true`
+with anon SELECT revoked: `v_lesson_details`, `v_segment_details`, `lessons_with_track_name`,
+`lesson_segment_counts_with_track`, `sub_segment_image_fallback`, `sub_segments_image_fallback`,
+`mlp_item_pool`, `user_mlp_not_completed`, `questionnaire_user_score`, `questionnaire_with_track_name`.
+Base-table RLS now binds the caller. `authenticated` keeps SELECT (the RN app reads
+`user_mlp_not_completed` for its own rows; the CMS classify console reads it for other users).
+`user_mlp_sel` became own OR `is_admin()` OR service_role (was super_admin) so plain admins keep that
+read. `mlp_item_pool` is read by the backend as service_role (BYPASSRLS) — unchanged.
+**Rule for new views:** create them `WITH (security_invoker = true)` and revoke anon unless the reader
+needs them. `lesson_questions` was already invoker. Detail: `FINDINGS-anon-views.md`.
+
+## RLS-off tables — anon revoked, RLS still OFF (migration 099, both projects)
+
+A tourniquet, not the fix. These 15 tables have RLS disabled; 099 revoked ALL from anon (it held
+S/I/U/D/T). `authenticated` and `service_role` still hold their default grants and see every row:
+`_segment_dedupe_backup`, `ai_generation_log`, `content_approvals`, `content_edits`, `image_assets`,
+`lesson_source_documents`, `notification_log`, `prompt_block_versions`, `prompt_blocks`, `screen_help`,
+`source_documents`, `subscription_plans`, `topics`, `user_tag_actions_MM_unused`,
+`user_track_actions_MM_unsed`. **So any signed-in app user can still read and write them.** The follow-up
+(backlog P1) enables RLS per table after a caller sweep. ⚠ Default privileges are unchanged: a NEW table
+still gets anon grants.
 
 ## Backend-only functions — EXECUTE service_role only (094, 095; both projects)
 
