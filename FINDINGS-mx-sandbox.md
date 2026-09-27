@@ -5,7 +5,7 @@ Sources: MX public docs (raw `.md` pages via `docs.mx.com/llms.txt`) and the pub
 for the current Platform API version, `v20250224` (`https://docs.mx.com/openapi/platform-api/v20250224.yaml`).
 Line numbers `spec:N` refer to that YAML as downloaded 2026-09-27.
 
-## 0. Blocker: the sandbox credentials aren't in `.env`
+## 0. Blocker: the sandbox credentials aren't in `.env` — RESOLVED 2026-09-27, see §4.4
 
 The brief says `MX_CLIENT_ID` / `MX_API_KEY` are in `.env`. They are not. The file (last modified
 2026-09-14) holds 10 keys, none MX-related (checked by name only; no value was read or printed).
@@ -27,7 +27,7 @@ can't do.
    and our handler decides where to send the user. We can't configure a URL or add our own
    parameters to MX-provided CTAs. Custom insights (created by an MX rep) let us set CTA text and the
    postMessage string.
-3. **Sandbox enablement is unknown.** The docs say to "reach out to your MX representative" to
+3. **Sandbox enablement: NOT enabled** (§4.4 — `GET /users/{guid}/insights` → 403 "Client does not have access to Pulse features"). Originally written as: **Sandbox enablement is unknown.** The docs say to "reach out to your MX representative" to
    configure insights and notifications, and they're silent on sandbox defaults. It's decidable in one
    call once we have keys: `GET /users/{guid}/insights`.
 4. **Firing an insight in sandbox is uncertain for our key fact.** `CreditUtilization` is a *weekly*
@@ -163,6 +163,64 @@ curl -s "${H[@]}" "$MX/users/$USER_GUID/insights" -w '\nHTTP %{http_code}\n'   #
 The brief authorised creating a user in MX sandbox (an MX-side write, sandbox only). Connecting an
 `mxbank` member is the next step (§4.1.2). It wasn't in the brief's list of calls to run, so it needs a go.
 
+### 4.4 Sandbox run (2026-09-27)
+
+Run against `https://int-api.mx.com` with `MX_CLIENT_ID` / `MX_API_KEY` from `.env` (HTTP Basic,
+`Accept-Version: v20250224`; the keys were never printed). Nothing was written to either Supabase
+project. The only writes were to MX sandbox: one user and one `mxbank` member.
+
+**Auth works.** Every call below returned 2xx except insights.
+
+| Step | Call | Result |
+|---|---|---|
+| Institutions | `GET /institutions?name=mx bank` | 200 — `mxbank` "MX Bank" (products: account_verification, identity_verification, transactions, transaction_history, rewards, investments), `mx_bank_oauth`, and an "MX Bank - Demo" |
+| Credential fields | `GET /institutions/mxbank/credentials` | 200 — `LOGIN`, `PASSWORD` |
+| Users before | `GET /users` | 200 — 0 users (a fresh sandbox) |
+| Create user | `POST /users` `{id: "moosii-sandbox-probe-1"}` | 200 — `USR-6efa8756-9632-41a5-8257-0a86d8ef7a80` |
+| Connect mxbank | `POST /users/{u}/members`, `mxuser` + an ordinary password, `data_request.products: [transactions, transaction_history]` | 202 — `MBR-672fdf90-aba4-4544-88a4-5c281c6bbd2f`, `CREATED`, aggregating |
+| Aggregation | poll `GET /users/{u}/members/{m}` every 10 s | `CONNECTED`; finished after ~42 s (`successfully_aggregated_at` 2026-09-27T16:53:12Z) |
+| Accounts | `GET /users/{u}/accounts` | 200 — 6: CHECKING, SAVINGS, CREDIT_CARD, LOAN, MORTGAGE, INVESTMENT |
+| Transactions | `GET /users/{u}/transactions` (all 10 pages) | 200 — 910 transactions, 2026-06-29 to 2026-09-27 |
+| Repeating transactions | `GET /users/{u}/repeating_transactions` | 200 — **0**, both right after aggregation and ~2 min later |
+| **Insights** | `GET /users/{u}/insights` | **403** `{"error": {"message": "Client does not have access to Pulse features", "status": "forbidden", "type": "forbidden_error"}}` — twice |
+
+**Insights: not enabled on our sandbox.** The 403 names the product plainly ("Pulse" is Insights' old
+name; see the `IntroducePulse` template). **No insight fired, so there are no `template` names to
+report.** Turning it on is an MX-rep request (§3). Until then the widget and the API are equally
+unavailable, and the "Learn more" question (§2) can't be exercised.
+
+**The transaction flags on aggregated `mxbank` data:**
+| Field | Populated? | Values |
+|---|---|---|
+| `is_direct_deposit` | **yes** | 18 true / 892 false — every true is "Paycheck", category Paycheck, CREDIT, on CHECKING (same 18 as `is_income`) |
+| `is_subscription` | **yes** | 3 true / 907 false — all "Netflix", category Television, DEBIT (1 on the credit card, 2 on checking) |
+| `is_recurring` | **no** | `null` on all 910 |
+| `is_bill_pay`, `is_payroll_advance` | yes | all false |
+
+**The credit-card account has no `credit_limit`.** `balance` 8356.55, `credit_limit` **null**,
+`available_credit` 3000.00, `apr` null, `payment_due_at` 2021-05-07. So in this sandbox,
+`credit_utilization_band` **can't be derived from `credit_limit`**. The only route is
+limit ≈ `balance + available_credit` (here ≈ 74%, which would read as "high"). That's an inference
+about MX semantics we haven't confirmed, and real institutions may report `credit_limit` directly.
+Ask MX which field is authoritative. Even with Insights enabled, `CreditUtilization` needs a limit to
+compute from.
+
+**What this changes in §5:**
+- `has_direct_deposit` — **derivable from core data now** (`is_direct_deposit`, confirmed populated).
+- `new_subscription_recent` — `is_subscription` is populated, but there are no repeating transactions and
+  `is_recurring` is null, so "new within a window" needs our own first-seen logic over
+  `is_subscription` transactions (the earliest Netflix charge per merchant), or repeating-transaction
+  data MX didn't produce here.
+- `credit_utilization_band` — **blocked on the limit field** (above).
+- `has_emergency_buffer` — balances are present (checking and savings). Derivable as §5 proposes; the
+  threshold is a partner/our decision.
+- "Facts map to MX insight types" — **not possible on our current MX access** (403). This confirms §5's
+  recommendation: derive from core data.
+
+**Left in MX sandbox:** user `moosii-sandbox-probe-1` and its `mxbank` member. Keeping them is harmless
+and lets a later run (e.g. after Insights is enabled) reuse the same data. Delete with
+`DELETE /users/{u}` if you'd rather not.
+
 ## 5. Impact on the facts derivation assumption and the financial seed
 
 **Where the assumption lives.** "v1 facts map to MX insight types" isn't in `FINDINGS-financial.md`.
@@ -193,7 +251,7 @@ docs, as below.
   on, what `mxbank` generates, and whether `is_direct_deposit` / `is_subscription` are populated for
   aggregated (not held) accounts in sandbox.
 
-**`docs/drafts/financial-seed/financial-content-seed.md`.** No change is forced. Its tone block already
+**`docs/drafts/financial-seed/financial-content-seed.md`.** (2026-09-27: follow-up (1) done — the voice rule now defers to the tone block: never name an amount.) No change is forced. Its tone block already
 bans stating amounts ("Do not state dollar amounts or balances — you do not know them"), which fits
 insights carrying amounts we must not echo. Two follow-ups for whoever owns that draft:
 (1) §1's voice rule "Name the number the app already shows them" contradicts the tone block's
@@ -204,6 +262,6 @@ enable. Credit utilization, subscriptions, direct deposit and emergency buffer a
 the four facts.
 
 ## 6. What I did not do
-- No MX API call, no dashboard visit (no keys; the dashboard needs a login).
+- (First pass) no MX API call; §4.4 then ran them. No dashboard visit (it needs a login).
 - No write to either Supabase project. No code.
 - Didn't read the Nexus API docs; out of this brief's scope.
