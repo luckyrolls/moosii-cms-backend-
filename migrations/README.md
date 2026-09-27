@@ -22,10 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 099 · Moosii 095** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086 and 092..095; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 099 · Moosii 099** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095 and 098..099; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091 and 096–097 are financial-only**
-(all APPLIED). **098–099 (both projects): APPLIED financial, PENDING Moosii.**
+(all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -458,15 +458,17 @@ Main track:
   (rolled back) by another seat (0570fea); dry-run again, then applied. Live, as anon: lessons →
   1 row `t`/null; quiz_questions → 1 approved row; quiz_answers → 4; `lesson_id` → permission denied.
 - **098 — views → security_invoker, anon revoked; `user_mlp_sel` → `is_admin()`** — **APPLIED financial
-  (2026-09-26) · PENDING Moosii.** BOTH PROJECTS, options/privileges/policy only. Ten owner-run views that
+  (2026-09-26) · APPLIED Moosii (2026-09-26).** BOTH PROJECTS, options/privileges/policy only. Ten owner-run views that
   anon could read in full (`FINDINGS-anon-views.md`) → `security_invoker = true` + REVOKE SELECT FROM anon;
   `user_mlp_sel` widened from super_admin to `is_admin()` so a plain admin's CMS classify read survives
   invoker. Callers: backend `mlp_item_pool` (service_role, unchanged), moosii-rn and moosii-cms
   `user_mlp_not_completed`; the other eight have none. Proof per project: rolled-back persona simulation
   then dry run; live: anon → permission denied on all ten; own / admin / super_admin / service_role counts
-  and the `mlp_item_pool` md5 identical to before; the 096/097 reader verifies unchanged.
-- **099 — REVOKE ALL FROM anon on the 15 RLS-off tables** — **APPLIED financial (2026-09-26) · PENDING
-  Moosii.** BOTH PROJECTS, privileges only (tourniquet; RLS stays off, authenticated/service_role
+  and the `mlp_item_pool` md5 identical to before; the 096/097 reader verifies unchanged (financial).
+  Moosii: a signed-in user's unfiltered read dropped 26 → 6 (own only); a plain admin still reads another
+  user's 6. No `database.types.ts` change (view columns unchanged).
+- **099 — REVOKE ALL FROM anon on the 15 RLS-off tables** — **APPLIED financial (2026-09-26) · APPLIED
+  Moosii (2026-09-26).** BOTH PROJECTS, privileges only (tourniquet; RLS stays off, authenticated/service_role
   untouched — the RLS pass is backlog P1). No sessionless client reads them (backend, moosii-cms,
   moosii-rn, moosii-reader grepped). Live: anon S/I/U/D/T = f on all 15; anon on content_approvals /
   prompt_blocks / topics → permission denied; admin (claims) counts unchanged.

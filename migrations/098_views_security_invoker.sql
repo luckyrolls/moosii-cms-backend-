@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 098: anon-readable plain views → security_invoker, anon revoked; user_mlp read → is_admin()
---   — APPLIED financial 2026-09-26 · PENDING Moosii — BOTH PROJECTS
+--   — APPLIED financial 2026-09-26 · APPLIED Moosii 2026-09-26 — BOTH PROJECTS
 -- ============================================================================
 -- WHY (FINDINGS-anon-views.md, 2026-09-26): ten views owned by postgres (BYPASSRLS), not
 -- security_invoker, SELECT granted to anon — so anon read EVERY row through them, bypassing RLS and

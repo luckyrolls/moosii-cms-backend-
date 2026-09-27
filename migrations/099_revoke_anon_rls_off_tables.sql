@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 099: tourniquet — REVOKE ALL FROM anon on the 15 RLS-off public tables
---   — APPLIED financial 2026-09-26 · PENDING Moosii — BOTH PROJECTS
+--   — APPLIED financial 2026-09-26 · APPLIED Moosii 2026-09-26 — BOTH PROJECTS
 -- ============================================================================
 -- WHY (FINDINGS-anon-views.md §6, 2026-09-26): these tables have RLS DISABLED and anon held
 -- SELECT/INSERT/UPDATE/DELETE/TRUNCATE on all of them (Supabase default grants), so anyone with the
