@@ -17,7 +17,7 @@ export type MxMember = {
 export interface FinancialDataProvider {
   getMembers(userRef: string): Promise<MxMember[]>;
   getAccounts(userRef: string): Promise<MxAccount[]>;
-  getTransactions(userRef: string, fromDate: string): Promise<MxTransaction[]>;   // fromDate YYYY-MM-DD
+  getTransactions(userRef: string, from: Date): Promise<MxTransaction[]>;
 }
 
 export class MxError extends Error {
@@ -73,7 +73,11 @@ export class MxProvider implements FinancialDataProvider {
     return this.paged<MxAccount>(`/users/${encodeURIComponent(userRef)}/accounts`, "accounts");
   }
 
-  getTransactions(userRef: string, fromDate: string): Promise<MxTransaction[]> {
-    return this.paged<MxTransaction>(`/users/${encodeURIComponent(userRef)}/transactions?from_date=${fromDate}`, "transactions");
+  // from_date is sent as UNIX EPOCH SECONDS. The v20250224 spec documents YYYY-MM-DD, but the live
+  // API (sandbox, 2026-09-28) rejects that with 400 "From date is not a valid integer" and accepts an
+  // epoch integer. Without from_date MX returns a shorter default window (~90 days).
+  getTransactions(userRef: string, from: Date): Promise<MxTransaction[]> {
+    const epoch = Math.floor(from.getTime() / 1000);
+    return this.paged<MxTransaction>(`/users/${encodeURIComponent(userRef)}/transactions?from_date=${epoch}`, "transactions");
   }
 }

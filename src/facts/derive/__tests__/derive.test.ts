@@ -40,7 +40,7 @@ function fakeProvider(members: MxMember[], calls: string[] = []): FinancialDataP
   return {
     async getMembers(u) { calls.push(`members:${u}`); return members; },
     async getAccounts(u) { calls.push(`accounts:${u}`); return accounts(); },
-    async getTransactions(u, from) { calls.push(`transactions:${u}:${from}`); return transactions(); },
+    async getTransactions(u, from) { calls.push(`transactions:${u}:${from.toISOString()}`); return transactions(); },
   };
 }
 
@@ -74,7 +74,7 @@ test("happy path: four facts recorded at the aggregation instant, derived/estima
   assert.equal(r.written, 4);
   assert.equal(r.rebuild_enqueued, true);
   assert.deepEqual(f.enqueues, [{ userId: USER, reason: "derive_facts" }]);
-  assert.ok(calls.includes(`transactions:${USER}:2026-05-30`), "fetches 120 days before the aggregation");
+  assert.ok(calls.includes(`transactions:${USER}:2026-05-30T16:53:12.000Z`), "fetches 120 days before the aggregation");
   const rows = Object.fromEntries(f.inserts[0].map((x) => [x.fact_key, x]));
   assert.equal(rows.credit_utilization_band.value, "high");          // 800 / (800+200)
   assert.equal(rows.credit_utilization_band.source, "estimated");

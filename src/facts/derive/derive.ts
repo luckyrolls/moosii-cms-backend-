@@ -58,8 +58,8 @@ export async function deriveFactsForUser(
   const observedMs = Math.max(...stamps.map((s) => Date.parse(s)));
   const observedAt = new Date(observedMs).toISOString();
 
-  const fromDate = new Date(observedMs - HISTORY_FETCH_DAYS * 86_400_000).toISOString().slice(0, 10);
-  const [accounts, transactions] = await Promise.all([provider.getAccounts(userId), provider.getTransactions(userId, fromDate)]);
+  const from = new Date(observedMs - HISTORY_FETCH_DAYS * 86_400_000);
+  const [accounts, transactions] = await Promise.all([provider.getAccounts(userId), provider.getTransactions(userId, from)]);
 
   const results = deriveAll({ accounts, transactions, asOf: new Date(observedMs) });
   const toWrite = results.filter((r) => r.value !== null);
