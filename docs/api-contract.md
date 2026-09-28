@@ -345,7 +345,8 @@ type JobType =
   | 'generate_track_content'      // §2f
   | 'generate_track_images'       // §2g
   | 'review_lesson'               // §2k
-  | 'derive_facts';               // §8d (financial only)
+  | 'derive_facts'                // §8d (financial only)
+  | 'seed_facts';                 // §8e (financial only, demo personas)
 ```
 
 ---
@@ -2244,7 +2245,7 @@ user can SELECT their OWN rows from `user_facts` / `user_facts_latest` through P
 rows, anon none (RLS). This endpoint remains the CMS inspector's read.
 
 **`source` values in stored rows (migration 101).** `platform_api | cms | manual` (what `POST /facts`
-accepts) plus two **internal-only** values written by §8d: `derived` (computed by us from linked-account
+accepts) plus three **internal-only** values: `seed` (§8e, migration 104) and, from §8d, `derived` (computed by us from linked-account
 data) and `estimated` (computed with an estimated input, e.g. a credit limit taken as balance + available
 credit). `POST /facts` refuses both (`invalid_source`), and refuses `source_ref`: a partner can't claim
 a fact is ours. `GET /facts` returns them as stored; `source_ref` is `job:<job_id>` for derived rows.
@@ -2285,3 +2286,49 @@ Rules and thresholds: FINDINGS-fact-derivation.md §2 (decided 2026-09-28).
     written, rebuild_enqueued }
   ```
 - Not an AI call: nothing goes to `ai_generation_log`. Trigger today is manual (script / curl).
+
+### 8e. `seed_facts` job — seeded facts for demo personas — DELIVERED (financial only)
+
+```
+POST /jobs
+Authorization: Bearer <INTERNAL_API_KEY | admin JWT>
+Body: { type: "seed_facts", input: { user_id: string, facts: [ { key: string, value: string } ] } }
+→ 202 { job_id }
+```
+Writes the given facts with `source = 'seed'`, `source_ref = 'demo-seed'`, `observed_at` = now, through
+the same core as §8b (vocabulary, no-amounts and conflict rules apply), then enqueues the user's coalesced
+`rebuild_mlp` (`triggered_by: "seed_facts"`). **Only for demo personas:** refuses (`not_demo_user`) any user
+whose auth `app_metadata.demo_persona` is unset. Other failures: `domain_not_supported`, `invalid_input`,
+`unknown_fact`, `conflicting_observation`, `unknown_user`.
+- **Idempotent:** a key whose current value is already this value *from a seed* is skipped. A re-run
+  writes 0 rows and enqueues no rebuild. Keys not listed are left alone (unknown stays unknown).
+- **Result:** `{ user_id, demo_persona, observed_at, facts: [ { fact_key, value, status: "recorded" |
+  "unchanged" } ], written, rebuild_enqueued }`.
+- Seeded rows are labeled (`source = 'seed'`) wherever facts are shown; never present them as real.
+
+## 9. Demo persona sign-in — DELIVERED (financial only)
+
+```
+POST /demo/session
+Content-Type: application/json          // no Authorization header: the access code is the gate
+Body: { persona: string, code: string }
+
+→ 200 { persona, user_id, access_token, refresh_token, expires_at }     // a real Supabase session
+→ 400 invalid_request   — persona missing / not [a-z][a-z0-9_-]{0,31}, or code missing
+→ 401 unauthorized      — code ≠ DEMO_ACCESS_CODE (constant-time compare)
+→ 403 not_demo_persona  — no user's auth app_metadata.demo_persona equals persona
+→ 404 not_found         — DOMAIN is not 'financial' (checked first)
+→ 429 rate_limited      — more than 10 calls per minute from one IP (in-memory, per instance)
+→ 500 persona_ambiguous | demo_session_failed
+→ 503 demo_disabled     — DEMO_ACCESS_CODE unset on the service
+```
+- **Personas** are flagged in auth `app_metadata.demo_persona` (service role only; users can't set it).
+  Today: `sam` (real derived facts, §8d) and `sarah` (seeded, §8e). Every other user is refused.
+- **Mint:** `auth.admin.generateLink({ type: "magiclink" })` → `verifyOtp({ token_hash })` on a
+  **throwaway** client (`persistSession: false`), never the shared service-role client. No password is
+  held and no email is sent. Tokens are never logged (the log line carries persona, user id and an IP hash).
+- **Reader:** `supabase.auth.setSession({ access_token, refresh_token })` on its anon client; supabase-js
+  refreshes it. A demo session is an ordinary `authenticated` user, so it sees exactly what RLS gives any
+  signed-in non-admin: published content (103) and its own facts / plan.
+- **CORS:** the reader origin must be in the financial service's `ALLOWED_ORIGINS`.
+- Code: `src/demo/session.ts` (pure core + limiter), `src/routes/demo.ts`.

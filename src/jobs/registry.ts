@@ -11,6 +11,7 @@ import { generateQuestionnaireHandler } from "./handlers/generateQuestionnaire";
 import { reviewLessonHandler } from "./handlers/reviewLesson";
 import { coverageAuditHandler } from "./handlers/coverageAudit";
 import { deriveFactsHandler } from "./handlers/deriveFacts";
+import { seedFactsHandler } from "./handlers/seedFacts";
 
 export type Job = {
   id: string;
@@ -40,6 +41,7 @@ const registry: Record<string, JobHandler> = {
   review_lesson:            reviewLessonHandler,
   coverage_audit:           coverageAuditHandler,
   derive_facts:             deriveFactsHandler,
+  seed_facts:               seedFactsHandler,
 };
 
 export function getHandler(type: string): JobHandler {

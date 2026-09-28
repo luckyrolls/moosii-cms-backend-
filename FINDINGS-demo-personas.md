@@ -31,6 +31,21 @@ summary of it.
    vocabulary is unreadable** by signed-in users (`fact_keys` / `fact_values` RLS on, no policy → 0 rows),
    so the outcomes view can't show labels. Signed-in users also see unpublished lessons and cards.
 
+## Status — 2026-09-28 build (Sarah replaces Priya)
+
+- **Persona flags set** (financial, SQL as postgres on `auth.users`, guarded to exactly one row each):
+  `raw_app_meta_data || '{"demo_persona":"sam"}'` on `19587e0a-…` (Sam) and `… '{"demo_persona":"sarah"}'`
+  on `ad6910ab-854b-480b-8fbb-df78ac9147d3` (Sarah). No other user carries `demo_persona`.
+- **104** (`seed` source) applied financial + Moosii.
+- **Track weight (financial data, not a migration):** `tracks.weight` for Getting Oriented **100 → 50**
+  (guarded update: exactly one row at 100). Why this works: `user_active_tracks_for_user` returns tracks
+  `ORDER BY weight DESC`, `generateFullMLP` sorts by `priority` (all 100 on financial) with a stable sort, so
+  tied tracks keep weight order and fact tracks (90) lead each round. No algorithm change (invariant 1).
+  Verified with the pure `generateFullMLP` on live track/lesson data: once fact-track lessons are published,
+  Sam's path starts `[Credit Health] When a Card Is Nearly Maxed Out`, Sarah's `[Building a Buffer] Why One
+  Month Comes First`. Today both paths are the one published Getting Oriented lesson.
+- **Built, pending deploy:** `seed_facts` job (§8e) and `POST /demo/session` (§9).
+
 ## 1. Demo sign-in
 
 **Where the flag lives: auth `app_metadata`** (recommended) vs a table.

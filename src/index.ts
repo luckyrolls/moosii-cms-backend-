@@ -23,6 +23,7 @@ import quizRouter from "./routes/quiz";
 import mlpRouter from "./routes/mlp";
 import sourceDocumentsRouter from "./routes/sourceDocuments";
 import factsRouter from "./routes/facts";
+import demoRouter from "./routes/demo";
 import { checkFactsConfig } from "./facts/config";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
@@ -75,6 +76,10 @@ app.use("/mlp", mlpRouter);
 // Facts (api-contract.md §8). Each route carries its own auth: POST is the partner intake
 // (FACTS_API_KEY, 404 unless DOMAIN=financial); GET /:user_id is the admin inspector.
 app.use("/facts", factsRouter);
+
+// Demo persona sign-in for the financial reader (api-contract.md §9): DEMO_ACCESS_CODE-gated,
+// 404 unless DOMAIN=financial. Mounted bare — the access code is the gate, not a JWT.
+app.use("/demo", demoRouter);
 
 // Job creation — accepts the internal shared secret (server-to-server) OR a
 // CMS admin's Supabase JWT (browser).

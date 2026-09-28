@@ -5,8 +5,8 @@
 
 export const FACT_SOURCES = ["platform_api", "cms", "manual"] as const;  // what POST /facts accepts (070)
 // Internal writers only (the derive_facts job): the partner route never accepts these, so a partner
-// cannot claim a fact was derived by us. user_facts_source_valid allows all five (migration 101).
-export const INTERNAL_FACT_SOURCES = [...FACT_SOURCES, "derived", "estimated"] as const;
+// cannot claim a fact was derived or seeded by us. user_facts_source_valid allows all six (101, 104).
+export const INTERNAL_FACT_SOURCES = [...FACT_SOURCES, "derived", "estimated", "seed"] as const;   // seed: 104
 export type FactSource = (typeof INTERNAL_FACT_SOURCES)[number];
 
 // `internal: true` = a backend writer (not the partner route): allows INTERNAL_FACT_SOURCES and a

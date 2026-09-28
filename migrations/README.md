@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 103 · Moosii 103** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101..103; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 104 · Moosii 104** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101..104; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -502,6 +502,11 @@ Main track:
   Per project: rolled-back simulation, dry run, apply, then the persona simulation re-run against the live
   policies: all 122 (financial) / 162 (Moosii) measurements equal the rolled-back result. CMS admins and the
   RN parent's plan unchanged; non-admin writes on the 15 tables 0 rows.
+- **104 — `user_facts.source` += `seed`** — **APPLIED financial (2026-09-28) · APPLIED Moosii (2026-09-28).**
+  BOTH PROJECTS, schema (CHECK only). For the `seed_facts` job (api-contract §8e: demo personas, source_ref
+  `demo-seed`); `POST /facts` still refuses it. Per project: dry run, apply; verified by a rolled-back insert:
+  `seed` passes the CHECK (financial inserts; Moosii fails only on the fact_values FK), `guessed` → check
+  violation.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -202,6 +202,9 @@ API, not direct Supabase writes. Sanctioned CMS-direct write paths are listed in
   `FACTS_API_KEY`, its OWN key scoped to that one route — `INTERNAL_API_KEY` is rejected; compared
   constant-time. Required at boot when `DOMAIN=financial` (≥32 chars, no surrounding whitespace,
   distinct from `INTERNAL_API_KEY`). `GET /facts/:user_id` is admin JWT. See `api-contract.md` §8.
+- **Demo sign-in** (`POST /demo/session`, financial only — 404 elsewhere): `DEMO_ACCESS_CODE` + a user whose
+  auth `app_metadata.demo_persona` matches; returns a real Supabase session minted on a throwaway client.
+  See `api-contract.md` §9.
 - `/health` and `/version` are unauthenticated.
 
 ## RLS posture (after migrations 078 and 102–103)
