@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 101 · Moosii 101** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 103 · Moosii 103** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101..103; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -488,6 +488,20 @@ Main track:
   beforehand. Per project: rolled-back dry run, apply; verified by a rolled-back insert: `estimated` passes
   the CHECK (financial inserts; Moosii fails only on the fact_values FK, since it has no vocabulary),
   `guessed` → check violation.
+- **102 — RLS on the 15 RLS-off tables + fact vocabulary read + `set_lesson_published` revoke** — **APPLIED
+  financial (2026-09-28) · APPLIED Moosii (2026-09-28).** BOTH PROJECTS, schema (RLS + policies + grants).
+  13 backend-only tables: RLS on, no policy. `screen_help`: admin ALL (CMS-direct). `topics`: signed-in read
+  (the RN plan labels come through the invoker view `user_mlp_not_completed`). `fact_keys` / `fact_values`:
+  signed-in read. `set_lesson_published`: EXECUTE service_role only. Callers + persona simulation:
+  FINDINGS-rls-pass.md. After: 0 public tables with RLS off on either project.
+- **103 — signed-in non-admins read only published, unarchived content** — **APPLIED financial (2026-09-28) ·
+  APPLIED Moosii (2026-09-28).** BOTH PROJECTS, schema. `reader_lesson_visible` (096's body) now exists on Moosii
+  too (anon EXECUTE only on financial). New SELECT policies `*_select_admin_or_visible` on lessons / segments /
+  sub_segments / quiz_questions / quiz_answers: `is_admin()` sees everything; others get the 096/097 reader
+  rule. Replaces the `USING (true)` / `auth.uid() IS NOT NULL` read policies; drops `segments_insert_auth`.
+  Per project: rolled-back simulation, dry run, apply, then the persona simulation re-run against the live
+  policies: all 122 (financial) / 162 (Moosii) measurements equal the rolled-back result. CMS admins and the
+  RN parent's plan unchanged; non-admin writes on the 15 tables 0 rows.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -1,6 +1,6 @@
 -- ============================================================================
--- DRAFT 103: authenticated end users read only published, unarchived content — BOTH PROJECTS
---   — PROPOSAL (FINDINGS-rls-pass.md) — NOT APPLIED
+-- MIGRATION 103: authenticated end users read only published, unarchived content — BOTH PROJECTS
+--   — APPLIED financial 2026-09-28 · APPLIED Moosii 2026-09-28   (FINDINGS-rls-pass.md)
 -- ============================================================================
 -- WHY: lessons / segments / sub_segments / quiz_* have SELECT policies `USING (true)` or
 -- `auth.uid() IS NOT NULL`, so any signed-in user reads drafts, unapproved cards and quiz items. The CMS

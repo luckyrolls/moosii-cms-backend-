@@ -204,8 +204,11 @@ API, not direct Supabase writes. Sanctioned CMS-direct write paths are listed in
   distinct from `INTERNAL_API_KEY`). `GET /facts/:user_id` is admin JWT. See `api-contract.md` §8.
 - `/health` and `/version` are unauthenticated.
 
-## RLS posture (after migration 078)
+## RLS posture (after migrations 078 and 102–103)
 The backend bypasses RLS (service role); RLS governs the app's and CMS's direct clients.
+- **Every `public` table has RLS on** (102). Backend-only tables carry no policy. Content tables: admins
+  read everything; any other signed-in user reads published, unarchived content only (103, the same rule
+  as the anon reader). A new table must enable RLS in the migration that creates it.
 - Per-user tables (`user`, `children`, `completed_items`, `user_facts`, …): own row, or
   `is_admin()` (plain admin, not only super_admin), or service; anon none. Blanket
   `USING (true)` reads are gone.

@@ -17,7 +17,7 @@ summary of it.
    unpublished, plus every card. Demo sign-in turns "anyone with the reader URL" into "authenticated".
    **The RLS P1 pass must land first** (or the endpoint stays behind a presenter-only access code).
 3. **Priya:** Mark creates the auth user (the triggers from 087 create her `user` row). Seeding `seed` facts
-   needs **migration 102** (source += `seed`). Seed through a small `seed_facts` job that reuses
+   needs **migration 104** (source += `seed`; renumbered from 102 on 2026-09-28). Seed through a small `seed_facts` job that reuses
    `recordFacts` server-side, so the rebuild runs in the financial process. Expected tracks: **Getting
    Oriented + Building a Buffer**. But "Building a Buffer first" does **not** happen today: Getting
    Oriented has the higher weight (100 vs 90) and Building a Buffer has **0 published lessons**.
@@ -81,7 +81,7 @@ its anon-key client; supabase-js persists it in localStorage and refreshes it. T
    `create_new_user()` inserts both her `public."user"` row **and** her `user_configurations` row (checked
    2026-09-28), which the plan view joins; `user_mlp_data` is a view and covers zero-child users (059).
    Sam has all three (mlp_limit 20).
-2. **Migration 102 (both projects, schema):** `user_facts_source_valid` += `seed`; internal allow-list
+2. **Migration 104 (both projects, schema):** `user_facts_source_valid` += `seed`; internal allow-list
    += `seed` (never accepted by `POST /facts`).
 3. **Seed via a `seed_facts` job** (proposed code, next slice): admin/internal `POST /jobs {type:
    "seed_facts", input: { user_id, facts: [{key, value}] }}` → refuses unless the user's
@@ -114,7 +114,7 @@ through the views the reader reads. Same problem, more machinery.
 
 **Recommended: a labeled series table, kept out of the fact log.**
 ```sql
--- migration 104 (FINANCIAL ONLY) — proposed, not applied
+-- migration 105 (FINANCIAL ONLY) — proposed, not applied
 CREATE TABLE public.demo_outcome_series (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -186,26 +186,25 @@ Simulated as Sam (`SET ROLE authenticated`, `request.jwt.claims.sub` = Sam), rol
 | **`content_approvals`** | readable, **DELETE = true** | RLS off (P1) |
 
 Gaps to close for the plan and outcomes views:
-- **103 (both projects):** `fact_keys` / `fact_values` SELECT policy `TO authenticated USING (true)`
-  (vocabulary is reference config; the 078 posture for reference config is signed-in read).
-- **The RLS P1** (15 tables: RLS on + policies) is a **prerequisite for public demo sign-in**.
-- **Optional, financial only (105):** narrow authenticated reads of `lessons` / `segments` /
-  `sub_segments` to published-or-admin, so a demo session can't read drafts. The CMS reads as admin, so
-  it's unaffected. Moosii's RN app reads as authenticated, so this would be **financial only** (like 096).
+- ✅ **Done in 102** (both projects): `fact_keys` / `fact_values` signed-in read.
+- ✅ **Done in 102**: the RLS P1 (15 tables: RLS on + policies), the prerequisite for public demo sign-in.
+- ✅ **Done in 103** (both projects, not financial-only as first proposed): signed-in non-admins read
+  published, unarchived content only; admins unchanged; the RN app's reads are all inside the rule
+  (FINDINGS-rls-pass.md).
 
 ## 5. Slice order and migrations
 
 | # | What | Project | Blocks |
 |---|---|---|---|
-| 0 | **RLS P1 on the 15 RLS-off tables** (caller sweep first; its own brief) | both | public demo sign-in |
-| 1 | **Migration 102** `user_facts.source += seed` + internal allow-list | both | Priya seed |
-| 2 | **Migration 103** fact vocabulary signed-in read | both | outcomes labels |
+| 0 | ✅ RLS P1 — **102** (applied both, 2026-09-28) | both | public demo sign-in |
+| 1 | **Migration 104** `user_facts.source += seed` + internal allow-list | both | Priya seed |
+| 2 | ✅ fact vocabulary signed-in read — folded into **102** | both | outcomes labels |
 | 3 | Mark: create Priya; set `app_metadata.demo_persona` for Sam and Priya (the SQL in §1) | financial | 4, 5 |
 | 4 | `seed_facts` job (demo users only, `source='seed'`, reuses `recordFacts`) → seed Priya; publish ≥ 1 Building a Buffer lesson; weight decision | financial | Beat 3 |
 | 5 | `POST /demo/session` (+ `DEMO_ACCESS_CODE`, rate limit, `ALLOWED_ORIGINS` += reader) | financial | reader switcher |
-| 6 | **Migration 104** `demo_outcome_series` + seed Priya's series; aggregate route (server-side) | financial | Beat 6 |
-| 7 | (optional) **Migration 105** published-only reads for authenticated | financial | — |
+| 6 | **Migration 105** `demo_outcome_series` + seed Priya's series; aggregate route (server-side) | financial | Beat 6 |
+| 7 | ✅ published-only reads for signed-in non-admins — **103** (both projects) | both | — |
 | — | Reader: persona switcher, `setSession`, plan + outcomes views | moosii-reader seat | |
 
-Migration numbers are proposals (next free is 102). Nothing here touches `generateFullMLP` /
+Migration numbers: 102/103 went to the RLS pass (applied 2026-09-28); this plan now uses **104** (`seed`) and **105** (`demo_outcome_series`). Nothing here touches `generateFullMLP` /
 `computeUserMlp`, 071 or 074.

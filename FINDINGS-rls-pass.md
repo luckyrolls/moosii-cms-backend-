@@ -1,7 +1,9 @@
 # FINDINGS — RLS pass for signed-in users (both projects)
 
-2026-09-28 · Investigate-first · **no DDL applied.** Drafts: `docs/drafts/rls-pass/102_rls_internal_tables.sql`,
-`docs/drafts/rls-pass/103_published_only_content_reads.sql`. Both were applied inside **one rolled-back
+**Status: APPLIED 2026-09-28 — 102 and 103 on financial then Moosii; the post-apply simulation equals the rolled-back one (migrations/README.md).**
+
+2026-09-28 · Investigate-first · (when written) **no DDL applied.** Files (moved from docs/drafts/rls-pass/ on apply): `migrations/102_rls_internal_tables.sql`,
+`migrations/103_published_only_content_reads.sql`. Both were applied inside **one rolled-back
 transaction per project**, with before/after counts per persona (a temporary helper function in the same
 transaction turned permission errors into codes).
 
@@ -72,7 +74,7 @@ not, and the RN app's reads (`useLesson` takes the first `complete` segment, `us
 questions) are all inside it. Admin checks use `(SELECT public.is_admin())` so Postgres evaluates it once
 per query, not per row.
 
-Full SQL: `docs/drafts/rls-pass/102_rls_internal_tables.sql` and `…/103_published_only_content_reads.sql`.
+Full SQL: `migrations/102_rls_internal_tables.sql` and `migrations/103_published_only_content_reads.sql`.
 
 ## 5. Simulation (rolled back, both projects)
 

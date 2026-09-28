@@ -84,16 +84,33 @@ read. `mlp_item_pool` is read by the backend as service_role (BYPASSRLS) — unc
 **Rule for new views:** create them `WITH (security_invoker = true)` and revoke anon unless the reader
 needs them. `lesson_questions` was already invoker. Detail: `FINDINGS-anon-views.md`.
 
-## RLS-off tables — anon revoked, RLS still OFF (migration 099, both projects)
+## The 15 formerly RLS-off tables — closed (099 anon; 102 RLS on; both projects, 2026-09-28)
 
-A tourniquet, not the fix. These 15 tables have RLS disabled; 099 revoked ALL from anon (it held
+**Closed by 102.** History: these 15 tables had RLS disabled; 099 revoked ALL from anon (it held
 S/I/U/D/T). `authenticated` and `service_role` still hold their default grants and see every row:
 `_segment_dedupe_backup`, `ai_generation_log`, `content_approvals`, `content_edits`, `image_assets`,
 `lesson_source_documents`, `notification_log`, `prompt_block_versions`, `prompt_blocks`, `screen_help`,
 `source_documents`, `subscription_plans`, `topics`, `user_tag_actions_MM_unused`,
-`user_track_actions_MM_unsed`. **So any signed-in app user can still read and write them.** The follow-up
-(backlog P1) enables RLS per table after a caller sweep. ⚠ Default privileges are unchanged: a NEW table
-still gets anon grants.
+`user_track_actions_MM_unsed`. Until 102, any signed-in user could read and write them.
+
+Since 102: RLS on for all 15. Backend-only (no policy): `_segment_dedupe_backup`, `ai_generation_log`,
+`content_approvals`, `content_edits`, `image_assets`, `lesson_source_documents`, `notification_log`,
+`prompt_block_versions`, `prompt_blocks`, `source_documents`, `subscription_plans`, the two `_MM_` tables.
+`screen_help`: admin ALL (CMS-direct). `topics`: signed-in read. Also `fact_keys` / `fact_values` signed-in
+read, and `set_lesson_published` EXECUTE service_role only. **0 public tables have RLS off** on either
+project. ⚠ Default privileges are unchanged: a NEW table still gets anon/authenticated grants, so enable
+RLS in the migration that creates it.
+
+## Content reads — published-only for signed-in non-admins (migration 103, both projects)
+
+`lessons` / `segments` / `sub_segments` / `quiz_questions` / `quiz_answers`: `is_admin()` reads everything
+(the CMS); any other signed-in user reads only what the anon reader (096/097) reads: visible lessons
+(`reader_lesson_visible`: published, lesson and track unarchived), their `complete` segment, its cards,
+approved questions, their answers. `segments_insert_auth` (any signed-in INSERT) is gone. Write policies
+are otherwise unchanged (admin or service role).
+
+**Still open (flagged):** `user_configurations` is readable by every signed-in user
+(`auth.uid() IS NOT NULL`). It's per-user; an own-or-admin policy is a one-policy follow-up.
 
 ## Backend-only functions — EXECUTE service_role only (094, 095; both projects)
 

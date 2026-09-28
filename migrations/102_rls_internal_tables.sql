@@ -1,6 +1,6 @@
 -- ============================================================================
--- DRAFT 102: RLS on the 15 RLS-off public tables + fact vocabulary read — BOTH PROJECTS
---   — PROPOSAL (FINDINGS-rls-pass.md) — NOT APPLIED
+-- MIGRATION 102: RLS on the 15 RLS-off public tables + fact vocabulary read — BOTH PROJECTS
+--   — APPLIED financial 2026-09-28 · APPLIED Moosii 2026-09-28   (FINDINGS-rls-pass.md)
 -- ============================================================================
 -- WHY: 099 revoked anon, but authenticated still holds full DML on these tables with RLS OFF, so any
 -- signed-in user (a parent in the RN app, a demo persona in the reader) can read, rewrite or delete
