@@ -59,6 +59,7 @@ is code the developer owns and can read, version, and debug. This is non-negotia
   → build to the stated DoD. Decisions Mark states in a brief are settled — don't re-litigate them.
 - **Commit locally and HOLD** unless told to push. A push to `master` deploys Render, so it is
   Mark's call. Report per project (financial / Moosii) whenever a change touches both.
+- **Run `npm test` before every commit that touches `src/` or `prompts/`; a red suite blocks the commit.**
 - **Verify against live Moosii without writing data**: dry runs (`persist=false, apply=false` on
   `/classify-update`), SQL checks wrapped in a rolled-back transaction, read-only sessions. Do not
   create test rows in Moosii to exercise a path; if the needed data doesn't exist, say so and use
