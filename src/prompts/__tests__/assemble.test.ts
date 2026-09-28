@@ -39,7 +39,8 @@ test("each financial topic gets its own overlay and the financial base — never
     assert.match(r.instructions, /Financial — Base Image-Prompt Instructions/);
     // Whole words: the base legitimately says money clichés are "infantilising".
     assert.doesNotMatch(r.instructions, /\b(crib|bassinet|nursery|parenting|parents?|baby|babies|infant|newborn|toddler)\b/i, `parenting wording in ${t}`);
-    assert.deepEqual(r.versions, { base: "3", overlay: "3" });   // financial base + overlays are at v3
+    // financial base is v4 (2026-09-28); credit overlay v4, the other overlays still v3
+    assert.deepEqual(r.versions, { base: "4", overlay: t === "credit" ? "4" : "3" });
   }
 });
 
@@ -52,8 +53,9 @@ test("an unknown financial topic falls back to FINANCIAL's _generic, not the par
 
 test("the financial base states the hard constraints the brief requires", async () => {
   const r = await assembleImagePrompt("credit", META, undefined, undefined, "financial");
-  for (const phrase of [/NO text, letters, words, numbers or digits/, /NO currency symbols, percentage signs, charts, graphs/,
-    /score gauges/, /NO brand marks, logos, real institution names, payment-card networks/, /piggy banks/]) {
+  for (const phrase of [/NO readable text, letters, words, numbers or digits/, /NO currency symbols, percentage signs, charts, graphs/,
+    /score gauges/, /NO brand marks, logos, real institution names/, /NO real payment-card networks/, /piggy banks/,
+    /NO distress cues/]) {
     assert.match(r.instructions, phrase);
   }
 });
