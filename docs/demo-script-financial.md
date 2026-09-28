@@ -5,16 +5,16 @@ Thesis (say it once, first): **"Your insights get attention. They don't get foll
 
 Honesty rule: anything simulated is labeled on screen and said out loud. Seeded outcome data is called seeded.
 
-Shape: Sam's story runs uninterrupted (Beats 1–4). Priya appears once (Beat 5) to prove the plan is personal. The outcome (Beat 6) covers both, then the ask.
+Shape: Sam's story runs uninterrupted (Beats 1–4). Sarah appears once (Beat 5) to prove the plan is personal. The outcome (Beat 6) covers both, then the ask.
 
-Personas: **Sam** — real user, facts derived live from an MX sandbox bank connection (credit utilization high/estimated → Credit Health). **Priya** — seeded facts (no buffer, steady paycheck → Building a Buffer). Outcome movement in Beat 6 is seeded and labeled.
+Personas: **Sam** — real user, facts derived live from an MX sandbox bank connection (credit utilization high/estimated → Credit Health). **Sarah** — seeded facts (no buffer, steady paycheck → Building a Buffer). Outcome movement in Beat 6 is seeded and labeled.
 
 ---
 
 ## Beat 1 — The moment (0:00–0:45)
 **Screen:** `/demo/insights`, "Viewing as: Sam". Simulated partner feed, "Demo — simulated partner app" label visible. Cards: Credit card nearing its limit · New recurring charge · Credit utilization.
 **Say:** "This is your app. Sam gets the insight you already send him today. Normally he reads it and nothing happens. He taps Learn more."
-**Needs:** persona switcher on the feed (Sam / Priya) that starts a real session for a demo user.
+**Needs:** persona switcher on the feed (Sam / Sarah) that starts a real session for a demo user.
 
 ## Beat 2 — The door (0:45–1:45)
 **Screen:** short lesson, "When a Card Is Nearly Maxed Out" — 5–7 cards, images that show the topic, one quiz question.
@@ -32,12 +32,12 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 **Needs:** done (static page).
 
 ## Beat 5 — Same insight, different person (3:00–3:30)
-**Screen:** switch to **Priya**. Same feed, she taps the *same* card. Her plan leads with Building a Buffer, because she has no emergency cushion and a steady paycheck.
+**Screen:** switch to **Sarah**. Same feed, she taps the *same* card. Her plan leads with Building a Buffer, because she has no emergency cushion and a steady paycheck.
 **Say:** "Same insight. Different person, different plan. Nobody configured that — it comes from her data."
-**Needs:** Priya with seeded facts; Building a Buffer lessons published.
+**Needs:** Sarah with seeded facts; Building a Buffer lessons published.
 
 ## Beat 6 — The outcome (3:30–4:30) ← the pitch
-**Screen:** two short timelines, every point labeled real or seeded. Sam: real facts today (utilization high), then a seeded "six weeks later" point (moderate). Priya: seeded no buffer → buffer. Then an aggregate panel labeled **seeded example**: "Users who started a plan: N; moved a fact the right way within 30 days: X%."
+**Screen:** two short timelines, every point labeled real or seeded. Sam: real facts today (utilization high), then a seeded "six weeks later" point (moderate). Sarah: seeded no buffer → buffer. Then an aggregate panel labeled **seeded example**: "Users who started a plan: N; moved a fact the right way within 30 days: X%."
 **Say:** "We don't ask whether it worked. We see it in the data you already have. This is the number your team reports upward."
 **Needs:** `demo_outcome_series` (seeded, labeled; never future-dated rows in user_facts), outcomes page.
 
@@ -56,7 +56,7 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 | Fact derivation (Sam, real) | backend | done |
 | RLS pass (15 RLS-off tables; published-only reads) | backend | **blocks demo sign-in** |
 | Demo sign-in endpoint + persona flags | backend | designed |
-| Priya seeded facts (source `seed`) | backend + Mark | designed |
+| Sarah seeded facts (source `seed`) | backend + Mark | designed |
 | Track weights: fact tracks above Getting Oriented | Mark | decision |
 | Plan view from the user's path | reader | new |
 | demo_outcome_series + outcomes page | backend + reader | designed |
