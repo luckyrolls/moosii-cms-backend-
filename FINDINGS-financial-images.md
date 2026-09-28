@@ -267,5 +267,101 @@ content, and the quiz prompt doesn't carry the tone block, so a quiz question ca
 4. **This lesson:** regenerate cards 2–3 (or the segment) after fix 1. It's unpublished, so no reader has
    seen it.
 
-## 6. Not done
-No prompt, file, row or code changed. No image regenerated.
+## 6. Not done (at the time of the report)
+No prompt, file, row or code changed. No image regenerated. (§7 records what was applied afterwards.)
+
+## 7. Applied 2026-09-28 (Mark's decisions) — and what was not
+
+**Applied:**
+- **Migration 100** (financial only, data): the tone block's amounts sentence replaced; the same sentence
+  appended to the financial quiz prompt; lesson typo fixed ("hat" → "What"). Hash-guarded; verified by
+  read-back (`ff8985d0` / `52add72d` / `65a642ec`; prior tone text kept in `prompt_block_versions`).
+- **Files:** `prompts/image/financial/base.md` **v4**: "Scene first" one-line step (§4a), a new People
+  section (one adult mid-action), the §4c never list folded into Hard constraints, "What to return" opens
+  with the scene sentence, and the worked example now has a person. The v3 example was a person-less
+  bathroom tap, which would have taught against the new People rule; the reference-image paragraph gains
+  one sentence noting it predates the People rule. `topics/credit.md` **v4** as drafted in §4b. The
+  boot validator passes (15 files); financial `credit` resolves base 4 / overlay 4; Moosii is unchanged
+  (root files, v1).
+- **Not regenerated:** no image or card; Mark does that in the CMS.
+
+**Not applied: the currency-amount lint rule. It isn't expressible without code.**
+- `voice_lint_rules.type` is CHECK-limited to `ban | opener | limit | conditional | repeat`
+  (`migrations/012_voice_lint_rules.sql:32`); severity is `error | warn` (`:39`). There's no "high".
+- Every pattern is escaped and matched as a literal whole phrase on normalized text
+  (`src/lib/voiceLint.ts` `phraseRegex` / `escapeRe`), so `\$\s?\d` would match only that literal string.
+- The loader reads every active rule and ignores the `tone` column (`voiceLint.ts`, `.select(...)`
+  `.eq("is_active", true)`), so a per-tone rule isn't possible today.
+- Error-severity `ban` rows are **injected verbatim into every generation prompt** ("Never use these
+  phrases…", `loadPromptBanInstruction`). A regex seeded as a ban would put raw regex text into every
+  financial content prompt.
+
+**Proposal (needs a go; code + schema, both projects):** add a `regex` rule type. Engine: compile
+`pattern` as a case-insensitive JS RegExp against the un-lowercased card text, and hit per match. Never
+inject `regex` rows into prompts (the prevention layer stays phrase-only). Honour `tone` when set
+(match against the segment's tone name). Migration: widen the `type` CHECK to add `regex`, then seed
+the financial rule (`rule_key` `no_currency_amount`, `type` regex, pattern
+`\$\s?\d|\d[\d,]*\s?(dollars|USD)`, scope `card`, severity `error`, tone `Plain Money`,
+message "names an amount (financial tone forbids amounts)"). With today's engine the closest
+no-code option is a `ban` on the word "dollars" alone. It catches "100 dollars" but not "$100", and gets
+injected into prompts. Not recommended.
+
+## 8. Draft overlays — spending, saving, income (NOT applied; for a later pass)
+
+Same shape as `credit.md` v4: actions first, one person mid-action, traps last. Topic keys are the
+financial `topics.name` values.
+
+**`topics/spending.md` v4 (subscriptions and everyday spending)**
+> These rules apply on top of the base instructions for spending sub-segments.
+>
+> Show the moment someone notices or decides about a regular cost. The person and their hands carry
+> the meaning.
+>
+> ## Actions (options, not a checklist — pick the one that matches THIS card)
+> - **Noticing a repeat** — someone on a sofa or a bus seat, scrolling a phone whose screen is dark or
+>   turned away, pausing mid-scroll. Fits: finding forgotten or recurring charges.
+> - **Cancelling something** — someone at a desk under a window, laptop screen angled away, hand on the
+>   trackpad, a mug set aside. Fits: cancelling a subscription, trimming a plan.
+> - **An unexpected arrival** — someone in a hallway opening a small parcel they'd forgotten ordering.
+>   Fits: impulse or auto-renewed purchases.
+> - **Choosing not to** — someone putting an item back on a shop shelf. Fits: pausing before a purchase.
+>
+> ## Traps specific to this topic
+> - NO app icons, streaming-service interfaces, logos or recognisable screens; screens dark or turned away.
+> - NO receipts with figures, price tags, shopping bags with brand marks.
+
+**`topics/saving.md` v4 (buffer and savings)**
+> These rules apply on top of the base instructions for saving sub-segments.
+>
+> Show the small, deliberate act of setting something aside or keeping it within reach.
+>
+> ## Actions (options, not a checklist — pick the one that matches THIS card)
+> - **Putting something aside** — someone slipping a folded note into a drawer they rarely open, or a
+>   plain envelope into a box on a high shelf. Fits: starting a buffer, moving money to savings.
+> - **Keeping it reachable** — someone moving a jar from a high shelf to one they can reach easily.
+>   Fits: an emergency fund you can actually get to.
+> - **Ready for a rainy day** — someone checking a spare umbrella by the front door (sparingly; once
+>   per lesson at most). Fits: why a buffer matters.
+> - **Topping up** — someone refilling a watering can at a garden tap before it runs out. Fits:
+>   replenishing savings after using them.
+>
+> ## Traps specific to this topic
+> - NO piggy banks, jars of visible coins or notes, money bags, safes or vaults.
+> - The jar or envelope is plain and opaque: its contents are never shown.
+
+**`topics/income.md` v4 (paycheck and direct deposit)**
+> These rules apply on top of the base instructions for income sub-segments.
+>
+> Show the routine around money coming in: setting it up, sorting it, planning for it.
+>
+> ## Actions (options, not a checklist — pick the one that matches THIS card)
+> - **Setting it up** — someone handing a folded form across a counter or desk, no visible writing.
+>   Fits: setting up or switching direct deposit.
+> - **Payday routine** — someone at a desk on a late afternoon, setting a reminder on a phone whose
+>   screen faces away. Fits: what to do when the paycheck lands.
+> - **Sorting the post** — someone in a hallway sorting mail into two trays. Fits: separating bills
+>   from income, a regular money check-in.
+>
+> ## Traps specific to this topic
+> - NO pay stubs, cheques or bank statements with figures; NO cash in hand; NO employer logos or
+>   uniforms that read as a specific company.

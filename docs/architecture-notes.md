@@ -54,6 +54,13 @@ moment with people, restraint within a scene, no iconography." This is empirical
 done inside the CMS. Overlays are written/tuned in response to observed failure modes, not all
 guessed upfront.
 
+Financial (domain folder `prompts/image/financial/`, 2026-09-18 on): v1 domain base + eight overlays;
+v2 (09-20) "place, not object" with per-topic metaphors; v3 (09-21) setting variety. v3 overshot into
+**empty rooms**: "prefer traces of people" + place-first + metaphor lists produced shelves and plants
+standing in for the card's meaning (FINDINGS-financial-images). v4 (2026-09-28, base + `credit`): a
+one-line "Scene first" sentence ("a person doing X with Y in Z"), one adult mid-action as the subject, a
+consolidated never list; `credit` v4 leads with actions. The other overlays are still v3.
+
 ## Content-phase roadmap (not built)
 
 ### Content generation is a BUNDLE

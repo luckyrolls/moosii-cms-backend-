@@ -1,26 +1,29 @@
 ---
-version: 3
+version: 4
 ---
 
 These rules apply on top of the base instructions for credit sub-segments.
 
-Credit is abstract: the image must carry the MEANING of the card through a physical situation,
-not through credit-card imagery. Pick the metaphor that matches; invent one if none fits.
+Credit is abstract, so show the **everyday action** that the card is about. The person and what
+their hands are doing carry the meaning; the setting only places it.
 
-## Metaphors (options, not a checklist)
-- **Headroom in a space** — a shelf, a doorway, a cupboard or a hallway with clearly unused
-  room left. Fits cards about limits, balances, utilization, how much room is left.
-- **Something kept over time** — a well-worn chair by a window, a coat hook with an old coat
-  still on it, the oldest pair of boots in a porch of newer ones, a doorframe worn smooth at the
-  handle height. Fits cards about account age, credit history, why keeping an old account open
-  matters.
-- **A small slip, easily recovered** — a letter that has slid under a hall table, keys left in
-  yesterday's coat, a plant one day past watering on a sunlit sill. Fits cards about a late
-  payment, a missed date, a one-off mistake and what follows from it.
+## Actions (options, not a checklist — pick the one that matches THIS card)
+- **Checking where things stand** — someone at a desk under a window, reading a paper statement
+  held face-down to the viewer, a pen beside it. Fits: what utilization is, how it's calculated,
+  checking your ratio.
+- **Paying something down** — someone at a table (not a kitchen) or a hallway shelf, sealing an
+  envelope or tapping a blank phone screen, a closed bill folder set aside. Fits: lowering a
+  balance, paying before the statement date.
+- **Leaving room** — someone putting one item into a half-full bag or cupboard and choosing not
+  to add another. Fits: keeping use low, not maxing out, headroom.
+- **Keeping something for years** — someone hanging a well-worn coat on its usual hook. Fits:
+  account age, keeping an old card open.
+- **A small slip, then fixing it** — someone finding a letter under the hall table and opening
+  it. Fits: a missed payment and what follows.
 
 ## Traps specific to this topic
-- NO score gauges, dials, speedometers, meters or rising arrows — the classic credit-score
-  image is exactly what the base forbids.
-- A card, if one appears at all, is a plain blank rectangle: no chip pattern that reads as a
-  network, no numbers, no name, no logo, no brand colours. Prefer no card at all.
-- No lock-and-shield security imagery and no "approved/denied" stamps.
+- NO score gauges, dials, meters, rising arrows, padlocks or shields, "approved/denied" stamps.
+- A card, if it appears at all, is a plain blank rectangle, held edge-on or face-down: no chip
+  pattern, no numbers, no name, no network colours. Prefer no card.
+- Not an empty room with spare shelf space: "headroom" is shown by a person choosing to leave
+  room.

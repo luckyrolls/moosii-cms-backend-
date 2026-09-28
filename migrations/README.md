@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 099 · Moosii 099** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 100 · Moosii 099** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095 and 098..099; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091 and 096–097 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -472,6 +472,16 @@ Main track:
   untouched — the RLS pass is backlog P1). No sessionless client reads them (backend, moosii-cms,
   moosii-rn, moosii-reader grepped). Live: anon S/I/U/D/T = f on all 15; anon on content_approvals /
   prompt_blocks / topics → permission denied; admin (claims) counts unchanged.
+- **100 — financial: no amounts, not even as examples (tone + quiz) + lesson typo** — **APPLIED financial
+  (2026-09-28) · FINANCIAL ONLY.** Data only (Mark, 2026-09-28; FINDINGS-financial-images §5). Plain Money
+  tone block (…0204): the amounts sentence → Mark's wording (no amount, price, balance or limit even as an
+  example; "under 30% of your limit" allowed as a guideline); prior text saved to `prompt_block_versions`.
+  Financial quiz prompt (…0402): the same sentence appended. Lesson f9b2c834… description "hat" → "What"
+  (unpublished, so the financial edit lock allowed it). md5-guarded per change (`39092208`→`ff8985d0`,
+  `46f131e1`→`52add72d`, `5eec1ce0`→`65a642ec`); dry-run twice in one rolled-back transaction (the second
+  pass is a no-op), also from a CRLF copy; then applied and read back. **Not included:** the
+  currency-regex lint rule. The engine has no regex type and injects error-severity bans verbatim into
+  prompts (FINDINGS-financial-images §7).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
