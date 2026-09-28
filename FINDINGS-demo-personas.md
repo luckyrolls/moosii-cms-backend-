@@ -44,7 +44,12 @@ summary of it.
   Verified with the pure `generateFullMLP` on live track/lesson data: once fact-track lessons are published,
   Sam's path starts `[Credit Health] When a Card Is Nearly Maxed Out`, Sarah's `[Building a Buffer] Why One
   Month Comes First`. Today both paths are the one published Getting Oriented lesson.
-- **Built, pending deploy:** `seed_facts` job (§8e) and `POST /demo/session` (§9).
+- **Track priority (financial data, 2026-09-28):** Getting Oriented `priority` **100 → 200** (guarded, one row).
+  `generateFullMLP.ts:231` sorts ascending, so 200 sorts after every fact track (100): the order is now
+  EXPLICIT, not a side effect of the view's `ORDER BY weight` + stable sort. Proven with the pure function on
+  live data and the input order reversed: same plans. ⚠ `renumber_track_priority_order()` (the CMS
+  priorities page) rewrites `tracks.priority`, so a track reorder in the CMS overwrites this.
+- **Built:** `seed_facts` job (§8e) and `POST /demo/session` (§9).
 
 ## 1. Demo sign-in
 
