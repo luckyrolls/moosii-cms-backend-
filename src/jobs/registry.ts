@@ -10,6 +10,7 @@ import { rebuildMlpHandler } from "./handlers/rebuildMlp";
 import { generateQuestionnaireHandler } from "./handlers/generateQuestionnaire";
 import { reviewLessonHandler } from "./handlers/reviewLesson";
 import { coverageAuditHandler } from "./handlers/coverageAudit";
+import { deriveFactsHandler } from "./handlers/deriveFacts";
 
 export type Job = {
   id: string;
@@ -38,6 +39,7 @@ const registry: Record<string, JobHandler> = {
   generate_questionnaire:   generateQuestionnaireHandler,
   review_lesson:            reviewLessonHandler,
   coverage_audit:           coverageAuditHandler,
+  derive_facts:             deriveFactsHandler,
 };
 
 export function getHandler(type: string): JobHandler {

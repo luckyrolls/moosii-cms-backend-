@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 100 · Moosii 099** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095 and 098..099; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 101 · Moosii 101** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -482,6 +482,12 @@ Main track:
   pass is a no-op), also from a CRLF copy; then applied and read back. **Not included:** the
   currency-regex lint rule. The engine has no regex type and injects error-severity bans verbatim into
   prompts (FINDINGS-financial-images §7).
+- **101 — `user_facts.source` += `derived`, `estimated`** — **APPLIED financial (2026-09-28) · APPLIED
+  Moosii (2026-09-28).** BOTH PROJECTS, schema (CHECK only). For the `derive_facts` job (api-contract §8d);
+  `POST /facts` still accepts only `platform_api | cms | manual`. 0 `user_facts` rows on either project
+  beforehand. Per project: rolled-back dry run, apply; verified by a rolled-back insert: `estimated` passes
+  the CHECK (financial inserts; Moosii fails only on the fact_values FK, since it has no vocabulary),
+  `guessed` → check violation.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

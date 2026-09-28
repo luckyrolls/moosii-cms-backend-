@@ -1,5 +1,9 @@
 import { validateFactsBody, type FactRow, type Vocabulary } from "./validate";
 
+// POST /facts calls this with the defaults. The derive_facts job passes internal: true (derived /
+// estimated sources, source_ref) and its own rebuild reason.
+export type RecordFactsOptions = { internal?: boolean; reason?: string };
+
 // POST /facts core — validate → conflict check → ONE write → enqueue the rebuild. The database
 // calls are INJECTED (FactsDeps) so the ordering guarantees are unit-tested with fakes:
 // nothing is written on any rejection, the write is a single call carrying every row, and the
@@ -29,9 +33,9 @@ export type RecordFactsOutcome =
   | { status: 200; body: { written: number; rebuild_enqueued: boolean }; userId: string; skipped: number }
   | { status: 400 | 404 | 409; code: string; message: string };
 
-export async function recordFacts(body: unknown, deps: FactsDeps, correlationId: string): Promise<RecordFactsOutcome> {
+export async function recordFacts(body: unknown, deps: FactsDeps, correlationId: string, opts: RecordFactsOptions = {}): Promise<RecordFactsOutcome> {
   const vocab = await deps.loadVocabulary();
-  const v = validateFactsBody(body, vocab);
+  const v = validateFactsBody(body, vocab, { internal: opts.internal });
   if (!v.ok) return { status: v.status, code: v.code, message: v.message };
 
   // Redelivery of an identical observation is harmless (DO NOTHING). A DIFFERENT value at the
@@ -65,7 +69,7 @@ export async function recordFacts(body: unknown, deps: FactsDeps, correlationId:
 
   // After the write committed. Enqueued even when written = 0 (an identical redelivery): a
   // rebuild is idempotent, and it covers a previous call whose rebuild failed.
-  const r = await deps.enqueueRebuild(v.userId, { reason: "facts_intake", correlationId });
+  const r = await deps.enqueueRebuild(v.userId, { reason: opts.reason ?? "facts_intake", correlationId });
   return {
     status: 200,
     body: { written, rebuild_enqueued: r.enqueued || Boolean(r.coalescedInto) },

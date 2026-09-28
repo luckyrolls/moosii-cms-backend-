@@ -3,8 +3,15 @@
 // nothing is written. The database repeats the vocabulary + "no amounts" rules as constraints
 // (migrations 069/070); this layer exists to name the offender instead of surfacing a raw 23503.
 
-export const FACT_SOURCES = ["platform_api", "cms", "manual"] as const;  // user_facts_source_valid (070)
-export type FactSource = (typeof FACT_SOURCES)[number];
+export const FACT_SOURCES = ["platform_api", "cms", "manual"] as const;  // what POST /facts accepts (070)
+// Internal writers only (the derive_facts job): the partner route never accepts these, so a partner
+// cannot claim a fact was derived by us. user_facts_source_valid allows all five (migration 101).
+export const INTERNAL_FACT_SOURCES = [...FACT_SOURCES, "derived", "estimated"] as const;
+export type FactSource = (typeof INTERNAL_FACT_SOURCES)[number];
+
+// `internal: true` = a backend writer (not the partner route): allows INTERNAL_FACT_SOURCES and a
+// `source_ref` per entry. Default (POST /facts) is unchanged.
+export type ValidateOptions = { internal?: boolean };
 
 export const MAX_FACTS_PER_CALL = 100;
 
@@ -17,6 +24,7 @@ export type FactRow = {
   value: string;
   observed_at: string;   // normalized ISO 8601 (UTC, ms precision)
   source: FactSource;
+  source_ref?: string;   // internal writers only (e.g. "job:<id>")
 };
 
 export type ValidationError = { ok: false; status: 400; code: string; message: string };
@@ -37,7 +45,8 @@ function bad(code: string, message: string): ValidationError {
   return { ok: false, status: 400, code, message };
 }
 
-export function validateFactsBody(body: unknown, vocab: Vocabulary): ValidatedBody | ValidationError {
+export function validateFactsBody(body: unknown, vocab: Vocabulary, opts: ValidateOptions = {}): ValidatedBody | ValidationError {
+  const sources: readonly string[] = opts.internal ? INTERNAL_FACT_SOURCES : FACT_SOURCES;
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return bad("invalid_request", "body must be a JSON object");
   }
@@ -75,10 +84,16 @@ export function validateFactsBody(body: unknown, vocab: Vocabulary): ValidatedBo
     }
     let source: FactSource = "platform_api";
     if (e.source !== undefined) {
-      if (typeof e.source !== "string" || !(FACT_SOURCES as readonly string[]).includes(e.source)) {
-        return bad("invalid_source", `${at}.source must be one of ${FACT_SOURCES.join(" | ")} (got ${JSON.stringify(e.source)})`);
+      if (typeof e.source !== "string" || !sources.includes(e.source)) {
+        return bad("invalid_source", `${at}.source must be one of ${sources.join(" | ")} (got ${JSON.stringify(e.source)})`);
       }
       source = e.source as FactSource;
+    }
+    let sourceRef: string | undefined;
+    if (e.source_ref !== undefined) {
+      if (!opts.internal) return bad("invalid_request", `${at}.source_ref is not accepted on this route`);
+      if (typeof e.source_ref !== "string" || !e.source_ref.trim()) return bad("invalid_request", `${at}.source_ref must be a non-empty string`);
+      sourceRef = e.source_ref;
     }
 
     const key = e.key;
@@ -98,7 +113,7 @@ export function validateFactsBody(body: unknown, vocab: Vocabulary): ValidatedBo
     }
     firstIndexByInstant.set(instant, i);
 
-    rows.push({ user_id: userId, fact_key: key, value, observed_at: observedAt, source });
+    rows.push({ user_id: userId, fact_key: key, value, observed_at: observedAt, source, ...(sourceRef && { source_ref: sourceRef }) });
   }
 
   return { ok: true, userId, rows };

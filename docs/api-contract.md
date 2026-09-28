@@ -344,7 +344,8 @@ type JobType =
   | 'generate_questionnaire'      // §2e
   | 'generate_track_content'      // §2f
   | 'generate_track_images'       // §2g
-  | 'review_lesson';              // §2k
+  | 'review_lesson'               // §2k
+  | 'derive_facts';               // §8d (financial only)
 ```
 
 ---
@@ -2241,3 +2242,46 @@ arrays, never a 404.
 **Direct client reads — decision R1, migration 078.** Separately from this endpoint, a signed-in
 user can SELECT their OWN rows from `user_facts` / `user_facts_latest` through PostgREST, an admin all
 rows, anon none (RLS). This endpoint remains the CMS inspector's read.
+
+**`source` values in stored rows (migration 101).** `platform_api | cms | manual` (what `POST /facts`
+accepts) plus two **internal-only** values written by §8d: `derived` (computed by us from linked-account
+data) and `estimated` (computed with an estimated input, e.g. a credit limit taken as balance + available
+credit). `POST /facts` refuses both (`invalid_source`), and refuses `source_ref`: a partner can't claim
+a fact is ours. `GET /facts` returns them as stored; `source_ref` is `job:<job_id>` for derived rows.
+
+### 8d. `derive_facts` job — facts from MX account data — DELIVERED (financial only)
+
+```
+POST /jobs
+Authorization: Bearer <INTERNAL_API_KEY | admin JWT>
+Body: { type: "derive_facts", input: { user_id: string } }     // Supabase auth uid
+→ 202 { job_id }
+```
+Derives `has_direct_deposit`, `has_emergency_buffer`, `new_subscription_recent` and
+`credit_utilization_band` for ONE user from MX Platform API data (accounts + 120 days of
+transactions) and records them through the same core as §8b. Code: `src/facts/derive/`
+(`rules.ts` pure, `mxProvider.ts`, `derive.ts`), handler `src/jobs/handlers/deriveFacts.ts`.
+Rules and thresholds: FINDINGS-fact-derivation.md §2 (decided 2026-09-28).
+
+- **Identity:** the MX user's `id` is the Supabase auth uid; MX accepts it in place of its guid, so
+  there's no mapping table. The MX user and its member must already exist.
+- **Preconditions / failures** (job `failed`, `error.message` starts with the code):
+  `domain_not_supported` (DOMAIN ≠ financial) · `invalid_input` · `mx_not_configured`
+  (`MX_CLIENT_ID` / `MX_API_KEY` unset on the service; optional `MX_BASE_URL`, default
+  `https://int-api.mx.com`; checked when the job runs, not at boot) · `mx_auth_failed` ·
+  `mx_user_not_found` · `mx_request_failed` · `no_mx_members` · `aggregation_in_progress` ·
+  `never_aggregated` · `unknown_user` (no auth user) · `conflicting_observation` (a rule change
+  gives a different value for an already-recorded aggregation; refresh the aggregation first).
+- **Write:** `observed_at` = the latest `successfully_aggregated_at` across the user's members.
+  `source` = `derived`, or `estimated` when an input was estimated. `source_ref` = `job:<job_id>`.
+  **Idempotent:** a re-run on the same aggregation writes 0 rows. A fact that can't be determined
+  writes **no row** (unknown, the 075 convention) and is reported with a reason. Then the user's
+  coalesced `rebuild_mlp` is enqueued (`triggered_by: "derive_facts"`).
+- **Result** (`jobs.result`): **no amounts, balances or ratios**, only counts and day spans:
+  ```
+  { rule_version: "facts-derive/1", user_id, observed_at, members, accounts, transactions, history_days,
+    facts: [ { fact_key, value | null, status: "recorded" | "unknown", source: "derived" | "estimated" | null,
+               estimated, reason, evidence: { …counts } } ],
+    written, rebuild_enqueued }
+  ```
+- Not an AI call: nothing goes to `ai_generation_log`. Trigger today is manual (script / curl).
