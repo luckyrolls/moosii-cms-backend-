@@ -60,6 +60,10 @@ is code the developer owns and can read, version, and debug. This is non-negotia
 - **Commit locally and HOLD** unless told to push. A push to `master` deploys Render, so it is
   Mark's call. Report per project (financial / Moosii) whenever a change touches both.
 - **Run `npm test` before every commit that touches `src/` or `prompts/`; a red suite blocks the commit.**
+- **Which key reaches which service** (local `.env`): `INTERNAL_API_KEY` is the LOCAL dev server's
+  `/jobs` key (neither Render service accepts it — checked 2026-09-28); `FINANCIAL_INTERNAL_API_KEY` →
+  financial service `/jobs` (moosii-financial-backend.onrender.com); there is no local key for the Moosii
+  service's `/jobs`; `MOOSII_DB_URL` / `FINANCIAL_DB_URL` → each project's Postgres.
 - **Verify against live Moosii without writing data**: dry runs (`persist=false, apply=false` on
   `/classify-update`), SQL checks wrapped in a rolled-back transaction, read-only sessions. Do not
   create test rows in Moosii to exercise a path; if the needed data doesn't exist, say so and use
