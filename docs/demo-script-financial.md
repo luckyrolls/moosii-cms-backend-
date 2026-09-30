@@ -5,26 +5,26 @@ Thesis (say it once, first): **"Your insights get attention. They don't get foll
 
 Honesty rule: anything simulated is labeled on screen and said out loud. Seeded outcome data is called seeded.
 
-Shape: Sam's story runs uninterrupted (Beats 1–4). Sarah appears once (Beat 5) to prove the plan is personal. The outcome (Beat 6) covers both, then the ask.
+Shape: Moosii is a plan **widget** on the partner's own widget page. Sam's story runs uninterrupted (Beats 1–4). Sarah appears once (Beat 5) to prove the plan is personal. The outcome (Beat 6) covers both, then the ask.
 
 Personas: **Sam** — real user, facts derived live from an MX sandbox bank connection (credit utilization high/estimated → Credit Health). **Sarah** — seeded facts (no buffer, steady paycheck → Building a Buffer). Outcome movement in Beat 6 is seeded and labeled.
 
 ---
 
-## Beat 1 — The moment (0:00–0:45)
-**Screen:** `/demo/insights`, "Viewing as: Sam". Simulated partner feed, "Demo — simulated partner app" label visible. Cards: Credit card nearing its limit · New recurring charge · Credit utilization.
-**Say:** "This is your app. Sam gets the insight you already send him today. Normally he reads it and nothing happens. He taps Learn more."
-**Needs:** persona switcher on the feed (Sam / Sarah) that starts a real session for a demo user.
+## Beat 1 — The page they already have (0:00–0:45)
+**Screen:** `/demo/partner` — a simulated partner page ("Demo — simulated partner page"), neutral grey tiles: Accounts, Spending, an Insight card ("A card is close to its limit"), and the **Moosii plan tile**. Viewing as Sam.
+**Say:** "This is the kind of page you build today out of widgets. We're one more tile. Sam's tile already knows what he needs next."
+**Needs:** mock partner page framing `/widget/plan`; persona switcher.
 
 ## Beat 2 — The door (0:45–1:45)
-**Screen:** short lesson, "When a Card Is Nearly Maxed Out" — 5–7 cards, images that show the topic, one quiz question.
+**Screen:** Sam taps **Start** on "Up next: When a Card Is Nearly Maxed Out" (or taps Learn more on the insight tile — same lesson). The lesson opens inside the tile: 5–8 cards, one quiz question.
 **Say:** "Two minutes, written for the moment he's in. No dollar amounts, no judgment."
-**Needs:** the lesson, published.
+**Needs:** lesson in embedded (compact) mode inside the tile.
 
 ## Beat 3 — The plan (1:45–2:30)
-**Screen:** completion card, then **Sam's plan**: Credit Health first (next lesson highlighted), then Getting Oriented.
-**Say:** "The insight was the door. This is the plan — built from what his accounts tell us. Yes/no facts, never amounts."
-**Needs:** plan view reading the signed-in user's path (`user_mlp_not_completed`); Credit Health lessons published; fact tracks weighted above Getting Oriented.
+**Screen:** back to the tile: that lesson marked done, "Up next" moves to the next item. Tap "See full plan": Credit Health leads, with a Getting Oriented lesson along the way.
+**Say:** "The insight was a moment. The plan is what's always on his page — built from what his accounts tell us. Yes/no facts, never amounts."
+**Needs:** tile updates after completion (done this visit); full plan view.
 
 ## Beat 4 — The return (2:30–3:00)
 **Screen:** `/demo/email` — "Sam, step 2 of your plan is ready." Tap → the lesson.
@@ -32,7 +32,7 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 **Needs:** done (static page).
 
 ## Beat 5 — Same insight, different person (3:00–3:30)
-**Screen:** switch to **Sarah**. Same feed, she taps the *same* card. Her plan leads with Building a Buffer, because she has no emergency cushion and a steady paycheck.
+**Screen:** switch to **Sarah**. Same page, same insight tile. Her plan tile leads with "Why One Month Comes First" — Building a Buffer — because she has no emergency cushion and a steady paycheck.
 **Say:** "Same insight. Different person, different plan. Nobody configured that — it comes from her data."
 **Needs:** Sarah with seeded facts; Building a Buffer lessons published.
 
@@ -42,7 +42,7 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 **Needs:** `demo_outcome_series` (seeded, labeled; never future-dated rows in user_facts), outcomes page.
 
 ## Beat 7 — The ask (4:30–5:00)
-**Say:** "A 60-day pilot on one insight type. We measure fact movement against a holdout. From you: the Learn-more handoff with a user id, and either MX data access or facts passed to us."
+**Say:** "Integrating is the same as adding an MX widget: your backend asks ours for a widget link for the user, and you put it on the page. A 60-day pilot; we measure fact movement against a holdout. From you: that widget call, and facts from your MX data (or access to derive them)."
 **Have ready:** who reviews the content (**gap: name someone**); where the data lives (facts only, no amounts); webview vs. tab embedding (either works).
 
 ---
@@ -50,7 +50,10 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 ## Build list
 | Item | Owner | Status |
 |---|---|---|
-| Mock insights feed | reader | done |
+| Mock insights feed (secondary entry) | reader | done |
+| Plan widget `/widget/plan` + embedded lesson mode | reader | new |
+| Mock partner page `/demo/partner` framing the widget | reader | new |
+| Production widget-link endpoint + frame-ancestors | backend + reader | after partner confirms shape |
 | Lesson + quiz reader | reader | done |
 | Mock email page | reader | done |
 | Fact derivation (Sam, real) | backend | done |
