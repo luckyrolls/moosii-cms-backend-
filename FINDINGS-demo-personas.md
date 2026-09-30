@@ -50,6 +50,28 @@ summary of it.
   live data and the input order reversed: same plans. ⚠ `renumber_track_priority_order()` (the CMS
   priorities page) rewrites `tracks.priority`, so a track reorder in the CMS overwrites this.
 - **Built:** `seed_facts` job (§8e) and `POST /demo/session` (§9).
+- **Seeded completion — Sam finished orientation (financial, 2026-09-30).** `completed_items` has no
+  seed/source column, so it is recorded HERE. Sam (`19587e0a-…`, `demo_persona = sam`) gets the same two
+  writes moosii-rn `useCompleteLesson` makes for "What the App Can See Now" (`06eef3f3-c2ab-43e9-ba58-8dc52a742232`):
+  `user_lesson_progress (user_id, lesson_id, is_completed=true)` (upsert) and one `completed_items` row
+  (`item_type 'lesson'`, `item_id = lesson_id =` that lesson, `item_name`/`item_description`/`with_quiz` from the
+  lesson, `score 0`). The AFTER INSERT trigger `trigger_add_moosies()` added his `moosi_to_add`: `user.moosies` 0 → 10,
+  as a real completion would. Guarded: financial only, target must carry `demo_persona = 'sam'`, insert skipped if
+  the row exists. Sarah untouched. After a rebuild his live path is Credit Health only:
+  1 When a Card Is Nearly Maxed Out → 2 Paying Before the Statement Date → 3 Why Your Credit Balance-to-Limit Ratio Matters.
+  **To redo** (e.g. after a data reset) run, as postgres on financial, in one transaction:
+  ```sql
+  INSERT INTO user_lesson_progress (user_id, lesson_id, is_completed)
+    VALUES ('19587e0a-bfe0-48e2-94a1-055a5bbc9584', '06eef3f3-c2ab-43e9-ba58-8dc52a742232', true)
+    ON CONFLICT (user_id, lesson_id) DO UPDATE SET is_completed = true;
+  INSERT INTO completed_items (user_id, item_id, item_type, lesson_id, questionnaire_id, item_name, item_description, with_quiz, score)
+  SELECT '19587e0a-bfe0-48e2-94a1-055a5bbc9584', l.id, 'lesson', l.id, NULL, l.lesson_name, coalesce(l.description, ''), l.with_quiz, 0
+    FROM lessons l WHERE l.id = '06eef3f3-c2ab-43e9-ba58-8dc52a742232'
+     AND NOT EXISTS (SELECT 1 FROM completed_items c WHERE c.user_id = '19587e0a-bfe0-48e2-94a1-055a5bbc9584'
+                       AND c.item_id = l.id AND c.item_type = 'lesson');
+  ```
+  then `POST /jobs {type: "rebuild_mlp", input: {user_id: "19587e0a-…"}}` on the financial service. To undo:
+  delete those two rows (and subtract 10 from `user.moosies` if it matters).
 
 ## 1. Demo sign-in
 
