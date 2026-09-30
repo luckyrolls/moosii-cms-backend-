@@ -2312,6 +2312,7 @@ export type Database = {
           image_url: string | null
           internal_name: string | null
           is_published: boolean | null
+          kind: string
           lesson_name: string
           max_child_age: number | null
           max_questionnaire_score_range: number | null
@@ -2344,6 +2345,7 @@ export type Database = {
           image_url?: string | null
           internal_name?: string | null
           is_published?: boolean | null
+          kind?: string
           lesson_name?: string
           max_child_age?: number | null
           max_questionnaire_score_range?: number | null
@@ -2376,6 +2378,7 @@ export type Database = {
           image_url?: string | null
           internal_name?: string | null
           is_published?: boolean | null
+          kind?: string
           lesson_name?: string
           max_child_age?: number | null
           max_questionnaire_score_range?: number | null
@@ -7293,6 +7296,7 @@ export type Database = {
         Args: { p_lesson_id: string }
         Returns: boolean
       }
+      reader_lesson_visible: { Args: { p_lesson_id: string }; Returns: boolean }
       rebuild_user_mlp: {
         Args: { p_items: Json; p_user_id: string }
         Returns: number

@@ -1954,6 +1954,15 @@ type JobType =
 `content_images` and `jobs` confirmed present in the regenerated types. Facts the
 backend must preserve and the frontend leans on:
 
+- **`lessons.kind`** (migration 107): `'lesson' | 'activity'`, NOT NULL, default `'lesson'` (CHECK
+  `lessons_kind_valid`). An **activity** is a lesson the plan recommends *doing* (why + 2–4 steps + one
+  do-it-now card). It is otherwise an ordinary lesson: same approval, publishing, archival, images, review,
+  and it rides the MLP as `item_type = 'lesson'`. **`kind` is NOT in `mlp_item_pool` or `user_mlp`**
+  (invariants 1, 8): the CMS, RN app and reader read `lessons.kind` **by lesson id** (e.g. alongside the
+  description they already fetch for plan items) to show a "Do" badge. `create_lessons_with_segments`
+  accepts an optional `kind` per stub (absent → `'lesson'`); generated stubs stay `'lesson'`. Financial anon
+  (the reader) has column SELECT on `kind`. Completing an activity is the same `completed_items` write as a
+  lesson. Design and later verification (fact transitions / check-ins): FINDINGS-activities.md.
 - **`jobs`:** `id`, `type` (text), `status` (text, default `queued`),
   `input jsonb` (NOT NULL `{}`), `result jsonb`, `error jsonb`, `created_at`,
   `started_at`, `finished_at`. Generic + self-describing — one job table for all

@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 105 · Moosii 105** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101..105; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 107 · Moosii 107** (main; 106 reserved, not yet written) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -514,6 +514,16 @@ Main track:
   progress (FINDINGS-activities §2). Own-row policies remain. Persona simulation (rolled back, then live, 0 mismatches):
   end user and plain admin cross-user inserts → 42501, own inserts/upserts unchanged; super_admin unchanged; admin
   `completed_items` reads unchanged; progress reads → own rows (plain admin 8 → 6 on Moosii; no caller reads others').
+- **106 — reserved** for `demo_outcome_series` (FINDINGS-demo-personas); not written yet.
+- **107 — `lessons.kind` ('lesson' | 'activity')** — **APPLIED financial (2026-09-30) · APPLIED Moosii (2026-09-30).**
+  BOTH PROJECTS, schema + RPC. Column NOT NULL DEFAULT 'lesson' + CHECK `lessons_kind_valid` (every existing row →
+  'lesson'); `create_lessons_with_segments` gains `kind` in its explicit insert list as `coalesce(l.kind,'lesson')`
+  (CREATE OR REPLACE, ACL kept, insert-or-select unchanged; hash-guarded 067 body `a251abfb` → `d7ae90fb`);
+  financial: `GRANT SELECT (kind)` to anon. `mlp_item_pool` / `user_mlp` untouched (kind stays out). Per project: dry
+  run with rolled-back RPC probes (kind activity → activity, absent → lesson, one segment each; bogus → 23514),
+  apply, same checks live, 0 probe rows left. `database.types.ts` regenerated (lessons.kind; also picks up
+  `reader_lesson_visible`, on Moosii since 103). First activity (financial data, not a migration): "Set a
+  Statement-Date Reminder", Credit Health, priority 250, unpublished.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -63,6 +63,7 @@ SELECT is replaced by column SELECT plus a `TO anon` policy; `authenticated` is 
 | `sub_segments` | id, seg_id, title, content, image, sequence | cards of such a segment |
 | `app_settings` | key, value | `key='domain'` |
 | `lessons` (097) | + is_published, archived_at | unchanged — 096's policy |
+| `lessons` (107) | + kind | unchanged — 096's policy |
 | `quiz_questions` (097) | question_id, segment_id, question_text, question_explanation, type, answer_status | `answer_status='approved'` on a `complete` segment of a visible lesson |
 | `quiz_answers` (097) | id, question_id, answer_text, is_correct, response | answers of such a question |
 
