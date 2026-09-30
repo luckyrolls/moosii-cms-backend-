@@ -156,7 +156,7 @@ through the views the reader reads. Same problem, more machinery.
 
 **Recommended: a labeled series table, kept out of the fact log.**
 ```sql
--- migration 105 (FINANCIAL ONLY) — proposed, not applied
+-- migration 106 (FINANCIAL ONLY) — proposed, not applied
 CREATE TABLE public.demo_outcome_series (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -244,9 +244,9 @@ Gaps to close for the plan and outcomes views:
 | 3 | Mark: create Priya; set `app_metadata.demo_persona` for Sam and Priya (the SQL in §1) | financial | 4, 5 |
 | 4 | `seed_facts` job (demo users only, `source='seed'`, reuses `recordFacts`) → seed Priya; publish ≥ 1 Building a Buffer lesson; weight decision | financial | Beat 3 |
 | 5 | `POST /demo/session` (+ `DEMO_ACCESS_CODE`, rate limit, `ALLOWED_ORIGINS` += reader) | financial | reader switcher |
-| 6 | **Migration 105** `demo_outcome_series` + seed Priya's series; aggregate route (server-side) | financial | Beat 6 |
+| 6 | **Migration 106** `demo_outcome_series` + seed Priya's series; aggregate route (server-side) | financial | Beat 6 |
 | 7 | ✅ published-only reads for signed-in non-admins — **103** (both projects) | both | — |
 | — | Reader: persona switcher, `setSession`, plan + outcomes views | moosii-reader seat | |
 
-Migration numbers: 102/103 went to the RLS pass (applied 2026-09-28); this plan now uses **104** (`seed`) and **105** (`demo_outcome_series`). Nothing here touches `generateFullMLP` /
+Migration numbers: 102/103 went to the RLS pass (applied 2026-09-28); this plan now uses **104** (`seed`, applied) and **106** (`demo_outcome_series`; 105 went to the completion-policy fix). Nothing here touches `generateFullMLP` /
 `computeUserMlp`, 071 or 074.

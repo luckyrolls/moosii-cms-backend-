@@ -5,15 +5,6 @@ An item leaves this file when it ships (record it in `api-contract.md` / `migrat
 
 ## P1
 
-### completed_items / user_lesson_progress: signed-in users can write any user's rows (both projects)
-**Why:** each table has an extra permissive policy `"Enable insert for authenticated users only" … WITH CHECK (true)`,
-and `user_lesson_progress` also `"Enable read access for all users" … USING (true)`. Permissive policies OR, so any
-signed-in user (including a public demo session) can insert completions/progress for ANY user and read everyone's
-progress. Found 2026-09-30 (`FINDINGS-activities.md` §2).
-**What:** drop those three policies (own-row `completed_items_ins` / `ulp_ins` / `ulp_sel` remain and cover the RN app);
-rolled-back persona simulation first, like 102/103. Before any reader "Done" button.
-
-
 ### Moosii storage: blanket `allow_all` policies
 **Why:** Moosii has two storage policies with no condition, for role `public` and every command:
 `allow_all` on `storage.buckets` and `allow_all` on `storage.objects`. Policies are OR-ed, so anyone

@@ -204,6 +204,6 @@ The schema is shared (invariant 4), so the flag is designed for Moosii too.
 Nothing else differs. The migration is the same file on both projects, apart from the financial-only grant.
 
 ## Not done / flagged
-- The `completed_items` / `user_lesson_progress` open policies (§2): recommend fixing before any "Done"
-  button, and soon regardless, since demo sign-in is public.
+- ✅ The `completed_items` / `user_lesson_progress` open policies (§2) were closed by **migration 105**
+  (applied both projects 2026-09-30).
 - The CMS kind selector and list filter are moosii-cms seat work; the reader badge is moosii-reader seat work.

@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 104 · Moosii 104** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101..104; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 105 · Moosii 105** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099 and 101..105; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -507,6 +507,13 @@ Main track:
   `demo-seed`); `POST /facts` still refuses it. Per project: dry run, apply; verified by a rolled-back insert:
   `seed` passes the CHECK (financial inserts; Moosii fails only on the fact_values FK), `guessed` → check
   violation.
+- **105 — `completed_items` / `user_lesson_progress`: drop the open policies** — **APPLIED financial (2026-09-30) ·
+  APPLIED Moosii (2026-09-30).** BOTH PROJECTS, policies only. Dropped `"Enable insert for authenticated users only"`
+  (`WITH CHECK (true)`) on both tables and `"Enable read access for all users"` (`USING (true)`) on
+  `user_lesson_progress`. They let any signed-in user insert completions/progress for ANY user and read everyone's
+  progress (FINDINGS-activities §2). Own-row policies remain. Persona simulation (rolled back, then live, 0 mismatches):
+  end user and plain admin cross-user inserts → 42501, own inserts/upserts unchanged; super_admin unchanged; admin
+  `completed_items` reads unchanged; progress reads → own rows (plain admin 8 → 6 on Moosii; no caller reads others').
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

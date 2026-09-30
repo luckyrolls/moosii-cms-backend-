@@ -127,6 +127,14 @@ Deliberately still callable: `is_admin` / `is_super_admin` (policies call them a
 `reader_lesson_visible` (096, anon reader, financial only), `renumber_track_*` (the CMS calls them;
 anon revoke is open low-priority hygiene — `docs/backlog.md`). Audit: `FINDINGS-rpc-grants.md`.
 
+## Completion / progress writes — own row only (migration 105, both projects, 2026-09-30)
+
+`completed_items` and `user_lesson_progress` lost their open policies (`"Enable insert for authenticated users
+only"` `WITH CHECK (true)` on both; `"Enable read access for all users"` `USING (true)` on progress). A signed-in
+user (RN parent, demo reader session) can now insert and read **only their own** rows; super_admin and the service
+role keep full access; `is_admin()` still reads every `completed_items` row (CMS views over it). A plain admin reads
+only their own `user_lesson_progress` rows (no CMS caller reads it).
+
 ## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
 
 The active-tracks views (`user_active_tracks`, `user_active_tracks_with_reason`, `user_mlp_data`,
