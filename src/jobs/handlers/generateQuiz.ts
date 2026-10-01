@@ -4,6 +4,7 @@ import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import { loadBlock } from "./generateSegmentContent";
 import type { Job } from "../registry";
+import { loadPromptBanInstruction } from "../../lib/voiceLint";
 
 // database.types.ts predates migrations 0001/0002. Use untyped alias.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +76,7 @@ export function composeQuizUserMessage(opts: {
   questionCount: number;
   cards: { title: string | null; content: string | null; sequence: number | null }[];
   guidance?: string;   // author feedback from a rejection — steers this regen
+  avoid?: string;      // error-severity voice-lint bans (same prevention layer as segment content)
 }): string {
   const parts: string[] = [];
   if (opts.scope)       parts.push(opts.scope);
@@ -84,6 +86,7 @@ export function composeQuizUserMessage(opts: {
     .map((c) => `**Card ${c.sequence ?? "?"}: ${c.title ?? ""}**\n${c.content ?? ""}`)
     .join("\n\n");
   parts.push(`## Content\n\n${cardText}`);
+  if (opts.avoid) parts.push(`## Avoid\n\n${opts.avoid}`);
   if (opts.guidance && opts.guidance.trim()) {
     parts.push(`## Author Feedback (a prior version was REJECTED — apply this)\n\n${opts.guidance.trim()}`);
   }
@@ -173,6 +176,7 @@ export async function generateQuiz(opts: {
     questionCount: promptRow.question_count,
     cards,
     guidance,
+    avoid:         await loadPromptBanInstruction(),
   });
 
   // Step 5 — call OpenAI (withRetry lives inside the provider)

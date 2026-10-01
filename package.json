@@ -8,7 +8,7 @@
     "build": "tsc",
     "prepare": "git config core.hooksPath .githooks || true",
     "start": "node dist/index.js",
-    "test": "node --import tsx --test src/mlp/__tests__/generateFullMLP.hang.test.ts src/lib/__tests__/lessonCreateResult.test.ts src/lib/__tests__/domainCheck.test.ts src/lib/__tests__/ageAxis.test.ts src/prompts/__tests__/assemble.test.ts src/lib/__tests__/lessonPublish.test.ts src/facts/__tests__/validate.test.ts src/facts/__tests__/authConfig.test.ts src/facts/__tests__/service.test.ts src/facts/__tests__/router.test.ts src/classify/__tests__/health.test.ts src/facts/derive/__tests__/rules.test.ts src/facts/derive/__tests__/derive.test.ts src/facts/__tests__/seed.test.ts src/demo/__tests__/session.test.ts"
+    "test": "node --import tsx --test src/mlp/__tests__/generateFullMLP.hang.test.ts src/lib/__tests__/lessonCreateResult.test.ts src/lib/__tests__/domainCheck.test.ts src/lib/__tests__/ageAxis.test.ts src/prompts/__tests__/assemble.test.ts src/lib/__tests__/lessonPublish.test.ts src/facts/__tests__/validate.test.ts src/facts/__tests__/authConfig.test.ts src/facts/__tests__/service.test.ts src/facts/__tests__/router.test.ts src/classify/__tests__/health.test.ts src/facts/derive/__tests__/rules.test.ts src/facts/derive/__tests__/derive.test.ts src/facts/__tests__/seed.test.ts src/demo/__tests__/session.test.ts src/lib/__tests__/contentContext.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.7.0",

@@ -488,6 +488,16 @@ Rules live in `voice_lint_rules` (editable in the DB); the matcher engine is in
 `src/lib/voiceLint.ts`. `card` is the 1-based card index, or `0` for
 segment-scope counts (`limit`/`repeat`). `severity` is `"error"` | `"warn"`.
 Runs on segment content + regen only (not quiz/questionnaire).
+Error-severity `ban`/`opener` rules are also injected into the prompt up front ("Never use these phrases…") for
+segment content + regen AND, since 2026-10-01, the quiz prompt (`## Avoid` section after `## Content`). Not
+injected: `generate_lessons`, `coverage_audit`, `generate_questionnaire`, `review_lesson`. Migration 108 (both
+projects) bans the internal terms "segment", "sub-segment", "card series", "this card series".
+
+**What the model is told (content gen + regen, 2026-10-01).** The `## Context` block never uses the internal words:
+`Lesson title: …`, the age line, a kind line from `lessons.kind` — `This is a lesson. Refer to it as "this lesson"…`
+or `This is an activity: the reader will DO it. Refer to it as "this activity"…` — then `Lesson part: <segment name>`
+only when it differs from the lesson title (was `Segment: …`), then `Description: …`. Built by
+`src/lib/contentContext.ts`. Quiz and review already label cards `Card N`.
 
 With `generate_quiz: true`, result also includes:
 ```json

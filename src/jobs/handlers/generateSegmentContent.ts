@@ -7,6 +7,7 @@ import { loadSizeProfileById, renderLengthInstruction, type SizeNumbers } from "
 import { generateQuiz } from "./generateQuiz";
 import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import type { Job } from "../registry";
+import { contentContextLines } from "../../lib/contentContext";
 
 // database.types.ts predates migration 0001_prompts_refactor (new prompts columns +
 // prompt_blocks table). Use untyped alias until types are regenerated.
@@ -130,7 +131,8 @@ export function composeUserMessage(opts: {
   maxChildAge?: number | null;   // band for THIS lesson (voice/examples should fit it)
   segmentName: string;
   segmentDescription: string | null;
-  avoid?: string;            // error-severity voice-lint bans (prevention layer)
+  kind?: string | null;      // lessons.kind (107): 'lesson' | 'activity' — the text refers to itself correctly
+  avoid?: string;           // error-severity voice-lint bans (prevention layer)
   guidance?: string;         // author feedback from a rejection — steers this regen
   regenTarget?: RegenTarget;
 }): string {
@@ -147,14 +149,18 @@ export function composeUserMessage(opts: {
     parts.push(`## Author Feedback (a prior version was REJECTED — apply this)\n\n${opts.guidance.trim()}`);
   }
 
-  const ctx = [`Lesson title: ${opts.lessonTitle}`];
   // The lesson's SPECIFIC age band — accurate per lesson (a toddler lesson says 24–36mo,
   // not a global constant). Keeps age out of the reusable tone: voice belongs to the tone,
   // the age specific belongs to the lesson. Omitted when the lesson has no bounds recorded.
-  const ageLine = formatChildAge(opts.minChildAge, opts.maxChildAge);
-  if (ageLine) ctx.push(ageLine);
-  ctx.push(`Segment: ${opts.segmentName}`);
-  if (opts.segmentDescription) ctx.push(`Description: ${opts.segmentDescription}`);
+  // Context lines never show the internal word "segment" (src/lib/contentContext.ts); they say
+  // whether this is a lesson or an activity (lessons.kind, migration 107).
+  const ctx = contentContextLines({
+    lessonTitle: opts.lessonTitle,
+    ageLine: formatChildAge(opts.minChildAge, opts.maxChildAge),
+    kind: opts.kind,
+    segmentName: opts.segmentName,
+    segmentDescription: opts.segmentDescription,
+  });
   parts.push(`## Context\n\n${ctx.join("\n")}`);
 
   if (opts.regenTarget) {
@@ -300,7 +306,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
 
   const { data: lesson, error: lessonErr } = await supabase
     .from("lessons")
-    .select("id, lesson_name, min_child_age, max_child_age")
+    .select("id, lesson_name, min_child_age, max_child_age, kind")
     .eq("id", segment.lesson_id)
     .single();
   if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
@@ -328,6 +334,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     maxChildAge:        lesson.max_child_age,
     segmentName:        segment.segment_name ?? "",
     segmentDescription: segment.description ?? null,
+    kind:               (lesson as { kind?: string | null }).kind ?? null,
     avoid:              await loadPromptBanInstruction(),
   });
 

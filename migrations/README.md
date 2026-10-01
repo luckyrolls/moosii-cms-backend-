@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 107 · Moosii 107** (main; 106 reserved, not yet written) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 108 · Moosii 108** (main; 106 reserved, not yet written) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..108; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -524,6 +524,12 @@ Main track:
   apply, same checks live, 0 probe rows left. `database.types.ts` regenerated (lessons.kind; also picks up
   `reader_lesson_visible`, on Moosii since 103). First activity (financial data, not a migration): "Set a
   Statement-Date Reminder", Credit Health, priority 250, unpublished.
+- **108 — voice lint bans internal terms** — **APPLIED financial (2026-10-01) · APPLIED Moosii (2026-10-01).**
+  BOTH PROJECTS, data only. Four error-severity `ban` rows in `voice_lint_rules` (`ban_internal_segment`,
+  `ban_internal_sub_segment`, `ban_internal_card_series`, `ban_internal_this_card_series`); `ON CONFLICT (rule_key) DO
+  NOTHING`. Per project: identity check, dry run (4 rows, rolled back), apply, verify rows (financial 4 rules total;
+  Moosii 21, 7 error bans). Lint + prompt injection checked with an ad-hoc script: all four in the injected "Never use"
+  line; "the segment" / "this card series" / "sub-segment" flagged, "Segmented" not.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
