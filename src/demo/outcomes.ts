@@ -3,7 +3,8 @@ import { sameSecret } from "./session";
 // GET /demo/outcomes core (api-contract §9b; FINDINGS-demo-personas §3, migration 106). Beat 6 of the demo:
 // each demo persona's fact history — REAL points from user_facts merged with SEEDED points from
 // demo_outcome_series — plus a seeded aggregate. Every point and figure says which it is.
-// Gates, in order (same as /demo/session):
+// The code arrives in the X-Demo-Code header (preferred: stays out of URLs and request logs) or, for now,
+// ?code= — see pickDemoCode. Gates, in order (same as /demo/session):
 //   1. DOMAIN ≠ financial            → 404 not_found
 //   2. DEMO_ACCESS_CODE unset        → 503 demo_disabled
 //   3. per-IP rate limit exceeded    → 429 rate_limited
@@ -45,6 +46,12 @@ export type OutcomesDeps = {
 export type OutcomesResult =
   | { status: 200; body: OutcomesBody }
   | { status: 400 | 401 | 404 | 429 | 503; code: string; message: string };
+
+// Header wins whenever it is present and non-empty; otherwise the query value (which may be absent, an
+// array for ?code=a&code=b, etc. — the gate's 400 handles anything that is not a single non-empty string).
+export function pickDemoCode(header: unknown, query: unknown): unknown {
+  return typeof header === "string" && header.trim() !== "" ? header : query;
+}
 
 // A user_facts row written by the demo seed (source 'seed', migration 104) is not a real observation either.
 export function factProvenance(source: string): Provenance {

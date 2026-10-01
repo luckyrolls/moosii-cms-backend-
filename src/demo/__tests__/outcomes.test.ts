@@ -1,7 +1,7 @@
 // GET /demo/outcomes core: refusal paths in gate order, and real/seeded tagging (api-contract §9b). Run: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getDemoOutcomes, mergePoints, factProvenance, type OutcomesDeps, type FactRow, type SeriesRow } from "../outcomes";
+import { getDemoOutcomes, mergePoints, factProvenance, pickDemoCode, type OutcomesDeps, type FactRow, type SeriesRow } from "../outcomes";
 
 const CODE = "correct-horse-battery-staple";
 const SAM = "19587e0a-bfe0-48e2-94a1-055a5bbc9584";
@@ -113,4 +113,20 @@ test("200 with no personas still returns the seeded aggregate", async () => {
   assert.equal(out.status, 200);
   assert.ok(out.status === 200 && out.body.personas.length === 0 && out.body.aggregate.length === 2);
   assert.ok(!calls.includes("facts") && !calls.includes("series"));
+});
+
+test("X-Demo-Code header: right code → 200, wrong → 401 (header wins over ?code=), neither → 400", async () => {
+  const ok = await getDemoOutcomes(pickDemoCode(CODE, undefined), "ip", deps().d);
+  assert.equal(ok.status, 200);
+  const wrong = await getDemoOutcomes(pickDemoCode("nope", CODE), "ip", deps().d);
+  assert.equal(wrong.status, 401);
+  const none = await getDemoOutcomes(pickDemoCode(undefined, undefined), "ip", deps().d);
+  assert.equal(none.status, 400);
+});
+
+test("pickDemoCode: an empty header falls back to ?code= (kept working for now)", () => {
+  assert.equal(pickDemoCode(CODE, "q"), CODE);
+  assert.equal(pickDemoCode("", "q"), "q");
+  assert.equal(pickDemoCode("   ", "q"), "q");
+  assert.equal(pickDemoCode(undefined, "q"), "q");
 });

@@ -2357,7 +2357,9 @@ Body: { persona: string, code: string }
 ### 9b. Demo outcomes (Beat 6) — DELIVERED (financial only, migration 106)
 
 ```
-GET /demo/outcomes?code=<DEMO_ACCESS_CODE>       // no Authorization header: the access code is the gate
+GET /demo/outcomes
+X-Demo-Code: <DEMO_ACCESS_CODE>                  // PREFERRED; no Authorization header: the access code is the gate
+  — or, deprecated: GET /demo/outcomes?code=<DEMO_ACCESS_CODE>
 
 → 200 {
     personas: [ { persona, user_id,
@@ -2366,13 +2368,16 @@ GET /demo/outcomes?code=<DEMO_ACCESS_CODE>       // no Authorization header: the
                               label } ] } ],     // series label; null for user_facts rows
     aggregate: [ { metric, value, provenance: 'seeded', label } ]
   }
-→ 400 invalid_request — code missing (or repeated)
+→ 400 invalid_request — no code in either place (or ?code= repeated)
 → 401 unauthorized    — code ≠ DEMO_ACCESS_CODE (constant-time compare)
 → 404 not_found       — DOMAIN is not 'financial' (checked first)
 → 429 rate_limited    — more than 10 calls per minute from one IP (its own limiter, in-memory)
 → 500 demo_outcomes_failed
 → 503 demo_disabled   — DEMO_ACCESS_CODE unset
 ```
+- **Access code:** send it in the `X-Demo-Code` header — it stays out of URLs, browser history and request logs.
+  `?code=` still works for now (deprecated). A non-empty header wins over the query; an empty header falls back to it.
+  `X-Demo-Code` is in the CORS allowed headers, so a browser preflight from the reader origin passes.
 - **Personas:** every auth user with `app_metadata.demo_persona` (today `sam`, `sarah`), sorted by persona.
 - **Points** per persona, ordered by `fact_key` then `observed_at`: all of the user's `user_facts` rows plus their
   `demo_outcome_series` rows. Provenance: `user_facts` → `real`, EXCEPT `source = 'seed'` (the demo seed, §8e) →

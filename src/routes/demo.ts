@@ -5,7 +5,7 @@ import { DOMAIN } from "../lib/domain";
 import { supabase } from "../supabase";
 import { apiError } from "../lib/errors";
 import { createDemoSession, FixedWindowLimiter, type DemoDeps } from "../demo/session";
-import { getDemoOutcomes, type OutcomesDeps } from "../demo/outcomes";
+import { getDemoOutcomes, pickDemoCode, type OutcomesDeps } from "../demo/outcomes";
 
 // POST /demo/session — demo persona sign-in for the financial reader (api-contract §9).
 // GET  /demo/outcomes — Beat 6 outcome history, real + seeded points (api-contract §9b).
@@ -115,7 +115,7 @@ router.get("/outcomes", async (req: Request, res: Response): Promise<void> => {
   const ipTag = createHash("sha256").update(ip).digest("hex").slice(0, 6);
   res.set("Cache-Control", "no-store");
   try {
-    const out = await getDemoOutcomes(req.query.code, ip, outcomesDeps);
+    const out = await getDemoOutcomes(pickDemoCode(req.get("x-demo-code"), req.query.code), ip, outcomesDeps);
     if (out.status !== 200) {
       console.warn(`[demo] outcomes refused ${out.status} ${out.code} ip=${ipTag}`);
       apiError(res, out.status, out.code, out.message);

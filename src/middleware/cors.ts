@@ -52,5 +52,5 @@ export const corsMiddleware = cors({
     callback(null, allowedNormalized.has(normalizeOrigin(requestOrigin)));
   },
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Authorization", "Content-Type"],
+  allowedHeaders: ["Authorization", "Content-Type", "X-Demo-Code"],   // X-Demo-Code: GET /demo/outcomes
 });
