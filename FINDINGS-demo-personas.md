@@ -59,6 +59,11 @@ summary of it.
   as a real completion would. Guarded: financial only, target must carry `demo_persona = 'sam'`, insert skipped if
   the row exists. Sarah untouched. After a rebuild his live path is Credit Health only:
   1 When a Card Is Nearly Maxed Out → 2 Paying Before the Statement Date → 3 Why Your Credit Balance-to-Limit Ratio Matters.
+  **Backdated 2026-10-01:** both rows' `created_at` set to `2026-09-10 14:00+00` (three weeks back) so Sam reads as having
+  done orientation weeks ago; guarded as above, exactly 1 + 1 rows. `updated_at` shows the edit time — the BEFORE UPDATE
+  trigger `set_updated_at` overwrites it. No new rows, so no second moosies award (still 10). Rebuilt (job
+  `39393480-…`); `user_mlp_not_completed` unchanged: the three Credit Health lessons above. "Set a Statement-Date
+  Reminder" (activity) joins between 2 and 3 once it is published — it is still unpublished.
   **To redo** (e.g. after a data reset) run, as postgres on financial, in one transaction:
   ```sql
   INSERT INTO user_lesson_progress (user_id, lesson_id, is_completed)
@@ -69,6 +74,10 @@ summary of it.
     FROM lessons l WHERE l.id = '06eef3f3-c2ab-43e9-ba58-8dc52a742232'
      AND NOT EXISTS (SELECT 1 FROM completed_items c WHERE c.user_id = '19587e0a-bfe0-48e2-94a1-055a5bbc9584'
                        AND c.item_id = l.id AND c.item_type = 'lesson');
+  UPDATE completed_items SET created_at = '2026-09-10 14:00+00'
+   WHERE user_id = '19587e0a-bfe0-48e2-94a1-055a5bbc9584' AND item_id = '06eef3f3-c2ab-43e9-ba58-8dc52a742232';
+  UPDATE user_lesson_progress SET created_at = '2026-09-10 14:00+00'
+   WHERE user_id = '19587e0a-bfe0-48e2-94a1-055a5bbc9584' AND lesson_id = '06eef3f3-c2ab-43e9-ba58-8dc52a742232';
   ```
   then `POST /jobs {type: "rebuild_mlp", input: {user_id: "19587e0a-…"}}` on the financial service. To undo:
   delete those two rows (and subtract 10 from `user.moosies` if it matters).
