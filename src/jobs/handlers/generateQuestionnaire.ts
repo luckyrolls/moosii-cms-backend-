@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
+import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { Job } from "../registry";
 
 // database.types.ts is stale: it predates the questionnaire `age` column and a
@@ -262,11 +263,13 @@ export async function generateQuestionnaireHandler(job: Job): Promise<unknown> {
   //    Prompt + output schema (+ optional params) come from the DB row.
   const promptRow = await loadQuestionnairePromptRow();
   const instructions = promptRow.system_message;
+  const avoid = await loadPromptBanInstruction();   // error-severity voice-lint bans
   const userPrompt =
     `Target track name: ${target.track_name}\n` +
     `Target track description:\n${target.description}\n\n` +
     `Child age (months) this questionnaire surfaces at: ${age_months}\n` +
     (topic ? `Theme: ${topic}\n` : "") +
+    (avoid ? `\nAvoid: ${avoid}\n` : "") +
     `\nWrite the questionnaire that screens for this track.`;
 
   const llmStart = Date.now();

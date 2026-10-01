@@ -3,6 +3,7 @@ import { supabase } from "../../supabase";
 import { summarizeLessonCreate, type LessonCreateRow } from "../../lib/lessonCreateResult";
 import { getLLMClient } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
+import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { Job } from "../registry";
 
 // Untyped alias for prompts + RPC (database.types.ts predates 0001/0004/010/011),
@@ -73,6 +74,7 @@ function buildUserMessage(opts: {
   existing: unknown[];
   usedPriorities: number[];
   additionalInfo?: string;
+  avoid?: string;            // error-severity voice-lint bans (same prevention layer as segment content)
 }): string {
   const parts: string[] = [];
 
@@ -94,6 +96,8 @@ function buildUserMessage(opts: {
   } else {
     parts.push(`EXISTING LESSONS IN THIS TRACK\nNone yet — enumerate full coverage for the track.`);
   }
+
+  if (opts.avoid) parts.push(`AVOID\n${opts.avoid}`);
 
   if (opts.additionalInfo && opts.additionalInfo.trim()) {
     parts.push(`AUTHOR INSTRUCTIONS\n${opts.additionalInfo.trim()}`);
@@ -158,6 +162,7 @@ export async function generateLessonsHandler(job: Job): Promise<unknown> {
     existing: existingForPrompt,
     usedPriorities,
     additionalInfo: additional_info,
+    avoid: await loadPromptBanInstruction(),
   });
 
   // Step 5 — generate (params + schema all from the DB row)

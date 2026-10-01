@@ -489,8 +489,10 @@ Rules live in `voice_lint_rules` (editable in the DB); the matcher engine is in
 segment-scope counts (`limit`/`repeat`). `severity` is `"error"` | `"warn"`.
 Runs on segment content + regen only (not quiz/questionnaire).
 Error-severity `ban`/`opener` rules are also injected into the prompt up front ("Never use these phrases…") for
-segment content + regen AND, since 2026-10-01, the quiz prompt (`## Avoid` section after `## Content`). Not
-injected: `generate_lessons`, `coverage_audit`, `generate_questionnaire`, `review_lesson`. Migration 108 (both
+segment content + regen and, since 2026-10-01, the quiz prompt (`## Avoid` after `## Content`), lesson stubs
+(`generate_lessons`, an `AVOID` section before `AUTHOR INSTRUCTIONS`) and questionnaires (`generate_questionnaire`,
+an `Avoid:` line before the closing instruction). Deliberately not injected: `coverage_audit` and `review_lesson`
+(internal output). Only segment content is linted after generation. Migration 108 (both
 projects) bans the internal terms "segment", "sub-segment", "card series", "this card series".
 
 **What the model is told (content gen + regen, 2026-10-01).** The `## Context` block never uses the internal words:

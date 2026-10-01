@@ -33,6 +33,18 @@ Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real 
 projects 2026-09-26). Both are guarded by `is_admin()`, so anon EXECUTE is inert; revoke anon, keep
 authenticated (the CMS calls them).
 
+## P2
+
+### Reaper should also fail jobs stuck in `queued`
+**Why:** `reapStaleJobs` (`src/jobs/runner.ts`) fails only `running` jobs older than 10 min. A job
+enqueued just before a deploy/restart never starts and stays `queued` forever; on 2026-10-01 six were
+failed by hand (4 financial image jobs from 2026-09-28, 2 Moosii from June/July). Worse than cosmetic:
+`enqueueRebuildAllIfIdle` / `enqueueRebuildUserIfIdle` JOIN an existing queued job, so an orphaned
+queued `rebuild_mlp` would silently swallow every later rebuild.
+**What:** at startup, also fail `status='queued'` rows whose `created_at` is older than a threshold
+(e.g. 10 min — any queued row at boot predates this process), with error message "Job orphaned while
+queued". No migration.
+
 ## P3
 
 ### Drop the six no-caller views
