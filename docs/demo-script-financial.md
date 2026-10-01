@@ -9,6 +9,8 @@ Shape: Moosii is a plan **widget** on the partner's own widget page. Sam's story
 
 Personas: **Sam** — real user, facts derived live from an MX sandbox bank connection (credit utilization high/estimated → Credit Health). **Sarah** — seeded facts (no buffer, steady paycheck → Building a Buffer). Outcome movement in Beat 6 is seeded and labeled.
 
+**Before each demo:** from the backend repo, run `npm run demo:reset` (dry run: prints the host and per-table row counts), then `npm run demo:reset -- --go`. Clears Sam's and Sarah's completions, lesson progress, questionnaire answers and classify-applied track changes (keeps Sam's orientation completion), recomputes moosies, resets the plan intro, and rebuilds both plans. Never touches facts or the seeded outcome series. Needs `FINANCIAL_DB_URL` (and `FINANCIAL_INTERNAL_API_KEY` for the rebuild) in `.env`.
+
 ---
 
 ## Beat 1 — The page they already have (0:00–0:45)
