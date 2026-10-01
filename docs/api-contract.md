@@ -2353,3 +2353,32 @@ Body: { persona: string, code: string }
   signed-in non-admin: published content (103) and its own facts / plan.
 - **CORS:** the reader origin must be in the financial service's `ALLOWED_ORIGINS`.
 - Code: `src/demo/session.ts` (pure core + limiter), `src/routes/demo.ts`.
+
+### 9b. Demo outcomes (Beat 6) — DELIVERED (financial only, migration 106)
+
+```
+GET /demo/outcomes?code=<DEMO_ACCESS_CODE>       // no Authorization header: the access code is the gate
+
+→ 200 {
+    personas: [ { persona, user_id,
+                  points: [ { fact_key, value, observed_at, provenance: 'real'|'seeded',
+                              source,            // user_facts.source, or 'demo_outcome_series'
+                              label } ] } ],     // series label; null for user_facts rows
+    aggregate: [ { metric, value, provenance: 'seeded', label } ]
+  }
+→ 400 invalid_request — code missing (or repeated)
+→ 401 unauthorized    — code ≠ DEMO_ACCESS_CODE (constant-time compare)
+→ 404 not_found       — DOMAIN is not 'financial' (checked first)
+→ 429 rate_limited    — more than 10 calls per minute from one IP (its own limiter, in-memory)
+→ 500 demo_outcomes_failed
+→ 503 demo_disabled   — DEMO_ACCESS_CODE unset
+```
+- **Personas:** every auth user with `app_metadata.demo_persona` (today `sam`, `sarah`), sorted by persona.
+- **Points** per persona, ordered by `fact_key` then `observed_at`: all of the user's `user_facts` rows plus their
+  `demo_outcome_series` rows. Provenance: `user_facts` → `real`, EXCEPT `source = 'seed'` (the demo seed, §8e) →
+  `seeded`; every series row → `seeded`. Values are vocabulary tokens (both tables FK `fact_values`).
+- **Aggregate:** `demo_outcome_aggregate` rows, always `seeded` (illustrative, not computed).
+- Seeded points may be in the future and drive nothing: they are never in `user_facts`, so `user_facts_latest`, track
+  resolution and the plan are unaffected. Both tables are service-role only (RLS on, no policy) — this route is the
+  only reader. `Cache-Control: no-store`. CORS as §9 (reader origin in `ALLOWED_ORIGINS`).
+- Code: `src/demo/outcomes.ts` (pure core), `src/routes/demo.ts`.

@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 109 · Moosii 109** (main; 106 reserved, not yet written) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 109 · Moosii 109** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..109; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097 and 100 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -514,7 +514,14 @@ Main track:
   progress (FINDINGS-activities §2). Own-row policies remain. Persona simulation (rolled back, then live, 0 mismatches):
   end user and plain admin cross-user inserts → 42501, own inserts/upserts unchanged; super_admin unchanged; admin
   `completed_items` reads unchanged; progress reads → own rows (plain admin 8 → 6 on Moosii; no caller reads others').
-- **106 — reserved** for `demo_outcome_series` (FINDINGS-demo-personas); not written yet.
+- **106 — demo outcomes (Beat 6)** — **APPLIED financial (2026-10-01).** *** FINANCIAL ONLY *** (domain guard RAISEs
+  elsewhere; checked on Moosii, rolled back). `demo_outcome_series` (user_id → auth.users CASCADE; (fact_key, value) →
+  fact_values RESTRICT, so vocabulary only, no amounts; observed_at may be future; label CHECK ~* 'seeded') and
+  `demo_outcome_aggregate` (metric PK, value int, label CHECK ~* 'seeded'). RLS on, 0 policies, no anon/authenticated
+  grants (service role only). Seeded: Sam credit_utilization_band moderate @2026-11-12 "six weeks later (projected,
+  seeded)"; Sarah has_emergency_buffer false @2026-09-01, true @2026-10-22; aggregate started_credit_health 120,
+  moved_down_band_30d_pct 41. Dry run (rolled back): rows as above, user_facts unchanged (6), Sam's claims and anon →
+  permission denied, value '1200' → 23503, label 'projected' → 23514, re-run clean. Never written to user_facts.
 - **107 — `lessons.kind` ('lesson' | 'activity')** — **APPLIED financial (2026-09-30) · APPLIED Moosii (2026-09-30).**
   BOTH PROJECTS, schema + RPC. Column NOT NULL DEFAULT 'lesson' + CHECK `lessons_kind_valid` (every existing row →
   'lesson'); `create_lessons_with_segments` gains `kind` in its explicit insert list as `coalesce(l.kind,'lesson')`

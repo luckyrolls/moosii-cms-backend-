@@ -29,7 +29,7 @@ export type DemoOutcome =
 
 const PERSONA_RE = /^[a-z][a-z0-9_-]{0,31}$/;
 
-function sameSecret(given: string, expected: string): boolean {
+export function sameSecret(given: string, expected: string): boolean {
   // Hash both to a fixed length so timingSafeEqual never throws on a length mismatch.
   const a = createHash("sha256").update(given).digest();
   const b = createHash("sha256").update(expected).digest();

@@ -253,7 +253,7 @@ Gaps to close for the plan and outcomes views:
 | 3 | Mark: create Priya; set `app_metadata.demo_persona` for Sam and Priya (the SQL in §1) | financial | 4, 5 |
 | 4 | `seed_facts` job (demo users only, `source='seed'`, reuses `recordFacts`) → seed Priya; publish ≥ 1 Building a Buffer lesson; weight decision | financial | Beat 3 |
 | 5 | `POST /demo/session` (+ `DEMO_ACCESS_CODE`, rate limit, `ALLOWED_ORIGINS` += reader) | financial | reader switcher |
-| 6 | **Migration 106** `demo_outcome_series` + seed Priya's series; aggregate route (server-side) | financial | Beat 6 |
+| 6 | ✅ **Migration 106** `demo_outcome_series` + `demo_outcome_aggregate`, seeded for Sam + Sarah (applied 2026-10-01); `GET /demo/outcomes` (api-contract §9b). As built: series table service-role only (no own-row policy) | financial | Beat 6 |
 | 7 | ✅ published-only reads for signed-in non-admins — **103** (both projects) | both | — |
 | — | Reader: persona switcher, `setSession`, plan + outcomes views | moosii-reader seat | |
 
