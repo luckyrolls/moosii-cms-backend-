@@ -60,6 +60,7 @@ v2 (09-20) "place, not object" with per-topic metaphors; v3 (09-21) setting vari
 standing in for the card's meaning (FINDINGS-financial-images). v4 (2026-09-28, base + `credit`): a
 one-line "Scene first" sentence ("a person doing X with Y in Z"), one adult mid-action as the subject, a
 consolidated never list; `credit` v4 leads with actions. The other overlays are still v3.
+v4's images were people-first but samey (4 of 5 cards "at a desk under a window"), because each image is written with no knowledge of its siblings. v5 (2026-10-01): **setting rotation** — the job passes the card's `sequence` as `Card position: N` and base v5 maps it to a fixed list (desk, kitchen counter, sofa, hallway, commute, store/market, outdoors; wraps after 7). The line is added only when the domain base carries a `## Setting rotation` section (Moosii's root base has none, so its prompts are byte-identical) and never with an author scene, which keeps its place exactly. Kitchen rule: food cards or when the rotation assigns it. `credit` v5 drops its "not a kitchen" aside so the rotation isn't contradicted.
 
 ## Content-phase roadmap (not built)
 

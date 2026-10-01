@@ -29,7 +29,7 @@ type LLMProvider = "gemini" | "openai" | "anthropic";
 async function loadContext(subSegmentId: string) {
   const { data: subSeg, error: ssErr } = await supabase
     .from("sub_segments")
-    .select("id, title, content, seg_id")
+    .select("id, title, content, seg_id, sequence")
     .eq("id", subSegmentId)
     .single();
   if (ssErr || !subSeg) throw new Error(`sub_segment not found: ${subSegmentId}`);
@@ -153,6 +153,7 @@ export async function generateSubSegmentImage(
     lessonDescription: lesson.description ?? "",
     subSegmentHeading: subSeg.title ?? "",
     content: subSeg.content ?? "",
+    position: subSeg.sequence ?? null,   // setting rotation (financial base v5); ignored by bases without one
   };
   const assembled = await assembleImagePrompt(
     topicName,

@@ -28,6 +28,10 @@ export type ImagePromptMetadata = {
   lessonDescription: string;
   subSegmentHeading: string;
   content: string;
+  // The card's sequence in its segment (1..N). Used ONLY when the domain's base.md has a
+  // "## Setting rotation" section, which maps position → setting so a lesson's images vary
+  // (financial base v5). Omitted from the prompt when an author scene is supplied.
+  position?: number | null;
 };
 
 export type AssembledPrompt = {
@@ -98,6 +102,16 @@ function buildUserPrompt(metadata: ImagePromptMetadata): string {
   ].join("\n");
 }
 
+// A base opts in to the per-card setting rotation by carrying this heading. Moosii's root
+// base has none, so its prompts are byte-identical with or without a position.
+const SETTING_ROTATION_HEADING = /^## Setting rotation\b/m;
+
+export function wantsPositionLine(baseBody: string, position: number | null | undefined, sceneOverride: string | undefined): boolean {
+  return sceneOverride === undefined
+    && typeof position === "number" && Number.isInteger(position) && position > 0
+    && SETTING_ROTATION_HEADING.test(baseBody);
+}
+
 export async function assembleImagePrompt(
   topicName: string,
   metadata: ImagePromptMetadata,
@@ -121,6 +135,12 @@ export async function assembleImagePrompt(
 
   const root = imagePromptRoot(domain);
   const base = await loadPromptFile(path.join(root, "base.md"));
+  // Setting rotation (financial base v5): tell the writer this card's position so it can pick
+  // setting N. Never with an author scene (the author's place wins) and never for a base without
+  // the rotation section (Moosii stays byte-identical).
+  const userPromptFinal = wantsPositionLine(base.body, metadata.position, sceneOverride)
+    ? `${userPrompt}\nCard position: ${metadata.position}`
+    : userPrompt;
 
   const topicPath = path.join(root, "topics", `${topicName}.md`);
   const genericPath = path.join(root, "topics", "_generic.md");
@@ -139,7 +159,7 @@ export async function assembleImagePrompt(
 
   return {
     instructions: `${base.body}\n\n${overlay.body}`,
-    userPrompt,
+    userPrompt: userPromptFinal,
     versions: { base: base.version, overlay: overlay.version },
     overlayUsed,
   };

@@ -1,5 +1,5 @@
 ---
-version: 4
+version: 5
 ---
 
 # Financial — Base Image-Prompt Instructions
@@ -59,19 +59,26 @@ The subject — the person and what their hands are doing — still reads clearl
 stays calm and uncluttered. Rooms are lived in: a chair pushed back, a coat over a hook, a plant
 that needs turning.
 
-## Vary the setting — the kitchen is the exception, not the default
-You cannot see the other images in the lesson, so the only way the set stays varied is if
-every prompt resists the obvious room. The kitchen is the room every model reaches for first;
-treat it as rare.
-- Use a kitchen ONLY when the card itself is about food, groceries, cooking or meals. For any
-  other card, choose a different place — even when a kitchen would be the easy fit.
-- Draw instead from the whole of an ordinary life: a hallway by the front door, a porch or
-  back step, a stairwell or landing, a bedroom corner or bedside table, a bathroom shelf, a
-  laundry alcove, a garden path or shed door, a bus window seat, a station bench, a café table
-  by the glass, a car parked at the kerb, a small balcony, a desk under a window.
-- If the metaphor you chose happens in a kitchen (a tap, a counter, a kettle), move it to one
-  of these places that carries the same meaning — a garden tap, a bathroom basin, a flask on a
-  back step — rather than defaulting to the kitchen.
+## Setting rotation — the card's position picks the place
+You cannot see the other images in the lesson, so the set stays varied by RULE: when the metadata
+includes a line `Card position: N`, set the scene in setting N from this list (after 7, start again
+at 1 — position 8 uses setting 1, position 9 uses setting 2, and so on):
+
+1. a desk under a window
+2. a kitchen counter
+3. a sofa
+4. a hallway by the front door
+5. a commute — a bus or train seat by the window
+6. a store or market
+7. outdoors — a park bench or a porch
+
+Name that setting in your one-line scene sentence and build the whole prompt in it. The card's action
+still decides what the person is doing; the rotation only decides where.
+- Use a kitchen for food cards, or when the setting rotation assigns it. No other use.
+- A SCENE supplied by the author names its place; keep it exactly. (When the author supplies the scene,
+  there is no `Card position` line — the author's place wins.)
+- With no `Card position` line and no author scene, choose an ordinary place from the list above that
+  fits the card, never defaulting to the same desk.
 
 ## The reference image
 The approved house example is **keys on hooks in a hallway**: a hallway wall in muted slate
@@ -150,7 +157,8 @@ no charts or graphs, no logos, no icons or symbols, no floating shapes."
 ## The metadata you receive
 For each job you get: Track (track_name) and Track Intent (track description); Lesson
 (lesson_name) and Lesson Context (lesson description); Section (sub-segment title); Content
-(sub-segment text). Track and Lesson set the subject area; Section and Content decide the
+(sub-segment text); and, unless the author supplied the scene, `Card position: N` (the card's
+place in the lesson, which picks the setting — see Setting rotation). Track and Lesson set the subject area; Section and Content decide the
 specific moment and the metaphor. The result should read like a quiet, ordinary scene from the
 reader's own day.
 

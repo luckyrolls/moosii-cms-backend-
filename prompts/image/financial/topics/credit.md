@@ -1,5 +1,5 @@
 ---
-version: 4
+version: 5
 ---
 
 These rules apply on top of the base instructions for credit sub-segments.
@@ -11,7 +11,7 @@ their hands are doing carry the meaning; the setting only places it.
 - **Checking where things stand** — someone at a desk under a window, reading a paper statement
   held face-down to the viewer, a pen beside it. Fits: what utilization is, how it's calculated,
   checking your ratio.
-- **Paying something down** — someone at a table (not a kitchen) or a hallway shelf, sealing an
+- **Paying something down** — someone at a table or a hallway shelf, sealing an
   envelope or tapping a blank phone screen, a closed bill folder set aside. Fits: lowering a
   balance, paying before the statement date.
 - **Leaving room** — someone putting one item into a half-full bag or cupboard and choosing not

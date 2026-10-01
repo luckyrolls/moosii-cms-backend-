@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "path";
-import { assembleImagePrompt, imagePromptRoot, validateImagePrompts, type ImagePromptMetadata } from "../assemble";
+import { assembleImagePrompt, imagePromptRoot, validateImagePrompts, wantsPositionLine, type ImagePromptMetadata } from "../assemble";
 
 const META: ImagePromptMetadata = {
   trackName: "T", trackDescription: "TD", lessonTitle: "L", lessonDescription: "LD",
@@ -40,7 +40,8 @@ test("each financial topic gets its own overlay and the financial base — never
     // Whole words: the base legitimately says money clichés are "infantilising".
     assert.doesNotMatch(r.instructions, /\b(crib|bassinet|nursery|parenting|parents?|baby|babies|infant|newborn|toddler)\b/i, `parenting wording in ${t}`);
     // financial base is v4 (2026-09-28); credit overlay v4, the other overlays still v3
-    assert.deepEqual(r.versions, { base: "4", overlay: t === "credit" ? "4" : "3" });
+    // financial base v5 (setting rotation, 2026-10-01); credit overlay v5; the others still v3
+    assert.deepEqual(r.versions, { base: "5", overlay: t === "credit" ? "5" : "3" });
   }
 });
 
@@ -68,4 +69,39 @@ test("overrides behave the same in every domain (no files read)", async () => {
 
 test("boot validation passes over the root set and the financial folder", async () => {
   await validateImagePrompts();
+});
+
+// ---- Setting rotation (financial base v5) ----
+
+test("moosii prompts are byte-identical when a card position is passed (no rotation section in the root base)", async () => {
+  for (const t of MOOSII_TOPICS) {
+    for (const scene of [undefined, "scene"]) {
+      assert.deepEqual(await assembleImagePrompt(t, { ...META, position: 3 }, undefined, scene, "moosii"), await assembleImagePrompt(t, META, undefined, scene));
+    }
+  }
+});
+
+test("financial adds `Card position: N` as the last line of the user prompt", async () => {
+  const without = await assembleImagePrompt("credit", META, undefined, undefined, "financial");
+  const withPos = await assembleImagePrompt("credit", { ...META, position: 3 }, undefined, undefined, "financial");
+  assert.equal(withPos.userPrompt, `${without.userPrompt}\nCard position: 3`);
+  assert.equal(withPos.instructions, without.instructions);   // instructions are not position-dependent
+  assert.match(withPos.instructions, /## Setting rotation/);
+  assert.match(withPos.instructions, /2\. a kitchen counter/);
+  assert.match(withPos.instructions, /Use a kitchen for food cards, or when the setting rotation assigns it\. No other use\./);
+  assert.match(withPos.instructions, /A SCENE supplied by the author names its place; keep it exactly\./);
+});
+
+test("an author scene suppresses the position line (the author's place wins)", async () => {
+  const r = await assembleImagePrompt("credit", { ...META, position: 3 }, undefined, "A woman on a sofa.", "financial");
+  assert.equal(r.userPrompt, "A woman on a sofa.");
+  assert.doesNotMatch(r.userPrompt, /Card position/);
+});
+
+test("wantsPositionLine: only a positive integer position, no author scene, and a base with the rotation section", () => {
+  const base = "x\n## Setting rotation — the card's position picks the place\ny";
+  assert.equal(wantsPositionLine(base, 3, undefined), true);
+  assert.equal(wantsPositionLine(base, 3, "scene"), false);
+  for (const p of [null, undefined, 0, -1, 2.5]) assert.equal(wantsPositionLine(base, p as number | null | undefined, undefined), false);
+  assert.equal(wantsPositionLine("no rotation here", 3, undefined), false);
 });
