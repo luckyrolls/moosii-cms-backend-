@@ -2387,3 +2387,47 @@ X-Demo-Code: <DEMO_ACCESS_CODE>                  // PREFERRED; no Authorization 
   resolution and the plan are unaffected. Both tables are service-role only (RLS on, no policy) — this route is the
   only reader. `Cache-Control: no-store`. CORS as §9 (reader origin in `ALLOWED_ORIGINS`).
 - Code: `src/demo/outcomes.ts` (pure core), `src/routes/demo.ts`.
+
+### 9c. Demo partner page data + MX widget URL — DELIVERED (financial only)
+
+```
+GET /demo/partner-data
+GET /demo/mx-widget-url?type=connections_widget
+Authorization: Bearer <demo session access_token>    // the session POST /demo/session minted (§9)
+
+Gates (both routes, in order):
+→ 404 not_found        — DOMAIN is not 'financial' (checked first)
+→ 429 rate_limited     — per IP, in-memory: partner-data 30/min, mx-widget-url 10/min
+→ 401 unauthorized     — no bearer token, or Supabase rejects it
+→ 403 not_demo_persona — the token's user has no auth app_metadata.demo_persona
+```
+The persona is the token's user — never a parameter. Both responses are `Cache-Control: no-store`.
+
+**`GET /demo/partner-data`** → 200
+```
+{ persona, user_id,
+  spending: null | {                         // null when the persona has no MX user (Sarah)
+    source: "mx", from: "YYYY-MM-DD", to: "YYYY-MM-DD",   // last 30 days, inclusive
+    total: number, transactions: number,
+    categories: [ { category, amount, share } ] },        // MX top_level_category; share 0..1 (3 dp); amount desc
+  insights: [ { key, title, body, source: "real" | "seeded", fact_key } ] }
+→ 500 demo_partner_data_failed
+```
+- **Spending:** MX transactions for the MX user whose `id` is the persona's auth uid (§8d identity), `from_date` =
+  30 days ago. Counted: `DEBIT`s dated in the window (`transacted_at`, else `date`, else `posted_at`). Excluded:
+  `CREDIT`s and `top_level_category = 'Transfer'` (own-account moves and card payments, as in §8d). Missing category →
+  `"Uncategorized"`. These are amounts by design — the partner page's spending view; facts and insights stay token-only.
+- **Insights:** from the persona's CURRENT facts (`user_facts_latest`), never per-persona copy. One per matching rule:
+  `credit_utilization_band` high → `CreditCardCloseToLimit`, moderate → `CreditUtilization`; `has_emergency_buffer`
+  false → `SaveEnoughToLiveOn` (**proposed key** — MX's template name; the reader must map it); `new_subscription_recent`
+  true → `SubscriptionDetected`. Keys are the reader's `/learn?insight=<key>` vocabulary. Copy is ours, carries no
+  amounts. `source` = the fact's provenance: `seeded` when `user_facts.source = 'seed'`, else `real` (as §9b).
+
+**`GET /demo/mx-widget-url`** → 200 `{ widget_type, url, single_use: true, expires_in_seconds: 600 }`
+- **Allowlist:** `connections_widget` only (the only non-Connect type our MX client is entitled to; spending,
+  transactions and Pulse widgets are 403 at MX). Anything else → **400 `invalid_widget_type`**.
+- **404 `no_mx_user`** when the persona has no MX user (Sarah). **502 `mx_widget_url_failed`** on any MX error.
+- The URL is a **one-time credential** (MX: valid ten minutes or until first use): generated per request, never
+  logged, stored or cached. Embed it in an iframe (≥ 320px wide) immediately; fetch a new one on every load.
+- Code: `src/demo/partner.ts` (pure: gates, spending summary, insight rules, allowlist), `src/routes/demo.ts`,
+  `MxProvider.createWidgetUrl` (`src/facts/derive/mxProvider.ts`).

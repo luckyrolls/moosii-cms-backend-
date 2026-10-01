@@ -6,13 +6,22 @@ import { supabase } from "../supabase";
 import { apiError } from "../lib/errors";
 import { createDemoSession, FixedWindowLimiter, type DemoDeps } from "../demo/session";
 import { getDemoOutcomes, pickDemoCode, type OutcomesDeps } from "../demo/outcomes";
+import {
+  demoGate, isRefusal, summarizeSpending, spendingWindowStart, insightsFromFacts, allowedWidgetType,
+  WIDGET_ALLOWLIST, type GateDeps, type CurrentFact,
+} from "../demo/partner";
+import { MxProvider, MxError } from "../facts/derive/mxProvider";
 
 // POST /demo/session — demo persona sign-in for the financial reader (api-contract §9).
 // GET  /demo/outcomes — Beat 6 outcome history, real + seeded points (api-contract §9b).
-// Mounted bare in index.ts: the access code is the gate, not a JWT. CORS: the reader origin must be in ALLOWED_ORIGINS.
+// GET  /demo/partner-data, /demo/mx-widget-url — partner page data (api-contract §9c); authed by the DEMO SESSION.
+// Mounted bare in index.ts: the access code / demo session is the gate, not the admin JWT gate.
+// CORS: the reader origin must be in ALLOWED_ORIGINS.
 
 const limiter = new FixedWindowLimiter(10, 60_000);           // 10 sign-ins per IP per minute
 const outcomesLimiter = new FixedWindowLimiter(10, 60_000);   // 10 outcome reads per IP per minute
+const partnerLimiter = new FixedWindowLimiter(30, 60_000);    // 30 partner-data reads per IP per minute
+const widgetLimiter = new FixedWindowLimiter(10, 60_000);     // 10 widget URLs per IP per minute
 
 // Every auth user flagged with app_metadata.demo_persona (service role; users can't set it).
 async function listDemoUsers(): Promise<{ id: string; email: string | undefined; persona: string }[]> {
@@ -126,6 +135,95 @@ router.get("/outcomes", async (req: Request, res: Response): Promise<void> => {
   } catch (e) {
     console.error(`[demo] outcomes failed ip=${ipTag}: ${e instanceof Error ? e.message : String(e)}`);
     apiError(res, 500, "demo_outcomes_failed", "could not load demo outcomes");
+  }
+});
+
+// ---- partner page (api-contract §9c) ---------------------------------------------------------------------------
+
+function gateDeps(limiter: { allow(key: string): boolean }): GateDeps {
+  return {
+    domain: DOMAIN,
+    limiter,
+    async verify(token) {
+      const { data, error } = await supabase.auth.getUser(token);
+      if (error || !data?.user) return null;
+      const persona = (data.user.app_metadata as Record<string, unknown> | undefined)?.demo_persona;
+      return { user_id: data.user.id, persona: typeof persona === "string" && persona ? persona : null };
+    },
+  };
+}
+
+router.get("/partner-data", async (req: Request, res: Response): Promise<void> => {
+  const ip = clientIp(req);
+  const ipTag = createHash("sha256").update(ip).digest("hex").slice(0, 6);
+  res.set("Cache-Control", "no-store");
+  try {
+    const who = await demoGate(req.headers.authorization, ip, gateDeps(partnerLimiter));
+    if (isRefusal(who)) {
+      console.warn(`[demo] partner-data refused ${who.status} ${who.code} ip=${ipTag}`);
+      apiError(res, who.status, who.code, who.message);
+      return;
+    }
+
+    // Spending: the persona's MX transactions (MX user id = auth uid). No MX user → null, not an error.
+    const now = new Date();
+    let spending: ReturnType<typeof summarizeSpending> | null = null;
+    try {
+      const txns = await new MxProvider().getTransactions(who.user_id, spendingWindowStart(now));
+      spending = summarizeSpending(txns, now);
+    } catch (e) {
+      if (!(e instanceof MxError && e.code === "mx_user_not_found")) throw e;
+    }
+
+    // Insights: from the persona's CURRENT facts (latest-wins view), provenance per fact.
+    const { data: facts, error } = await supabase
+      .from("user_facts_latest" as never)
+      .select("fact_key, value, source")
+      .eq("user_id", who.user_id);
+    if (error) throw new Error(`user_facts_latest read failed: ${(error as { message: string }).message}`);
+    const insights = insightsFromFacts((facts ?? []) as unknown as CurrentFact[]);
+
+    console.log(`[demo] partner-data persona=${who.persona} spending=${spending ? spending.categories.length + " categories" : "null"} insights=${insights.length} ip=${ipTag}`);
+    res.status(200).json({ persona: who.persona, user_id: who.user_id, spending, insights });
+  } catch (e) {
+    console.error(`[demo] partner-data failed ip=${ipTag}: ${e instanceof Error ? e.message : String(e)}`);
+    apiError(res, 500, "demo_partner_data_failed", "could not load partner data");
+  }
+});
+
+router.get("/mx-widget-url", async (req: Request, res: Response): Promise<void> => {
+  const ip = clientIp(req);
+  const ipTag = createHash("sha256").update(ip).digest("hex").slice(0, 6);
+  res.set("Cache-Control", "no-store");
+  try {
+    const who = await demoGate(req.headers.authorization, ip, gateDeps(widgetLimiter));
+    if (isRefusal(who)) {
+      console.warn(`[demo] mx-widget-url refused ${who.status} ${who.code} ip=${ipTag}`);
+      apiError(res, who.status, who.code, who.message);
+      return;
+    }
+    const type = allowedWidgetType(req.query.type);
+    if (!type) {
+      apiError(res, 400, "invalid_widget_type", `type must be one of: ${WIDGET_ALLOWLIST.join(", ")}`);
+      return;
+    }
+    let url: string;
+    try {
+      url = await new MxProvider().createWidgetUrl(who.user_id, type);
+    } catch (e) {
+      if (e instanceof MxError && e.code === "mx_user_not_found") {
+        console.warn(`[demo] mx-widget-url no MX user persona=${who.persona} ip=${ipTag}`);
+        apiError(res, 404, "no_mx_user", "this persona has no MX user");
+        return;
+      }
+      throw e;
+    }
+    // The URL is a one-time credential: returned, never logged, stored or cached.
+    console.log(`[demo] mx-widget-url issued type=${type} persona=${who.persona} ip=${ipTag}`);
+    res.status(200).json({ widget_type: type, url, single_use: true, expires_in_seconds: 600 });
+  } catch (e) {
+    console.error(`[demo] mx-widget-url failed ip=${ipTag}: ${e instanceof Error ? e.message : String(e)}`);
+    apiError(res, 502, "mx_widget_url_failed", "could not get a widget URL from MX");
   }
 });
 

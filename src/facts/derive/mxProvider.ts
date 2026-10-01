@@ -80,4 +80,23 @@ export class MxProvider implements FinancialDataProvider {
     const epoch = Math.floor(from.getTime() / 1000);
     return this.paged<MxTransaction>(`/users/${encodeURIComponent(userRef)}/transactions?from_date=${epoch}`, "transactions");
   }
+
+  // A fresh widget URL (demo partner page, api-contract §9c). The URL is a ONE-TIME credential (MX: expires
+  // after ten minutes or first use): it is returned to the caller and never logged — errors carry status only.
+  async createWidgetUrl(userRef: string, widgetType: string): Promise<string> {
+    const path = `/users/${encodeURIComponent(userRef)}/widget_urls`;
+    const res = await fetch(this.base + path, {
+      method: "POST",
+      headers: { Authorization: this.auth, Accept: "application/json", "Accept-Version": "v20250224", "Content-Type": "application/json" },
+      body: JSON.stringify({ widget_url: { widget_type: widgetType, is_mobile_webview: false, ui_message_version: 4 } }),
+    });
+    if (res.status === 401) throw new MxError("mx_auth_failed", `POST widget_urls → 401`);
+    if (res.status === 403) throw new MxError("mx_auth_failed", `POST widget_urls (${widgetType}) → 403 not entitled`);
+    if (res.status === 404) throw new MxError("mx_user_not_found", `POST widget_urls → 404`);
+    if (!res.ok) throw new MxError("mx_request_failed", `POST widget_urls → ${res.status}`);
+    const body = (await res.json()) as { widget_url?: { url?: string } };
+    const url = body.widget_url?.url;
+    if (!url) throw new MxError("mx_request_failed", "POST widget_urls → no url in response");
+    return url;
+  }
 }
