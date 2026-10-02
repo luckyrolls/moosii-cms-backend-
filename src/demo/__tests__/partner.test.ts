@@ -110,3 +110,15 @@ test("widget allowlist: only connections_widget", () => {
     assert.equal(allowedWidgetType(t), null, JSON.stringify(t));
   }
 });
+
+test("spending: 'Fees & Charges' is excluded from categories, total and shares", () => {
+  const now = new Date("2026-10-01T12:00:00Z");
+  const s = summarizeSpending([
+    { type: "DEBIT", amount: 75, top_level_category: "Food & Dining", transacted_at: "2026-09-25T00:00:00Z" },
+    { type: "DEBIT", amount: 25, top_level_category: "Shopping", transacted_at: "2026-09-25T00:00:00Z" },
+    { type: "DEBIT", amount: 400, top_level_category: "Fees & Charges", transacted_at: "2026-09-25T00:00:00Z" },
+  ], now);
+  assert.deepEqual(s.categories.map((c) => [c.category, c.amount, c.share]), [["Food & Dining", 75, 0.75], ["Shopping", 25, 0.25]]);
+  assert.equal(s.total, 100);
+  assert.equal(s.transactions, 2);
+});

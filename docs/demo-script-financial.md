@@ -3,13 +3,13 @@
 Audience: product / partnerships lead at a consumer financial company that uses MX.
 Thesis (say it once, first): **"Your insights get attention. They don't get follow-through. We turn the insight into a plan the user follows — and we can show you they followed it."**
 
+Confirmed 2026-10-02: the prospect uses MX Insights. We are the follow-through behind their existing insight cards.
+
 Honesty rule: anything simulated is labeled on screen and said out loud. Seeded outcome data is called seeded.
 
 Shape: Moosii is a plan **widget** on the partner's own widget page. Sam's story runs uninterrupted (Beats 1–4). Sarah appears once (Beat 5) to prove the plan is personal. The outcome (Beat 6) covers both, then the ask.
 
 Personas: **Sam** — real user, facts derived live from an MX sandbox bank connection (credit utilization high/estimated → Credit Health). **Sarah** — seeded facts (no buffer, steady paycheck → Building a Buffer). Outcome movement in Beat 6 is seeded and labeled.
-
-**Before each demo:** from the backend repo, run `npm run demo:reset` (dry run: prints the host and per-table row counts), then `npm run demo:reset -- --go`. Clears Sam's and Sarah's completions, lesson progress, questionnaire answers and classify-applied track changes (keeps Sam's orientation completion), recomputes moosies, resets the plan intro, and rebuilds both plans. Never touches facts or the seeded outcome series. Needs `FINANCIAL_DB_URL` (and `FINANCIAL_INTERNAL_API_KEY` for the rebuild) in `.env`.
 
 ---
 
@@ -44,8 +44,12 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 **Needs:** `demo_outcome_series` (seeded, labeled; never future-dated rows in user_facts), outcomes page.
 
 ## Beat 7 — The ask (4:30–5:00)
-**Say:** "Integrating is the same as adding an MX widget: your backend asks ours for a widget link for the user, and you put it on the page. A 60-day pilot; we measure fact movement against a holdout. From you: that widget call, and facts from your MX data (or access to derive them)."
-**Have ready:** who reviews the content (**gap: name someone**); where the data lives (facts only, no amounts); webview vs. tab embedding (either works).
+**Say:** "Integrating is the same as adding an MX widget: your backend asks ours for a widget link for the user, and you put it on the page. A 60-day pilot; we measure fact movement against a holdout. From you: handle the insight card's Learn more tap by opening our widget link with the insight name; facts from your MX data (or access to derive them)."
+**Have ready:** who reviews the content (**gap: name someone**); where the data lives (facts only, no amounts); webview vs. tab embedding (either works); which MX insights are enabled, and which were left off and why?
+
+## Presenter notes
+- Spending is real MX sandbox data; the sandbox's synthetic Fees & Charges are excluded from the view.
+- Before each demo: `npm run demo:reset -- --go` (from the backend repo; without `--go` it is a dry run that prints the host and per-table counts). Clears Sam's and Sarah's completions, lesson progress, questionnaire answers and classify-applied track changes (keeps Sam's orientation completion), recomputes moosies, resets the plan intro, rebuilds both plans. Never touches facts or the seeded outcome series. Needs `FINANCIAL_DB_URL` (and `FINANCIAL_INTERNAL_API_KEY` for the rebuild) in `.env`.
 
 ---
 

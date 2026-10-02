@@ -2415,7 +2415,9 @@ The persona is the token's user — never a parameter. Both responses are `Cache
 ```
 - **Spending:** MX transactions for the MX user whose `id` is the persona's auth uid (§8d identity), `from_date` =
   30 days ago. Counted: `DEBIT`s dated in the window (`transacted_at`, else `date`, else `posted_at`). Excluded:
-  `CREDIT`s and `top_level_category = 'Transfer'` (own-account moves and card payments, as in §8d). Missing category →
+  `CREDIT`s, `top_level_category = 'Transfer'` (own-account moves and card payments, as in §8d) and, display-only since
+  2026-10-02, `'Fees & Charges'` (the MX sandbox bank's synthetic interest/bank/late fees; facts derivation is
+  unaffected). Missing category →
   `"Uncategorized"`. These are amounts by design — the partner page's spending view; facts and insights stay token-only.
 - **Insights:** from the persona's CURRENT facts (`user_facts_latest`), never per-persona copy. One per matching rule:
   `credit_utilization_band` high → `CreditCardCloseToLimit`, moderate → `CreditUtilization`; `has_emergency_buffer`

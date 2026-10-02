@@ -46,11 +46,16 @@ export function isRefusal(x: DemoIdentity | GateRefusal): x is GateRefusal {
 
 // ---------------------------------------------------------------------------------------------------------------
 // Spending — the persona's MX transactions for the last 30 days, grouped by MX top-level category.
-// Counted: DEBITs dated inside the window. Not counted: CREDITs (income, refunds) and top_level_category
-// 'Transfer' (moves between the user's own accounts and card payments — same exclusion as facts derive).
+// Counted: DEBITs dated inside the window. Not counted: CREDITs (income, refunds), top_level_category
+// 'Transfer' (moves between the user's own accounts and card payments — same exclusion as facts derive), and
+// the DISPLAY-ONLY exclusions below. Display only: facts derivation (src/facts/derive) is untouched.
 // ---------------------------------------------------------------------------------------------------------------
 
 export const SPENDING_WINDOW_DAYS = 30;
+
+// 'Fees & Charges': the MX sandbox bank generates ~50 synthetic interest / bank / late fees a month (43% of Sam's
+// spend), which no real member would show. Excluded from the view only (Mark, 2026-10-02).
+export const SPENDING_EXCLUDED_CATEGORIES: readonly string[] = ["Transfer", "Fees & Charges"];
 
 export type SpendingTxn = {
   type: string;
@@ -83,7 +88,7 @@ export function summarizeSpending(txns: SpendingTxn[], now: Date): Spending {
   let n = 0;
   for (const t of txns) {
     if ((t.type ?? "").toUpperCase() !== "DEBIT") continue;
-    if ((t.top_level_category ?? "") === "Transfer") continue;
+    if (SPENDING_EXCLUDED_CATEGORIES.includes(t.top_level_category ?? "")) continue;
     const when = Date.parse(t.transacted_at ?? t.date ?? t.posted_at ?? "");
     if (!Number.isFinite(when) || when < from.getTime() || when > now.getTime()) continue;
     const amt = Math.abs(Number(t.amount ?? 0));
