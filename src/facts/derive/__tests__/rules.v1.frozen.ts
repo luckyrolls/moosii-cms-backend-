@@ -1,3 +1,7 @@
+// FROZEN COPY of src/facts/derive/rules.ts at facts-derive/1 (commit 54c66bf), byte-for-byte below this header.
+// Used ONLY by rules.v2-identity.test.ts to prove facts-derive/2 gives identical results for aggregated (non-manual)
+// data. Never edit; never import from production code.
+
 // Fact derivation rules — PURE (no network, no DB, no env). FINDINGS-fact-derivation.md §2;
 // thresholds decided by Mark 2026-09-28. Every fact is a boolean or a short enum: the amounts,
 // balances and ratios computed here exist only in memory and are NEVER returned (invariant 12) —
@@ -5,10 +9,7 @@
 //
 // "unknown" means: write no row for that key (075 convention). The reason says why.
 
-// facts-derive/2 (2026-10-03): manual transactions (is_manual) — MX forces is_direct_deposit=false on them, so a
-// manual CREDIT categorised Paycheck counts as a direct deposit. Aggregated data is unaffected (byte-identical
-// results to /1 — __tests__/rules.v2-identity.test.ts against a frozen copy).
-export const RULE_VERSION = "facts-derive/2";
+export const RULE_VERSION = "facts-derive/1";
 
 export type MxAccount = {
   guid: string;
@@ -18,7 +19,6 @@ export type MxAccount = {
   available_balance?: number | null;
   credit_limit?: number | null;
   available_credit?: number | null;
-  is_manual?: boolean | null;          // created by us via POST /users/{id}/accounts (no aggregation)
 };
 
 export type MxTransaction = {
@@ -35,8 +35,6 @@ export type MxTransaction = {
   merchant_guid?: string | null;
   description?: string | null;
   top_level_category?: string | null;
-  category?: string | null;            // MX sub-category name, e.g. "Paycheck"
-  is_manual?: boolean | null;
 };
 
 export type FactKey = "has_direct_deposit" | "has_emergency_buffer" | "new_subscription_recent" | "credit_utilization_band";
@@ -101,12 +99,6 @@ function known(fact_key: FactKey, value: string, reason: string, evidence: Recor
 
 // ---- has_direct_deposit ------------------------------------------------------------------------
 // true: ≥ 2 is_direct_deposit CREDITs on distinct dates in the last 60 days, on checking/savings.
-// A MANUAL transaction can't carry the flag (MX forces it false), so for is_manual only: CREDIT + category Paycheck.
-export function isDirectDeposit(t: MxTransaction): boolean {
-  if (t.is_direct_deposit === true) return true;
-  return t.is_manual === true && t.type === "CREDIT" && t.category === "Paycheck";
-}
-
 export function deriveHasDirectDeposit({ accounts, transactions, asOf }: DeriveInput): FactResult {
   const deposit = new Set(accounts.filter((a) => isOpen(a) && DEPOSIT_TYPES.has(a.type)).map((a) => a.guid));
   if (deposit.size === 0) return unknown("has_direct_deposit", "no_deposit_account");
@@ -120,7 +112,7 @@ export function deriveHasDirectDeposit({ accounts, transactions, asOf }: DeriveI
   const dates = new Set<string>();
   for (const t of txs) {
     const ms = txTime(t);
-    if (isDirectDeposit(t) && t.type === "CREDIT" && ms !== null && ms >= since && ms <= asOf.getTime()) dates.add(utcDay(ms));
+    if (t.is_direct_deposit === true && t.type === "CREDIT" && ms !== null && ms >= since && ms <= asOf.getTime()) dates.add(utcDay(ms));
   }
   const evidence = { deposit_accounts: deposit.size, direct_deposit_dates_60d: dates.size, history_days: history };
   return dates.size >= DIRECT_DEPOSIT_MIN_DATES

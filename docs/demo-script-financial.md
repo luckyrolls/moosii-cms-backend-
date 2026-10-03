@@ -9,7 +9,7 @@ Honesty rule: anything simulated is labeled on screen and said out loud. Seeded 
 
 Shape: Moosii is a plan **widget** on the partner's own widget page. Sam's story runs uninterrupted (Beats 1–4). Sarah appears once (Beat 5) to prove the plan is personal. The outcome (Beat 6) covers both, then the ask.
 
-Personas: **Sam** — real user, facts derived live from an MX sandbox bank connection (credit utilization high/estimated → Credit Health). **Sarah** — seeded facts (no buffer, steady paycheck → Building a Buffer). Outcome movement in Beat 6 is seeded and labeled.
+Personas: **Sam** — facts derived from an MX sandbox bank connection (MX's test bank; credit utilization high/estimated → Credit Health). **Sarah** — facts derived from MX sandbox accounts we set up (steady paycheck, no buffer → Building a Buffer). Neither persona has seeded facts. Outcome movement in Beat 6 is seeded and labeled.
 
 ---
 
@@ -36,10 +36,10 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 ## Beat 5 — Same insight, different person (3:00–3:30)
 **Screen:** switch to **Sarah**. Same page, same insight tile. Her plan tile leads with "Why One Month Comes First" — Building a Buffer — because she has no emergency cushion and a steady paycheck.
 **Say:** "Same insight. Different person, different plan. Nobody configured that — it comes from her data."
-**Needs:** Sarah with seeded facts; Building a Buffer lessons published.
+**Needs:** Sarah's MX sandbox data (`npm run demo:sarah-data -- --go`); Building a Buffer lessons published.
 
 ## Beat 6 — The outcome (3:30–4:30) ← the pitch
-**Screen:** two short timelines, every point labeled real or seeded. Sam: real facts today (utilization high), then a seeded "six weeks later" point (moderate). Sarah: seeded no buffer → buffer. Then an aggregate panel labeled **seeded example**: "Users who started a plan: N; moved a fact the right way within 30 days: X%."
+**Screen:** two short timelines, every point labeled real or seeded. Sam: real facts today (utilization high), then a seeded "six weeks later" point (moderate). Sarah: real no buffer today (derived), then a seeded buffer point. Then an aggregate panel labeled **seeded example**: "Users who started a plan: N; moved a fact the right way within 30 days: X%."
 **Say:** "We don't ask whether it worked. We see it in the data you already have. This is the number your team reports upward."
 **Needs:** `demo_outcome_series` (seeded, labeled; never future-dated rows in user_facts), outcomes page.
 
@@ -48,8 +48,9 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 **Have ready:** who reviews the content (**gap: name someone**); where the data lives (facts only, no amounts); webview vs. tab embedding (either works); which MX insights are enabled, and which were left off and why?
 
 ## Presenter notes
+- Both personas are MX sandbox accounts: Sam's data is MX's test bank, Sarah's we set up in MX. Everything shown is computed from it.
 - Spending is real MX sandbox data; the sandbox's synthetic Fees & Charges are excluded from the view.
-- Before each demo: `npm run demo:reset -- --go` (from the backend repo; without `--go` it is a dry run that prints the host and per-table counts). Clears Sam's and Sarah's completions, lesson progress, questionnaire answers and classify-applied track changes (keeps Sam's orientation completion), recomputes moosies, resets the plan intro, rebuilds both plans. Never touches facts or the seeded outcome series. Needs `FINANCIAL_DB_URL` (and `FINANCIAL_INTERNAL_API_KEY` for the rebuild) in `.env`.
+- Before each demo: `npm run demo:sarah-data -- --go`, then `npm run demo:reset -- --go` (both from the backend repo; without `--go` each is a dry run that prints the host and what it would change). `demo:sarah-data` re-creates Sarah's MX sandbox accounts dated to today and re-derives her facts. `demo:reset` clears Sam's and Sarah's completions, lesson progress, questionnaire answers and classify-applied track changes (keeps Sam's orientation completion), recomputes moosies, resets the plan intro and rebuilds both plans; it never touches facts or the seeded outcome series. Both need `FINANCIAL_DB_URL` and `FINANCIAL_INTERNAL_API_KEY` in `.env`; `demo:sarah-data` also needs `MX_CLIENT_ID` / `MX_API_KEY`.
 
 ---
 
@@ -65,7 +66,7 @@ Personas: **Sam** — real user, facts derived live from an MX sandbox bank conn
 | Fact derivation (Sam, real) | backend | done |
 | RLS pass (15 RLS-off tables; published-only reads) | backend | **blocks demo sign-in** |
 | Demo sign-in endpoint + persona flags | backend | designed |
-| Sarah seeded facts (source `seed`) | backend + Mark | designed |
+| Sarah's MX sandbox data + derived facts (`demo:sarah-data`) | backend | done |
 | Track weights: fact tracks above Getting Oriented | Mark | decision |
 | Plan view from the user's path | reader | new |
 | demo_outcome_series + outcomes page | backend + reader | designed |

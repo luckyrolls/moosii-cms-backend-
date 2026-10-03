@@ -2287,11 +2287,18 @@ Rules and thresholds: FINDINGS-fact-derivation.md §2 (decided 2026-09-28).
 
 - **Identity:** the MX user's `id` is the Supabase auth uid; MX accepts it in place of its guid, so
   there's no mapping table. The MX user and its member must already exist.
+- **Manual-only users (facts-derive/2, 2026-10-03):** a user with no MX members (manual accounts we created via the
+  API have no member that `GET /members` lists) is derived anyway when it has `is_manual` accounts; `observed_at` =
+  the latest manual transaction's date, so a re-run on unchanged data writes nothing (result `basis: "manual"`, else
+  `"aggregation"`). MX forces `is_direct_deposit = false` on manual transactions, so for `is_manual` only a CREDIT
+  categorised `Paycheck` counts as a direct deposit. Aggregated data gives byte-identical results to /1 (test
+  against a frozen /1 copy; checked live on Sam's 1,200 transactions).
 - **Preconditions / failures** (job `failed`, `error.message` starts with the code):
   `domain_not_supported` (DOMAIN ≠ financial) · `invalid_input` · `mx_not_configured`
   (`MX_CLIENT_ID` / `MX_API_KEY` unset on the service; optional `MX_BASE_URL`, default
   `https://int-api.mx.com`; checked when the job runs, not at boot) · `mx_auth_failed` ·
-  `mx_user_not_found` · `mx_request_failed` · `no_mx_members` · `aggregation_in_progress` ·
+  `mx_user_not_found` · `mx_request_failed` · `no_mx_members` (no members AND no manual accounts) ·
+  `no_manual_transactions` (manual accounts but no dated manual transaction) · `aggregation_in_progress` ·
   `never_aggregated` · `unknown_user` (no auth user) · `conflicting_observation` (a rule change
   gives a different value for an already-recorded aggregation; refresh the aggregation first).
 - **Write:** `observed_at` = the latest `successfully_aggregated_at` across the user's members.
@@ -2301,7 +2308,7 @@ Rules and thresholds: FINDINGS-fact-derivation.md §2 (decided 2026-09-28).
   coalesced `rebuild_mlp` is enqueued (`triggered_by: "derive_facts"`).
 - **Result** (`jobs.result`): **no amounts, balances or ratios**, only counts and day spans:
   ```
-  { rule_version: "facts-derive/1", user_id, observed_at, members, accounts, transactions, history_days,
+  { rule_version: "facts-derive/2", user_id, observed_at, basis: "aggregation" | "manual", members, accounts, transactions, history_days,
     facts: [ { fact_key, value | null, status: "recorded" | "unknown", source: "derived" | "estimated" | null,
                estimated, reason, evidence: { …counts } } ],
     written, rebuild_enqueued }
@@ -2344,7 +2351,8 @@ Body: { persona: string, code: string }
 → 503 demo_disabled     — DEMO_ACCESS_CODE unset on the service
 ```
 - **Personas** are flagged in auth `app_metadata.demo_persona` (service role only; users can't set it).
-  Today: `sam` (real derived facts, §8d) and `sarah` (seeded, §8e). Every other user is refused.
+  Today: `sam` (facts derived from MX's test bank, §8d) and `sarah` (facts derived from manual MX sandbox accounts we
+  set up — `npm run demo:sarah-data`; her §8e seed rows were deleted 2026-10-03). Every other user is refused.
 - **Mint:** `auth.admin.generateLink({ type: "magiclink" })` → `verifyOtp({ token_hash })` on a
   **throwaway** client (`persistSession: false`), never the shared service-role client. No password is
   held and no email is sent. Tokens are never logged (the log line carries persona, user id and an IP hash).
@@ -2406,7 +2414,7 @@ The persona is the token's user — never a parameter. Both responses are `Cache
 **`GET /demo/partner-data`** → 200
 ```
 { persona, user_id,
-  spending: null | {                         // null when the persona has no MX user (Sarah)
+  spending: null | {                         // null when the persona has no MX user (both personas have one since 2026-10-03)
     source: "mx", from: "YYYY-MM-DD", to: "YYYY-MM-DD",   // last 30 days, inclusive
     total: number, transactions: number,
     categories: [ { category, amount, share } ] },        // MX top_level_category; share 0..1 (3 dp); amount desc
@@ -2428,7 +2436,8 @@ The persona is the token's user — never a parameter. Both responses are `Cache
 **`GET /demo/mx-widget-url`** → 200 `{ widget_type, url, single_use: true, expires_in_seconds: 600 }`
 - **Allowlist:** `connections_widget` only (the only non-Connect type our MX client is entitled to; spending,
   transactions and Pulse widgets are 403 at MX). Anything else → **400 `invalid_widget_type`**.
-- **404 `no_mx_user`** when the persona has no MX user (Sarah). **502 `mx_widget_url_failed`** on any MX error.
+- **404 `no_mx_user`** when the persona has no MX user. **502 `mx_widget_url_failed`** on any MX error. Sarah's MX user
+  has only manual accounts; the Connections widget lists them as "Manual accounts".
 - The URL is a **one-time credential** (MX: valid ten minutes or until first use): generated per request, never
   logged, stored or cached. Embed it in an iframe (≥ 320px wide) immediately; fetch a new one on every load.
 - Code: `src/demo/partner.ts` (pure: gates, spending summary, insight rules, allowlist), `src/routes/demo.ts`,
