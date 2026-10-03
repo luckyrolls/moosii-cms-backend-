@@ -119,9 +119,17 @@ async function main(): Promise<void> {
       const d = await mx("DELETE", `/users/${userGuid}/accounts/${a.guid}`);
       if (d.status !== 204) fail(`delete manual account → ${d.status}`);
     }
-    const leftAccounts = await mxPaged(`/users/${userGuid}/accounts`, "accounts");
-    const leftTx = (await mxPaged(`/users/${userGuid}/transactions`, "transactions")).filter((t: { is_manual?: boolean }) => t.is_manual === true);
-    if (leftAccounts.length || leftTx.length) fail(`after delete: ${leftAccounts.length} account(s), ${leftTx.length} manual transaction(s) remain`);
+    // MX purges a deleted account's transactions ASYNCHRONOUSLY (~1–2 min in sandbox, 2026-10-03): wait for it,
+    // or new and old transactions would overlap.
+    let leftAccounts = 0, leftTx = 0;
+    for (let i = 0; i < 36; i++) {
+      leftAccounts = (await mxPaged(`/users/${userGuid}/accounts`, "accounts")).length;
+      leftTx = (await mxPaged(`/users/${userGuid}/transactions`, "transactions")).filter((t: { is_manual?: boolean }) => t.is_manual === true).length;
+      if (!leftAccounts && !leftTx) break;
+      if (i === 0) console.log(`waiting for MX to purge ${leftTx} transaction(s) of the deleted accounts…`);
+      await new Promise((res) => setTimeout(res, 5000));
+    }
+    if (leftAccounts || leftTx) fail(`after delete + 3 min: ${leftAccounts} account(s), ${leftTx} manual transaction(s) remain`);
     console.log(`deleted ${existing.length} manual account(s); none left`);
 
     const acctGuid = new Map<AccountKey, string>();

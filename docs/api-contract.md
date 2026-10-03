@@ -2292,7 +2292,8 @@ Rules and thresholds: FINDINGS-fact-derivation.md §2 (decided 2026-09-28).
   the latest manual transaction's date, so a re-run on unchanged data writes nothing (result `basis: "manual"`, else
   `"aggregation"`). MX forces `is_direct_deposit = false` on manual transactions, so for `is_manual` only a CREDIT
   categorised `Paycheck` counts as a direct deposit. Aggregated data gives byte-identical results to /1 (test
-  against a frozen /1 copy; checked live on Sam's 1,200 transactions).
+  against a frozen /1 copy; checked live on Sam's 1,200 transactions). Note: deleting a manual account makes MX purge
+  its transactions asynchronously (~1–2 min); `demo:sarah-data` waits for the purge before re-creating.
 - **Preconditions / failures** (job `failed`, `error.message` starts with the code):
   `domain_not_supported` (DOMAIN ≠ financial) · `invalid_input` · `mx_not_configured`
   (`MX_CLIENT_ID` / `MX_API_KEY` unset on the service; optional `MX_BASE_URL`, default
