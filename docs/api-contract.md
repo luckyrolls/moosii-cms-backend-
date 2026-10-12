@@ -466,8 +466,10 @@ by that immutable name; not referenced from `prompts`), followed by the lesson's
 `source_documents` (§2l). The seeded rules: use the documents as the factual basis and never
 contradict them; don't cite, name or quote them in card text; tone/structure/card-position/
 length rules still apply; **numbers, ages, durations, thresholds and strong safety or
-medical claims must come from the documents, or be left out**; uncovered topics may still be
-written in general terms (this mirrors the doc_grounded review's "unsupported specifics").
+medical claims (financial: strong legal, tax or credit-score claims) must come from the
+documents, or be left out**; uncovered topics may still be written in general terms. This
+mirrors each project's doc_grounded review rule on "unsupported specifics"; migration 110's
+header quotes both, so drift is visible.
 The block has no CMS editor yet; change it with SQL or a migration. Each doc is shown as
 `### <name> (version: <version_label>)` + body, ordered by name then id. There is **no
 doc_id and no `authority_note`** in the generation prompt. Absent/`false` → nothing is read

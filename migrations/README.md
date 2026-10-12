@@ -550,14 +550,20 @@ Main track:
   schema description. Data fix (not a migration): financial's 5 quiz texts "the segment" → "the lesson".
 - **110 — grounding instructions block + generation cap** — **DRAFT (pending apply) — financial · Moosii.**
   BOTH PROJECTS, schema (two CHECKs) + data (two rows). `prompt_blocks_block_type_check` gains `'grounding'`; one
-  shared singleton block `('grounding','grounding_v1')`, resolved by name and NOT referenced from `prompts`; content
-  md5 `17d937caf1097e817e047e9980d12b8b` (541 chars, LF). `app_settings` row `grounding_max_chars = '30000'` +
+  shared singleton block `('grounding','grounding_v1')`, resolved by name and NOT referenced from `prompts`. The text is
+  chosen by `app_settings.domain` (any other value RAISEs) and differs only in the specifics rule's claim types, to match
+  each project's review: Moosii "strong safety or medical claims", md5 `17d937caf1097e817e047e9980d12b8b` (541 chars);
+  financial "strong legal, tax or credit-score claims", md5 `7de4bcbe6581b42dbbba378ae2098712` (550 chars). The blank
+  line is built with `E'
+
+'`, so the file's line endings can't change it. `app_settings` row `grounding_max_chars = '30000'` +
   CHECK `app_settings_grounding_max_chars_valid` (positive integer). `ON CONFLICT DO NOTHING` for both rows (a rerun
   never overwrites an edit). card_positions untouched. Code (`use_source_documents`) fails legibly without these rows.
   The header quotes each project's live review `SPECIFIC-BUT-UNSUPPORTED` rule with its row id and system_message md5
-  (drift watch). Known gap: financial's review names legal/tax/credit-score claims, but the block says safety/medical.
+  (drift watch).
   Tested 2026-10-12 on a throwaway local PG 17 cluster restored from Moosii's `prompt_blocks` + `app_settings`:
-  apply, rerun = no-op, card_positions md5 `b217089d…` unchanged, `'30k'` → 23514, block_type `'bogus'` → 23514.
+  apply, rerun = no-op, card_positions md5 `b217089d…` unchanged, `'30k'` → 23514, block_type `'bogus'` → 23514; re-tested
+  per domain (moosii / financial wording; `domain='bogus'` → RAISE, whole transaction rolled back).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
