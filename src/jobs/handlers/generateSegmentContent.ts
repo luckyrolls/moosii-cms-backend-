@@ -8,8 +8,8 @@ import { generateQuiz } from "./generateQuiz";
 import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import type { Job } from "../registry";
 import { composeUserMessage } from "../../lib/segmentPrompt";
-import { loadDocsForGrounding } from "../../lib/sourceDocuments";
-import { renderReferenceDocuments, groundingSnapshot, groundingNote, type SourceDoc } from "../../lib/grounding";
+import { loadGrounding } from "../../lib/sourceDocuments";
+import { renderReferenceDocuments, groundingSnapshot, groundingNote } from "../../lib/grounding";
 
 // database.types.ts predates migration 0001_prompts_refactor (new prompts columns +
 // prompt_blocks table). Use untyped alias until types are regenerated.
@@ -226,7 +226,9 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
   if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
 
   // Grounding (optional): load + guard BEFORE any LLM spend or destructive step.
-  const groundingDocs: SourceDoc[] | null = useDocs ? await loadDocsForGrounding(lesson.id) : null;
+  // Block missing/inactive, cap missing, zero docs or over the cap → throws here.
+  const grounding = useDocs ? await loadGrounding(lesson.id) : null;
+  const groundingDocs = grounding?.docs ?? null;
 
   // Step 2 — load prompt row + blocks in parallel
   const promptRow = await loadSegmentPromptRowById(tone_id);
@@ -253,6 +255,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     segmentDescription: segment.description ?? null,
     kind:               (lesson as { kind?: string | null }).kind ?? null,
     avoid:              await loadPromptBanInstruction(),
+    referenceInstructions: grounding?.instructions,
     referenceDocuments: groundingDocs ? renderReferenceDocuments(groundingDocs) : undefined,
   });
 

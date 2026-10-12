@@ -3,6 +3,7 @@ import { getLLMClient, providerForModel, type LLMProvider } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
 import { loadLinkedDocs, type SourceDoc } from "../../lib/sourceDocuments";
+import { composeReviewUserMessage, type ReviewCard } from "../../lib/reviewPrompt";
 
 // content_findings + the review prompt rows postdate database.types.ts. Untyped bridge
 // (same pattern as the other content handlers); regenerate types after migration 035.
@@ -125,7 +126,7 @@ export async function loadReviewPromptRow(reviewType: ReviewType): Promise<Revie
   return row;
 }
 
-type Card = { id: string; title: string | null; content: string | null; sequence: number | null };
+type Card = ReviewCard;
 
 async function loadLessonCards(lessonId: string): Promise<{ lessonName: string; cards: Card[] }> {
   const { data: lesson, error: lErr } = await supabase
@@ -147,31 +148,6 @@ async function loadLessonCards(lessonId: string): Promise<{ lessonName: string; 
   const withContent = (cards ?? []).filter((c) => c.content && c.content.trim()) as Card[];
   if (withContent.length === 0) throw new Error(`Lesson ${lessonId} has no content cards — generate content first`);
   return { lessonName: lesson.lesson_name ?? "", cards: withContent };
-}
-
-// Present each card prefixed with its card_id; the model echoes that id back as
-// card_ref (or null for a lesson-level finding). For doc_grounded, the linked authority
-// documents are appended, each prefixed with its doc_id (echoed back as source_document_ref).
-function composeReviewUserMessage(lessonName: string, cards: Card[], docs: SourceDoc[] = []): string {
-  const cardText = cards
-    .map((c) => `[card_id: ${c.id}] Card ${c.sequence ?? "?"}: ${c.title ?? ""}\n${c.content ?? ""}`)
-    .join("\n\n");
-  const docSection = docs.length === 0 ? "" :
-    `\n\n## Source documents (designated authority — check the cards for CONSISTENCY with these)\n` +
-    `Each is prefixed with its doc_id; set source_document_ref to the doc_id a finding concerns.\n\n` +
-    docs.map((d) =>
-      `[doc_id: ${d.id}] ${d.name} (version: ${d.version_label})` +
-      (d.authority_note ? `\nAuthority: ${d.authority_note}` : "") +
-      `\n${d.body}`
-    ).join("\n\n---\n\n");
-  return (
-    `## Lesson: ${lessonName}\n\n` +
-    `## Cards to review\n` +
-    `Each card below is prefixed with its card_id. In each finding, set card_ref to the ` +
-    `EXACT card_id it concerns, or null for a lesson-level / cross-card finding.\n\n` +
-    cardText +
-    docSection
-  );
 }
 
 export type ReviewLessonResult = {

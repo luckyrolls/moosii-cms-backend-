@@ -4,6 +4,9 @@
 on generate + regen; code-owned framing; no doc_id or authority_note; 200k-char cap; `jobs.result.grounding`
 + `correlation_id`; no migration; track batch, per-card column and review chaining deferred
 (`docs/backlog.md` P3). Contract: `api-contract.md` §2b/§2c.
+**Follow-up (same day, BUILD-NOW):** the framing moved to the DB block `prompt_blocks` grounding/`grounding_v1`,
+with a stricter specifics rule; the cap became `app_settings.grounding_max_chars` = 30000, generation only
+(migration 110); the shared loader sorts by name, then id; `GET /lessons/:id/source-documents` was added.
 **Brief:** INVESTIGATE-FIRST (2026-10-08). Nothing in `src/`, `prompts/` or `migrations/` was changed.
 **Goal under study:** an option at generation time that puts the lesson's linked source documents into
 the prompt so cards are written with the docs in view. The existing `doc_grounded` review stays as it is

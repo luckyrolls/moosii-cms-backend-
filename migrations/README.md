@@ -548,6 +548,14 @@ Main track:
   quiz/lesson/coverage_audit text or block matches 'segment', re-run = all no-op (financial 6, Moosii 8).
   Not changed: JSON-schema names `SegmentQuiz` / `SegmentCards` and the segment prompts' "Ordered cards (sub_segments)"
   schema description. Data fix (not a migration): financial's 5 quiz texts "the segment" → "the lesson".
+- **110 — grounding instructions block + generation cap** — **DRAFT (pending apply) — financial · Moosii.**
+  BOTH PROJECTS, schema (two CHECKs) + data (two rows). `prompt_blocks_block_type_check` gains `'grounding'`; one
+  shared singleton block `('grounding','grounding_v1')`, resolved by name and NOT referenced from `prompts`; content
+  md5 `17d937caf1097e817e047e9980d12b8b` (541 chars, LF). `app_settings` row `grounding_max_chars = '30000'` +
+  CHECK `app_settings_grounding_max_chars_valid` (positive integer). `ON CONFLICT DO NOTHING` for both rows (a rerun
+  never overwrites an edit). card_positions untouched. Code (`use_source_documents`) fails legibly without these rows.
+  Tested 2026-10-12 on a throwaway local PG 17 cluster restored from Moosii's `prompt_blocks` + `app_settings`:
+  apply, rerun = no-op, card_positions md5 `b217089d…` unchanged, `'30k'` → 23514, block_type `'bogus'` → 23514.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

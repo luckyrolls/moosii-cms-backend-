@@ -99,6 +99,7 @@ is overridden, and never logs a size profile. Only `notes` shows the deviation. 
 Shipped 2026-10-12 without these (FINDINGS-doc-grounded-generation.md, open questions):
 per-card provenance (`sub_segments.grounding jsonb`, a migration) if the CMS should show the doc
 versions per card; the option on `generate_track_content` (decide: fail vs skip lessons with no
-docs); a CMS-editable framing block instead of the code constant; a `GET /lessons/:id/source-documents`
-read for the CMS; a size cap at ingestion (`POST/PATCH /source-documents`); a voice-lint rule for
-citation leaks ("according to the document…"); chaining the doc_grounded review (after review dedup).
+docs); a CMS editor for the grounding block (the text is now DB block `grounding_v1`, migration 110,
+editable only by SQL); a size cap at ingestion (`POST/PATCH /source-documents`, against
+`app_settings.grounding_max_chars`); a voice-lint rule for citation leaks ("according to the
+document…"); chaining the doc_grounded review (after review dedup).

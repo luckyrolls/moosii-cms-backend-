@@ -12,8 +12,8 @@ import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import { recomputeSegStatus, resetCardsToDraft } from "../../lib/cardReview";
 import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { SizeNumbers } from "../../lib/sizeProfile";
-import { loadDocsForGrounding } from "../../lib/sourceDocuments";
-import { renderReferenceDocuments, groundingSnapshot, groundingNote, type SourceDoc } from "../../lib/grounding";
+import { loadGrounding } from "../../lib/sourceDocuments";
+import { renderReferenceDocuments, groundingSnapshot, groundingNote } from "../../lib/grounding";
 import type { Job } from "../registry";
 
 type Scope = "whole_segment" | "single_card";
@@ -90,7 +90,9 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   }
 
   // Grounding (optional): load + guard BEFORE any LLM spend (generate-before-destroy holds anyway).
-  const groundingDocs: SourceDoc[] | null = useDocs ? await loadDocsForGrounding(lesson.id) : null;
+  // Block missing/inactive, cap missing, zero docs or over the cap → throws here.
+  const grounding = useDocs ? await loadGrounding(lesson.id) : null;
+  const groundingDocs = grounding?.docs ?? null;
 
   // Step 2 — load all current sub_segments (needed for neighbor context + delete targets)
   const { data: allCards, error: cardsErr } = await supabase
@@ -154,6 +156,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     kind:               (lesson as { kind?: string | null }).kind ?? null,
     avoid:              await loadPromptBanInstruction(),
     guidance,
+    referenceInstructions: grounding?.instructions,
     referenceDocuments: groundingDocs ? renderReferenceDocuments(groundingDocs) : undefined,
     regenTarget: scope === "single_card" && targetCard ? {
       sequence:   targetCard.sequence,

@@ -23,16 +23,6 @@ function formatChildAge(min?: number | null, max?: number | null): string | null
   return null;
 }
 
-// Header + framing for the grounded-generation section. A code constant (like the Author
-// Feedback header), not a DB block — pinned while informed mode is proven.
-export const REFERENCE_DOCUMENTS_HEADER =
-  "## Reference Documents\n\n" +
-  "The documents below are the designated sources for this lesson. Use them as the factual basis " +
-  "for the cards and never contradict them. Do not cite, name or quote them in the card text, and do " +
-  "not copy long passages — write in the voice above. The Tone, Structure, Card Positions and Length " +
-  "rules still apply. You may still write supportive or practical content the documents do not cover, " +
-  "but any specific fact, number or guideline you state must agree with them.";
-
 export function composeUserMessage(opts: {
   scope: string | null;
   toneContent: string;
@@ -47,7 +37,8 @@ export function composeUserMessage(opts: {
   kind?: string | null;      // lessons.kind (107): 'lesson' | 'activity' — the text refers to itself correctly
   avoid?: string;           // error-severity voice-lint bans (prevention layer)
   guidance?: string;         // author feedback from a rejection — steers this regen
-  referenceDocuments?: string; // rendered linked source documents (use_source_documents)
+  referenceInstructions?: string; // grounding block content (prompt_blocks grounding/grounding_v1, migration 110)
+  referenceDocuments?: string;    // rendered linked source documents (use_source_documents)
   regenTarget?: RegenTarget;
 }): string {
   const parts: string[] = [];
@@ -78,10 +69,12 @@ export function composeUserMessage(opts: {
   parts.push(`## Context\n\n${ctx.join("\n")}`);
 
   // Grounded ("informed") generation — use_source_documents. Runtime data about THIS lesson,
-  // so it sits with Context; Regeneration Target stays last. Informed, not strict: content the
-  // documents don't cover may still be written.
+  // so it sits with Context; Regeneration Target stays last. The heading is code (like every
+  // other section); the instructions are the DB block — the caller fails before composing if
+  // the block is missing, so there is no fallback text here.
   if (opts.referenceDocuments && opts.referenceDocuments.trim()) {
-    parts.push(`${REFERENCE_DOCUMENTS_HEADER}\n\n${opts.referenceDocuments}`);
+    const lead = opts.referenceInstructions && opts.referenceInstructions.trim() ? `${opts.referenceInstructions.trim()}\n\n` : "";
+    parts.push(`## Reference Documents\n\n${lead}${opts.referenceDocuments}`);
   }
 
   if (opts.regenTarget) {

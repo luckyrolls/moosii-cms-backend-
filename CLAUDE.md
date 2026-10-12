@@ -176,9 +176,11 @@ output_schema — not user-editable). ONE composer renders all of it for every c
 Avoid → Author Feedback → Context → Reference Documents → Regeneration Target. `regen_segment_content` supports per-run overrides of any
 editable layer without changing the tone, plus an optional `generate_quiz` (always REPLACES).
 REFERENCE DOCUMENTS (optional, `use_source_documents` on generate/regen): the lesson's linked
-`source_documents` go in under a code-owned "informed" framing (no doc ids, no authority note);
-zero docs or more than 200k chars fails before the LLM call; provenance is `jobs.result.grounding`, not
-stamped on cards. The `doc_grounded` review remains the separate after-the-fact check.
+`source_documents` go in after the DB block `prompt_blocks` grounding/`grounding_v1` (110; a shared singleton
+resolved by name, like card_positions; no doc ids, no authority note). The cap is `app_settings.grounding_max_chars`,
+and it applies to GENERATION only, never the review. A missing or inactive block, a missing cap, zero docs or
+over the cap all fail before the LLM call; there is never a fallback text or number in code. Provenance is
+`jobs.result.grounding`, not stamped on cards. The `doc_grounded` review remains the separate after-the-fact check.
 A deterministic voice LINT (`voice_lint_rules` + `src/lib/voiceLint.ts`) flags AI-tells into
 `jobs.result.lint` (advisory; never blocks). The CMS manages these admin tables through the
 API, not direct Supabase writes. Sanctioned CMS-direct write paths are listed in

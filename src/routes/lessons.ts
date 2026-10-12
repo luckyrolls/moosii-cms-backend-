@@ -8,6 +8,7 @@ import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { planLessonDelete } from "../lib/contentTeardown";
 import { hasCapability } from "../middleware/jwtAuth";
 import { setCardsReviewState } from "../lib/cardReview";
+import { listLessonSourceDocuments } from "../lib/sourceDocuments";
 import {
   isMissingFunctionError,
   interpretPublishResult,
@@ -352,6 +353,20 @@ router.post("/coverage-accept", async (req: Request, res: Response): Promise<voi
 //
 // ?dry_run=true → returns the counts the CMS confirm modal renders; deletes nothing (but
 // still runs the refusal check so the modal can surface it).
+// GET /lessons/:id/source-documents — the lesson's linked source documents, metadata only
+// (no body), ordered by name then id. Lets the CMS see whether use_source_documents can run.
+router.get("/:id/source-documents", async (req: Request, res: Response): Promise<void> => {
+  const lessonId = req.params.id;
+  const { data: lesson, error: lErr } = await supabase.from("lessons").select("id").eq("id", lessonId).maybeSingle();
+  if (lErr) { apiError(res, 500, "db_error", lErr.message); return; }
+  if (!lesson) { apiError(res, 404, "not_found", "lesson not found"); return; }
+  try {
+    res.json({ source_documents: await listLessonSourceDocuments(lessonId) });
+  } catch (e) {
+    apiError(res, 500, "db_error", e instanceof Error ? e.message : String(e));
+  }
+});
+
 router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   const id = req.params.id;
   const dryRun = req.query.dry_run === "true";

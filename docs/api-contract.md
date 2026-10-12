@@ -459,18 +459,29 @@ regen scopes and the track batch): scope → `## Tone` → `## Structure` → `#
 `## Reference Documents` (only with `use_source_documents`) → `## Regeneration Target`
 (single-card regen only). Empty layers are omitted.
 
-**`use_source_documents` — informed grounding (2026-10-12; no migration).** When `true`, the
-lesson's linked `source_documents` (§2l) are rendered after `## Context` under a fixed
-framing (in code, not the DB): use them as the factual basis, never contradict them, do not
-cite/name/quote them in card text; tone/structure/card-position/length rules still apply;
-content the documents don't cover may still be written, but any specific fact must agree.
-Each doc is shown as `### <name> (version: <version_label>)` + body, ordered by name then
-id — **no doc_id and no `authority_note`** in the generation prompt. Absent/`false` → the
-prompt is byte-identical to before (golden test `segmentPrompt.test.ts`).
-- **Zero linked docs → the job fails before any LLM call or content change**:
-  `No source documents linked to lesson <id> — link at least one or turn off use_source_documents.`
-- **Size cap:** linked bodies totalling more than 200,000 characters also fail (never
-  truncated — a cut doc would make "informed by" false).
+**`use_source_documents` — informed grounding (2026-10-12; migration 110).** When `true`, the
+section `## Reference Documents` is added after `## Context`. Its body is the **DB block**
+`prompt_blocks` (`block_type='grounding'`, `name='grounding_v1'`, a shared singleton resolved
+by that immutable name; not referenced from `prompts`), followed by the lesson's linked
+`source_documents` (§2l). The seeded rules: use the documents as the factual basis and never
+contradict them; don't cite, name or quote them in card text; tone/structure/card-position/
+length rules still apply; **numbers, ages, durations, thresholds and strong safety or
+medical claims must come from the documents, or be left out**; uncovered topics may still be
+written in general terms (this mirrors the doc_grounded review's "unsupported specifics").
+The block has no CMS editor yet; change it with SQL or a migration. Each doc is shown as
+`### <name> (version: <version_label>)` + body, ordered by name then id. There is **no
+doc_id and no `authority_note`** in the generation prompt. Absent/`false` → nothing is read
+and the prompt is byte-identical to before (golden test `segmentPrompt.test.ts`).
+All of these **fail before any LLM call or content change** (`src/lib/sourceDocuments.ts`
+`loadGrounding`). There is never a fallback to text or a number in code:
+- grounding block missing / inactive / empty: `Grounding instructions block (prompt_blocks grounding/grounding_v1) not found — apply migration 110 or turn off use_source_documents.` (or `… is inactive` / `… is empty`)
+- `app_settings.grounding_max_chars` missing or not a positive integer: `app_settings.grounding_max_chars is missing — …`
+- zero linked docs: `No source documents linked to lesson <id> — link at least one or turn off use_source_documents.`
+- **over the cap:** linked bodies total more than `app_settings.grounding_max_chars`
+  (seeded **30000**; a CHECK keeps it a positive integer): `Linked source documents for
+  lesson <id> total N characters, over the 30000 limit (app_settings.grounding_max_chars) — …`.
+  Never truncated, because a cut doc would make "informed by" false. **Generation only:** the
+  doc_grounded review has no cap (test `reviewPrompt.test.ts`).
 - **Provenance:** `jobs.result.grounding = { documents: [{ id, name, version_label, chars }] }`
   (version copied at generation time, the same staleness model as
   `content_findings.source_version_label`); the `ai_generation_log` note gains
@@ -1500,9 +1511,11 @@ of these three (belt-and-suspenders on the noise rule). The kind→severity mapp
 **prompt-only**: the server keeps any valid severity the model returns (default `info`).
 `claim_quote` / `source_passage` are stored as returned and are not checked to be real
 substrings. A finding naming an unknown doc_id is kept with NULL `source_document_id` /
-`source_version_label`. Docs are loaded with no ORDER BY, no size cap and no truncation
-(the shared loader `src/lib/sourceDocuments.ts` `loadLinkedDocs`, also used by §2b
-`use_source_documents`).
+`source_version_label`. Docs are loaded by the shared loader `src/lib/sourceDocuments.ts`
+`loadLinkedDocs` (also used by §2b `use_source_documents`) in a **deterministic order: name,
+then id** (since 2026-10-12; before that the order was unspecified). The review prompt is
+otherwise byte-identical (golden test `reviewPrompt.test.ts`). There is **no size cap and no
+truncation**: `app_settings.grounding_max_chars` applies to generation only.
 
 **It checks CONSISTENCY WITH THE DESIGNATED SOURCE, not truth** — a card that disagrees
 with the source is a finding even if the card might be "right"; the human decides.
@@ -1528,11 +1541,14 @@ PATCH  /source-documents/:id                  body { body?, version_label?, auth
 DELETE /source-documents/:id                  → 204   // cascades link rows; findings keep their version snapshot (FK ON DELETE SET NULL)
 POST   /source-documents/:id/links            body { lesson_id } → 201 { ok, lesson_id, source_document_id }   // link a lesson (idempotent); missing lesson/doc → 404 not_found
 DELETE /source-documents/:id/links/:lesson_id → 204   // unlink; no such link → 404
+GET    /lessons/:id/source-documents          → { source_documents: [ {id,name,version_label,chars} ] }   // a lesson's linked docs, no body; name-then-id order; [] if none; unknown lesson → 404 not_found
 ```
 PATCH: blank `name` / `body` / `version_label` are ignored (they cannot be cleared); blank
 `origin_url` / `authority_note` clear to NULL; an empty patch → 400 `invalid_source_document`.
-There is no lesson-scoped read (docs for a lesson) — the CMS reads `lesson_source_documents`
-directly, or the §2b job fails legibly when there are none.
+`GET /lessons/:id/source-documents` (admin JWT, mounted on the lessons router, 2026-10-12)
+lets the CMS check before offering `use_source_documents` (§2b): `chars` is the body length,
+and the sum of `chars` is what the generation cap (`app_settings.grounding_max_chars`)
+is checked against.
 
 `source_documents`: `id, name, body (extracted text), origin_url?, version_label
 (human, e.g. '2021'/'AAP 2022'), authority_note (who designated it + why — a HUMAN
