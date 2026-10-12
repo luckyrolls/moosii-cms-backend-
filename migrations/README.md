@@ -22,10 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 110 · Moosii 109** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..109; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 110 · Moosii 110** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..110; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
-(all APPLIED). **110** is a both-projects file applied on financial only so far (Moosii pending).
+(all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -548,7 +548,7 @@ Main track:
   quiz/lesson/coverage_audit text or block matches 'segment', re-run = all no-op (financial 6, Moosii 8).
   Not changed: JSON-schema names `SegmentQuiz` / `SegmentCards` and the segment prompts' "Ordered cards (sub_segments)"
   schema description. Data fix (not a migration): financial's 5 quiz texts "the segment" → "the lesson".
-- **110 — grounding instructions block + generation cap** — **APPLIED financial (2026-10-12) · Moosii PENDING.**
+- **110 — grounding instructions block + generation cap** — **APPLIED financial (2026-10-12) · APPLIED Moosii (2026-10-12).**
   BOTH PROJECTS, schema (two CHECKs) + data (two rows). `prompt_blocks_block_type_check` gains `'grounding'`; one
   shared singleton block `('grounding','grounding_v1')`, resolved by name and NOT referenced from `prompts`. The text is
   chosen by `app_settings.domain` (any other value RAISEs) and differs only in the specifics rule's claim types, to match
@@ -568,6 +568,11 @@ Main track:
   0 setting rows, CHECK without 'grounding'; dry run (rolled back) → 1 row md5 `7de4bcbe…`, then 0/0 again; apply OK;
   verify: both CHECKs present, grounding_v1 active (550 chars, md5 `7de4bcbe6581b42dbbba378ae2098712`, legal/tax/
   credit-score wording), card_positions md5 `62d21c5e…` unchanged, `grounding_max_chars = 30000`, `'30k'` → 23514.
+  Moosii 2026-10-12: identity (sysid 7481590244898220655, domain moosii, PG 15.8); same pre-check (0 / 0, old CHECK);
+  dry run → md5 `17d937ca…`, then 0/0; apply OK; verify: both CHECKs, grounding_v1 active (541 chars, md5
+  `17d937caf1097e817e047e9980d12b8b`, safety/medical wording), card_positions md5 `b217089d…` unchanged, cap 30000,
+  `'30k'` → 23514. End-to-end read-only: `loadGrounding` on b31254cd returns the block + 1 doc (1252 chars) and the
+  rendered section carries no doc id.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
