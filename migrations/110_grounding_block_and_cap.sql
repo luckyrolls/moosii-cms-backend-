@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MIGRATION 110: grounding instructions block + generation cap — BOTH PROJECTS (text differs per domain)
---   — DRAFT (pending apply)   SCHEMA (two CHECKs) + DATA (one prompt_blocks row, one app_settings row)
+--   — APPLIED financial (2026-10-12) · Moosii PENDING   SCHEMA (two CHECKs) + DATA (one prompt_blocks row, one app_settings row)
 -- ============================================================================
 -- WHY (Mark, 2026-10-12): `use_source_documents` on generate_segment_content / regen_segment_content
 -- (dd99d1b) put the lesson's linked source documents into the prompt under framing text that lived in
