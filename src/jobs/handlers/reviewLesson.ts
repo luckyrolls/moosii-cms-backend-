@@ -2,6 +2,7 @@ import { supabase } from "../../supabase";
 import { getLLMClient, providerForModel, type LLMProvider } from "../../llm";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
 import type { Job } from "../registry";
+import { loadLinkedDocs, type SourceDoc } from "../../lib/sourceDocuments";
 
 // content_findings + the review prompt rows postdate database.types.ts. Untyped bridge
 // (same pattern as the other content handlers); regenerate types after migration 035.
@@ -75,21 +76,6 @@ function toBareSchema(raw: unknown): Record<string, unknown> {
     return o.schema as Record<string, unknown>;
   }
   return (o ?? {}) as Record<string, unknown>;
-}
-
-type SourceDoc = { id: string; name: string; version_label: string; authority_note: string | null; body: string };
-
-// Load the docs linked to a lesson (lesson-level linkage). Used only for doc_grounded.
-async function loadLinkedDocs(lessonId: string): Promise<SourceDoc[]> {
-  const { data: links, error: lErr } = await db
-    .from("lesson_source_documents").select("source_document_id").eq("lesson_id", lessonId);
-  if (lErr) throw new Error(`Failed to load linked documents for lesson ${lessonId}: ${lErr.message}`);
-  const ids = (links ?? []).map((l: { source_document_id: string }) => l.source_document_id);
-  if (ids.length === 0) return [];
-  const { data: docs, error: dErr } = await db
-    .from("source_documents").select("id, name, version_label, authority_note, body").in("id", ids);
-  if (dErr) throw new Error(`Failed to load source documents for lesson ${lessonId}: ${dErr.message}`);
-  return (docs ?? []) as SourceDoc[];
 }
 
 // Fallback provider ONLY — used when the prompt row carries no model. Provider is normally

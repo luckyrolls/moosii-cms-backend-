@@ -437,16 +437,53 @@ Body: {
     seg_id: string,
     tone_id: string,        // prompts.id of the segment tone (stable id, NOT the
                             // display name — see §2g). Must be an active tone.
-    generate_quiz?: boolean // if true, also generates the quiz in-sequence
-                            // (same job, shared correlationId — see §2d)
+    generate_quiz?: boolean, // if true, also generates the quiz in-sequence
+                             // (same job, shared correlationId — see §2d)
+    use_source_documents?: boolean // if true, the lesson's linked source documents
+                             // (§2l) go into the prompt — "informed" grounding (see below)
   }
 }
 → 202 { job_id: string }
 ```
-Backend reads the `segment_content` prompt row for the given tone from the DB
-(`prompts` + `prompt_blocks`). Composes system + user message from DB fields;
-uses `output_schema` from the row as `response_format`. No prompt text in the
-request — the backend owns prompt composition.
+Backend reads the tone's `prompts` row (`prompt_type='segment'`, active, selected by
+`prompts.id`) plus its `prompt_blocks`. Composes system + user message from DB fields;
+uses `output_schema` from the row as the JSON schema. No prompt text in the request —
+the backend owns prompt composition. (`segment_content` is the `ai_generation_log`
+operation name, not a prompt type.) **Provider:** the call always goes to the OpenAI
+client, whatever the row's model (`callAndParseCards`); every live segment row is
+`gpt-4o`. Backlog P2.
+
+**User-message order** (one composer, `src/lib/segmentPrompt.ts`, shared by generate, both
+regen scopes and the track batch): scope → `## Tone` → `## Structure` → `## Card Positions`
+→ `## Length` → `## Avoid` → `## Author Feedback` (regen `guidance`) → `## Context` →
+`## Reference Documents` (only with `use_source_documents`) → `## Regeneration Target`
+(single-card regen only). Empty layers are omitted.
+
+**`use_source_documents` — informed grounding (2026-10-12; no migration).** When `true`, the
+lesson's linked `source_documents` (§2l) are rendered after `## Context` under a fixed
+framing (in code, not the DB): use them as the factual basis, never contradict them, do not
+cite/name/quote them in card text; tone/structure/card-position/length rules still apply;
+content the documents don't cover may still be written, but any specific fact must agree.
+Each doc is shown as `### <name> (version: <version_label>)` + body, ordered by name then
+id — **no doc_id and no `authority_note`** in the generation prompt. Absent/`false` → the
+prompt is byte-identical to before (golden test `segmentPrompt.test.ts`).
+- **Zero linked docs → the job fails before any LLM call or content change**:
+  `No source documents linked to lesson <id> — link at least one or turn off use_source_documents.`
+- **Size cap:** linked bodies totalling more than 200,000 characters also fail (never
+  truncated — a cut doc would make "informed by" false).
+- **Provenance:** `jobs.result.grounding = { documents: [{ id, name, version_label, chars }] }`
+  (version copied at generation time, the same staleness model as
+  `content_findings.source_version_label`); the `ai_generation_log` note gains
+  `grounded: [<id>@<version_label>, …]` and its `prompt` holds the full rendered text.
+  Nothing is stamped on the cards.
+- The quiz needs no change: it reads only the freshly written cards. The `doc_grounded`
+  review (§2k-doc) is still a separate job — it is not chained.
+- Not on `generate_track_content` (yet).
+
+First-time generation also purges the old cards' images (storage + `image_assets`) before
+delete+insert, like whole-segment regen (§2c). Review state resets through the 066 trigger
+on the card insert. There is no published-lesson guard here (regen has one); on financial the
+064 trigger blocks it at the DB.
 
 Generates a **cards arc** (typically 5–9 cards; count is model-determined).
 Writes one `sub_segments` row per card (`title`, `content`, `sequence` 1…N,
@@ -478,9 +515,16 @@ re-running never duplicates).
     { "ruleKey": "both-true", "type": "limit", "severity": "warn",
       "card": 0, "match": "both things can be true", "count": 3,
       "message": "Stock phrase repeated - vary the wording." }
-  ]
+  ],
+  "correlation_id": "uuid",
+  "grounding": { "documents": [ { "id": "uuid", "name": "NIH Safe to Sleep …",
+                                  "version_label": "AAP-2022-aligned", "chars": 1252 } ] }
 }
 ```
+**`correlation_id`** (added 2026-10-12) joins the job to its `ai_generation_log` rows. Standalone
+generate/regen use a fresh UUID, not `job.id`; the track batch passes `job.id`. **`grounding`**
+appears only when `use_source_documents` was true.
+
 **`lint`** is the deterministic voice-lint result — advisory hits (AI-tells,
 throat-clearing openers, overused/repeated phrases) for the CMS review screen to
 surface. It never blocks or alters generation; an empty array means no hits.
@@ -532,6 +576,9 @@ Body: {
                         // (content, and the quiz too when generate_quiz=true). Distinct
                         // from overrides: overrides REPLACE a prompt layer; guidance is
                         // additive steering. Absent = unchanged behavior.
+    use_source_documents?: boolean,  // informed grounding — same as §2b (both scopes):
+                        // linked docs go in after ## Context; zero docs / over the cap →
+                        // fails before the LLM call, existing content intact
     overrides?: {       // per-run prompt overrides — THIS regeneration only
       scope?: string,
       tone?: string,
@@ -571,7 +618,10 @@ overrides are persisted in `job.input`, and `ai_generation_log` records both the
 full rendered prompt and a note listing which layers were overridden, so deviations
 from default can be reviewed (and later promoted to defaults — a separate,
 super-admin action, not built here). The result echoes `overrides_applied: string[]`
-(which may include `"size_profile_id"` / `"size"`).
+(which may include `"size_profile_id"` / `"size"`). Caveat: `ai_generation_log.blocks`
+always records the tone's DEFAULT block ids, even when `structure_block_id` /
+`size_profile_id` is overridden, and never records a size profile. The `notes` line and the
+full `prompt` are the accurate record (backlog P3).
 
 **Structure (## Structure) resolution precedence:** `structure` prose override →
 `structure_block_id` (a different structure block for this run) → the tone's default
@@ -592,6 +642,9 @@ Authorization: Bearer <jwt>
   system_message: string,            // read-only (not overridable)
   editable: { scope, tone, structure, length }  // starting text for `overrides`
 }
+// ⚠ editable.length is the legacy length_block_id text, NOT the size-profile text the
+// generator actually renders (resolveLengthContent). Sending it back unchanged as
+// overrides.length replaces the size profile. Backlog P2.
 → 404 { error: { code: "prompt_not_found", ... } }  // no active tone with that id
 ```
 
@@ -604,14 +657,16 @@ before any existing content is deleted. A failed generation leaves existing
 content intact.
 
 **`scope = "whole_segment"`**: replaces all cards (same as first-time generation).
-Removes all the segment's images (cascade). Resets `segments.seg_status →
-'pending'` and `segments.approved_by → null` so freshly generated content cannot
-ride a stale approval.
+Purges all the segment's images explicitly (storage + `image_assets`), then the delete
+cascades the rows. Fresh cards default to `review_state='draft'`, and
+`recompute_seg_status` (056) derives `seg_status='pending'` and nulls `approved_by` — the
+handler never writes either directly — so new content cannot ride a stale approval.
 
 **`scope = "single_card"`**: regenerates one card in-place — same row ID, same
 sequence, card count unchanged. Neighbor cards (prev/next) are passed as context
-so the replacement fits the arc. Removes only that card's image (explicit delete
-before UPDATE — cascade does not fire on UPDATE). Also resets segment approval.
+so the replacement fits the arc. Removes only that card's image AND that card's
+`content_findings` (explicit deletes before the UPDATE — cascade does not fire on UPDATE).
+Resets only that card to `draft` and recomputes the segment's gate.
 
 `jobs.result` (whole_segment):
 ```json
@@ -624,7 +679,9 @@ before UPDATE — cascade does not fire on UPDATE). Also resets segment approval
   "overrides_applied": ["tone", "length"],
   "lint": [ /* voice-lint hits — see §2b */ ],
   "model": "gpt-5.1-2025-11-13",
-  "finish_reason": "stop"
+  "finish_reason": "stop",
+  "correlation_id": "uuid",
+  "grounding": { /* only with use_source_documents — see §2b */ }
 }
 ```
 `jobs.result` (single_card):
@@ -638,7 +695,9 @@ before UPDATE — cascade does not fire on UPDATE). Also resets segment approval
   "overrides_applied": [],
   "lint": [ /* voice-lint hits — see §2b */ ],
   "model": "gpt-5.1-2025-11-13",
-  "finish_reason": "stop"
+  "finish_reason": "stop",
+  "correlation_id": "uuid",
+  "grounding": { /* only with use_source_documents — see §2b */ }
 }
 ```
 Both regen paths also run the voice lint (`lint`, same shape as §2b). Note: a
@@ -1353,9 +1412,18 @@ content, never approves/rejects, never emits a verdict/score. `review_type`:
 below).
 
 Loads the lesson's cards (`lessons → segments → sub_segments`), assembles the review
-prompt from the DB (`prompts` row `prompt_type='review_<review_type>'`, provider via
-`REVIEW_WRITER`, default `openai`), calls the LLM, parses structured findings, and
+prompt from the DB (`prompts` row `prompt_type='review_<review_type>'`; the provider is
+DERIVED from the row's model via `providerForModel`, and `REVIEW_WRITER` (default `openai`)
+is only the fallback for a row with no model — live `review_doc_grounded` rows are
+`gemini-2.5-flash` on both projects), calls the LLM, parses structured findings, and
 inserts `content_findings` rows. AI-logged with the job id as `correlation_id`.
+A `{{card_positions}}` token in the system message is replaced by the shared block, and the
+job aborts if the token is present with no block. Only non-empty cards are loaded, across
+ALL the lesson's segments; the job fails on "no segments" / "no content cards".
+`best_practices` uses its own output shape (`category, card_title, note, quote`): it anchors
+by card TITLE, forces `severity='info'`, drops unknown categories, and writes
+`content_findings.category`. That column exists live on both projects, but no migration
+file in this repo creates it (backlog P3).
 
 **`jobs.result` on success:**
 ```json
@@ -1391,7 +1459,8 @@ dismissed_at/dismissed_by, addressed_at/addressed_by (audit),
 finding_kind ('contradicted'|'unsupported'|'cross_doc_disagreement'),
 source_document_id (FK source_documents, ON DELETE SET NULL),
 source_version_label (COPIED snapshot of the doc's version AT REVIEW time — staleness),
-claim_quote (the card claim), source_passage (the source text, or 'no passage found')
+claim_quote (the card claim), source_passage (the source text, or 'no passage found'),
+category (best_practices only — see above)
 ```
 Anchoring: a finding names a card via `card_ref` = the exact card_id; the handler maps
 it to `sub_segment_id`, `null`/unknown → lesson-level (never mis-anchored to a wrong
@@ -1427,7 +1496,13 @@ number, named threshold, strong medical claim — with NO provenance in ANY link
 and **cross-document disagreement** (two linked docs disagree; `finding_kind=
 'cross_doc_disagreement'`, `severity='warning'`, flagged **for human adjudication — the
 AI never picks a winner**). The server drops any finding whose `finding_kind` isn't one
-of these three (belt-and-suspenders on the noise rule).
+of these three (belt-and-suspenders on the noise rule). The kind→severity mapping is
+**prompt-only**: the server keeps any valid severity the model returns (default `info`).
+`claim_quote` / `source_passage` are stored as returned and are not checked to be real
+substrings. A finding naming an unknown doc_id is kept with NULL `source_document_id` /
+`source_version_label`. Docs are loaded with no ORDER BY, no size cap and no truncation
+(the shared loader `src/lib/sourceDocuments.ts` `loadLinkedDocs`, also used by §2b
+`use_source_documents`).
 
 **It checks CONSISTENCY WITH THE DESIGNATED SOURCE, not truth** — a card that disagrees
 with the source is a finding even if the card might be "right"; the human decides.
@@ -1451,9 +1526,14 @@ GET    /source-documents/:id                  → { source_document: {…, body}
 POST   /source-documents                      body { name, body, version_label, authority_note?, origin_url? } → 201 { source_document }
 PATCH  /source-documents/:id                  body { body?, version_label?, authority_note?, name?, origin_url? } → 200 { source_document }   // a new body + version_label revises the doc; existing findings KEEP their recorded version (staleness, not a cascade)
 DELETE /source-documents/:id                  → 204   // cascades link rows; findings keep their version snapshot (FK ON DELETE SET NULL)
-POST   /source-documents/:id/links            body { lesson_id } → 201 { ok }   // link a lesson (idempotent)
-DELETE /source-documents/:id/links/:lesson_id → 204   // unlink
+POST   /source-documents/:id/links            body { lesson_id } → 201 { ok, lesson_id, source_document_id }   // link a lesson (idempotent); missing lesson/doc → 404 not_found
+DELETE /source-documents/:id/links/:lesson_id → 204   // unlink; no such link → 404
 ```
+PATCH: blank `name` / `body` / `version_label` are ignored (they cannot be cleared); blank
+`origin_url` / `authority_note` clear to NULL; an empty patch → 400 `invalid_source_document`.
+There is no lesson-scoped read (docs for a lesson) — the CMS reads `lesson_source_documents`
+directly, or the §2b job fails legibly when there are none.
+
 `source_documents`: `id, name, body (extracted text), origin_url?, version_label
 (human, e.g. '2021'/'AAP 2022'), authority_note (who designated it + why — a HUMAN
 decision), created_at, updated_at`. `lesson_source_documents`: `(lesson_id,

@@ -45,6 +45,22 @@ queued `rebuild_mlp` would silently swallow every later rebuild.
 (e.g. 10 min — any queued row at boot predates this process), with error message "Job orphaned while
 queued". No migration.
 
+### Segment content + quiz ignore the row's model provider
+**Why:** `callAndParseCards` (`src/jobs/handlers/generateSegmentContent.ts`) and `generateQuiz`
+call `getLLMClient("openai")` whatever the prompt row's model. CLAUDE.md's rule is that DB-composed
+callers derive the provider via `providerForModel` (the review already does). Latent while every
+segment/quiz row is `gpt-*`; a `gemini-*` tone would hit the OpenAI client and fail.
+`docs/FINDINGS-doc-grounded-generation.md` §8.2.
+**What:** `providerForModel(promptRow.model, "openai")` in both, plus a test.
+
+### Regen-prompt pre-fill shows the legacy length block, not the size profile
+**Why:** `GET /segments/:id/regen-prompt` (`src/routes/segments.ts`) returns `editable.length` from
+`length_block_id`, but generation renders the tone's size profile (`resolveLengthContent`). For any
+tone with a profile, the editor shows text that isn't in the real prompt, and sending it back
+unchanged as `overrides.length` silently replaces the profile. FINDINGS §8.10.
+**What:** return `resolveLengthContent(promptRow)` and only send `overrides.length` when edited
+(CMS seat for the second half).
+
 ## P3
 
 ### Drop the six no-caller views
@@ -66,3 +82,23 @@ the action value if `content_approvals.action` is constrained). Only log when a 
 a real re-approval in the audit log. Seen 2026-09-15: FINDINGS-unarchive-approvals.md.
 **What:** call `logApproval` only when `cards_updated > 0` (and the equivalent check for the
 clinical approve / `approve_segment_bundle` result). No migration.
+
+### Repo has no migration for `content_findings.category`
+**Why:** the review writes `category` for best_practices, and the column exists live on both
+projects, but no file in `migrations/` creates it, so a rebuild from the files would break the
+review. FINDINGS §8.12.
+**What:** an idempotent `ADD COLUMN IF NOT EXISTS` migration matching the live definition, recorded
+as already applied on both projects.
+
+### `ai_generation_log.blocks` records defaults under overrides
+**Why:** regen logs the tone's default block ids even when `structure_block_id` / `size_profile_id`
+is overridden, and never logs a size profile. Only `notes` shows the deviation. FINDINGS §8.9.
+**What:** log the resolved ids (and `size_profile`).
+
+### Grounded-generation follow-ups (`use_source_documents`)
+Shipped 2026-10-12 without these (FINDINGS-doc-grounded-generation.md, open questions):
+per-card provenance (`sub_segments.grounding jsonb`, a migration) if the CMS should show the doc
+versions per card; the option on `generate_track_content` (decide: fail vs skip lessons with no
+docs); a CMS-editable framing block instead of the code constant; a `GET /lessons/:id/source-documents`
+read for the CMS; a size cap at ingestion (`POST/PATCH /source-documents`); a voice-lint rule for
+citation leaks ("according to the document…"); chaining the doc_grounded review (after review dedup).

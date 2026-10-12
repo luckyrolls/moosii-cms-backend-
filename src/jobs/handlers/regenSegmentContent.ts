@@ -12,6 +12,8 @@ import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import { recomputeSegStatus, resetCardsToDraft } from "../../lib/cardReview";
 import { loadPromptBanInstruction } from "../../lib/voiceLint";
 import type { SizeNumbers } from "../../lib/sizeProfile";
+import { loadDocsForGrounding } from "../../lib/sourceDocuments";
+import { renderReferenceDocuments, groundingSnapshot, groundingNote, type SourceDoc } from "../../lib/grounding";
 import type { Job } from "../registry";
 
 type Scope = "whole_segment" | "single_card";
@@ -24,6 +26,8 @@ type Input = {
   generate_quiz?: boolean; // if true, also regenerate the quiz (replaces existing)
   guidance?: string; // author feedback (e.g. from a rejection) — injected into the
                      // prompt to STEER this regen (content, and the quiz if regenerated)
+  use_source_documents?: boolean; // if true, the lesson's linked source documents go into the
+                                  // prompt (informed grounding). Zero linked docs → fails legibly.
   // Per-run prompt overrides (this regeneration only — the prompts row and
   // prompt_blocks are NEVER written). Each layer falls back to the DB default
   // when absent or empty/whitespace. system_message is intentionally NOT
@@ -51,7 +55,7 @@ type SubSegmentRow = {
 // ---------------------------------------------------------------------------
 
 export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
-  const { seg_id, tone_id, scope, card_id, overrides, guidance, generate_quiz: alsoGenerateQuiz = false } = job.input as Input;
+  const { seg_id, tone_id, scope, card_id, overrides, guidance, generate_quiz: alsoGenerateQuiz = false, use_source_documents: useDocs = false } = job.input as Input;
   if (!seg_id)  throw new Error("input.seg_id is required");
   if (!tone_id) throw new Error("input.tone_id is required");
   if (!scope)   throw new Error("input.scope is required (whole_segment | single_card)");
@@ -84,6 +88,9 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       `Unpublish the lesson first, then retry.`
     );
   }
+
+  // Grounding (optional): load + guard BEFORE any LLM spend (generate-before-destroy holds anyway).
+  const groundingDocs: SourceDoc[] | null = useDocs ? await loadDocsForGrounding(lesson.id) : null;
 
   // Step 2 — load all current sub_segments (needed for neighbor context + delete targets)
   const { data: allCards, error: cardsErr } = await supabase
@@ -147,6 +154,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     kind:               (lesson as { kind?: string | null }).kind ?? null,
     avoid:              await loadPromptBanInstruction(),
     guidance,
+    referenceDocuments: groundingDocs ? renderReferenceDocuments(groundingDocs) : undefined,
     regenTarget: scope === "single_card" && targetCard ? {
       sequence:   targetCard.sequence,
       totalCards: existingCards.length,
@@ -168,7 +176,8 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     operation:         "segment_content_regen",
     relatedEntityType: logEntityType,
     relatedEntityId:   logEntityId,
-    notes:             `scope: ${scope}, tone: ${promptRow.tone ?? tone_id} (${tone_id}), overrides: [${overridesApplied.join(", ") || "none"}]`,
+    notes:             `scope: ${scope}, tone: ${promptRow.tone ?? tone_id} (${tone_id}), overrides: [${overridesApplied.join(", ") || "none"}]` +
+                       (groundingDocs ? `, ${groundingNote(groundingDocs)}` : ""),
     blocks: {
       tone:           promptRow.tone_block_id,
       structure:      promptRow.structure_block_id,
@@ -238,6 +247,8 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       lint,
       model,
       finish_reason:         finishReason,
+      correlation_id:        correlationId,
+      ...(groundingDocs && { grounding: groundingSnapshot(groundingDocs) }),
       ...(quizResult && { quiz: quizResult }),
     };
   }
@@ -292,6 +303,8 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     lint,
     model,
     finish_reason:     finishReason,
+    correlation_id:    correlationId,
+    ...(groundingDocs && { grounding: groundingSnapshot(groundingDocs) }),
     ...(quizResult && { quiz: quizResult }),
   };
 }

@@ -7,7 +7,9 @@ import { loadSizeProfileById, renderLengthInstruction, type SizeNumbers } from "
 import { generateQuiz } from "./generateQuiz";
 import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import type { Job } from "../registry";
-import { contentContextLines } from "../../lib/contentContext";
+import { composeUserMessage } from "../../lib/segmentPrompt";
+import { loadDocsForGrounding } from "../../lib/sourceDocuments";
+import { renderReferenceDocuments, groundingSnapshot, groundingNote, type SourceDoc } from "../../lib/grounding";
 
 // database.types.ts predates migration 0001_prompts_refactor (new prompts columns +
 // prompt_blocks table). Use untyped alias until types are regenerated.
@@ -96,102 +98,12 @@ export async function resolveLengthContent(
 }
 
 // ---------------------------------------------------------------------------
-// Shared prompt composer (exported for regen handler)
-// When regenTarget is provided, appends a "Regeneration Target" section
-// with neighbor context for single_card scope.
+// Shared prompt composer — lives in the pure src/lib/segmentPrompt.ts (unit-tested);
+// re-exported here so existing imports keep working. When regenTarget is provided it
+// appends a "Regeneration Target" section with neighbor context for single_card scope.
 // ---------------------------------------------------------------------------
 
-export type RegenTarget = {
-  sequence: number;
-  totalCards: number;
-  oldTitle: string;
-  prevCard: { sequence: number; title: string; content: string } | null;
-  nextCard: { sequence: number; title: string; content: string } | null;
-};
-
-// Render the lesson's developmental window for the ## Context block. Null bounds are
-// open-ended; both-null → no line (don't assert an age the lesson never recorded).
-function formatChildAge(min?: number | null, max?: number | null): string | null {
-  const hasMin = typeof min === "number";
-  const hasMax = typeof max === "number";
-  if (hasMin && hasMax) return `Child age range: ${min}–${max} months`;
-  if (hasMin) return `Child age range: ${min} months and older`;
-  if (hasMax) return `Child age range: up to ${max} months`;
-  return null;
-}
-
-export function composeUserMessage(opts: {
-  scope: string | null;
-  toneContent: string;
-  structureContent: string;
-  cardPositionsContent?: string;   // per-position card rules — sits BETWEEN structure and length
-  lengthContent: string;
-  lessonTitle: string;
-  minChildAge?: number | null;   // the lesson's developmental window — the SPECIFIC age
-  maxChildAge?: number | null;   // band for THIS lesson (voice/examples should fit it)
-  segmentName: string;
-  segmentDescription: string | null;
-  kind?: string | null;      // lessons.kind (107): 'lesson' | 'activity' — the text refers to itself correctly
-  avoid?: string;           // error-severity voice-lint bans (prevention layer)
-  guidance?: string;         // author feedback from a rejection — steers this regen
-  regenTarget?: RegenTarget;
-}): string {
-  const parts: string[] = [];
-  if (opts.scope)            parts.push(opts.scope);
-  if (opts.toneContent)      parts.push(`## Tone\n\n${opts.toneContent}`);
-  if (opts.structureContent) parts.push(`## Structure\n\n${opts.structureContent}`);
-  if (opts.cardPositionsContent) parts.push(`## Card Positions\n\n${opts.cardPositionsContent}`);
-  if (opts.lengthContent)    parts.push(`## Length\n\n${opts.lengthContent}`);
-  if (opts.avoid)            parts.push(`## Avoid\n\n${opts.avoid}`);
-  // Author feedback is authoritative — a human rejected the prior version. Placed
-  // high and stated as a directive so the model prioritizes it.
-  if (opts.guidance && opts.guidance.trim()) {
-    parts.push(`## Author Feedback (a prior version was REJECTED — apply this)\n\n${opts.guidance.trim()}`);
-  }
-
-  // The lesson's SPECIFIC age band — accurate per lesson (a toddler lesson says 24–36mo,
-  // not a global constant). Keeps age out of the reusable tone: voice belongs to the tone,
-  // the age specific belongs to the lesson. Omitted when the lesson has no bounds recorded.
-  // Context lines never show the internal word "segment" (src/lib/contentContext.ts); they say
-  // whether this is a lesson or an activity (lessons.kind, migration 107).
-  const ctx = contentContextLines({
-    lessonTitle: opts.lessonTitle,
-    ageLine: formatChildAge(opts.minChildAge, opts.maxChildAge),
-    kind: opts.kind,
-    segmentName: opts.segmentName,
-    segmentDescription: opts.segmentDescription,
-  });
-  parts.push(`## Context\n\n${ctx.join("\n")}`);
-
-  if (opts.regenTarget) {
-    const { sequence, totalCards, oldTitle, prevCard, nextCard } = opts.regenTarget;
-    const neighborLines: string[] = [];
-
-    if (prevCard) {
-      neighborLines.push(
-        `**Card ${prevCard.sequence} (before target) — "${prevCard.title}":**\n${prevCard.content}`
-      );
-    }
-    if (nextCard) {
-      neighborLines.push(
-        `**Card ${nextCard.sequence} (after target) — "${nextCard.title}":**\n${nextCard.content}`
-      );
-    }
-
-    const neighborBlock = neighborLines.length > 0
-      ? `\nNeighboring cards (do NOT repeat their content):\n\n${neighborLines.join("\n\n")}`
-      : "";
-
-    parts.push(
-      `## Regeneration Target\n\nRegenerate ONLY card ${sequence} of ${totalCards} (currently titled "${oldTitle}").` +
-      `\nOutput a \`cards\` array containing exactly ONE card.` +
-      `\nThe replacement must fit coherently into the arc at this position.` +
-      neighborBlock
-    );
-  }
-
-  return parts.join("\n\n");
-}
+export { composeUserMessage, type RegenTarget } from "../../lib/segmentPrompt";
 
 // ---------------------------------------------------------------------------
 // Shared generation core (exported for regen handler)
@@ -277,6 +189,8 @@ type Input = {
   seg_id: string;
   tone_id: string;         // prompts.id of the segment tone (stable; not the display name)
   generate_quiz?: boolean; // if true, generate quiz after cards using the same correlationId
+  use_source_documents?: boolean; // if true, the lesson's linked source documents go into the
+                                  // prompt (informed grounding). Zero linked docs → fails legibly.
 };
 
 // Thin job wrapper. Core logic is generateSegmentContent (below), exported so the
@@ -289,7 +203,7 @@ export async function generateSegmentContentHandler(job: Job): Promise<unknown> 
 // a fresh uuid (standalone job); the batch passes its own so a whole run is one
 // provenance thread. Throws on any failure (the batch records + continues).
 export async function generateSegmentContent(input: Input & { correlationId?: string }) {
-  const { seg_id, tone_id, generate_quiz: alsoGenerateQuiz = false } = input;
+  const { seg_id, tone_id, generate_quiz: alsoGenerateQuiz = false, use_source_documents: useDocs = false } = input;
   if (!seg_id)  throw new Error("input.seg_id is required");
   if (!tone_id) throw new Error("input.tone_id is required");
 
@@ -310,6 +224,9 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     .eq("id", segment.lesson_id)
     .single();
   if (lessonErr || !lesson) throw new Error(`Lesson not found for segment ${seg_id}`);
+
+  // Grounding (optional): load + guard BEFORE any LLM spend or destructive step.
+  const groundingDocs: SourceDoc[] | null = useDocs ? await loadDocsForGrounding(lesson.id) : null;
 
   // Step 2 — load prompt row + blocks in parallel
   const promptRow = await loadSegmentPromptRowById(tone_id);
@@ -336,6 +253,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     segmentDescription: segment.description ?? null,
     kind:               (lesson as { kind?: string | null }).kind ?? null,
     avoid:              await loadPromptBanInstruction(),
+    referenceDocuments: groundingDocs ? renderReferenceDocuments(groundingDocs) : undefined,
   });
 
   // Step 4 — generate (withRetry lives inside the provider)
@@ -347,7 +265,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     operation:         "segment_content",
     relatedEntityType: "segment",
     relatedEntityId:   seg_id,
-    notes:             `tone: ${promptRow.tone ?? tone_id} (${tone_id})`,
+    notes:             `tone: ${promptRow.tone ?? tone_id} (${tone_id})` + (groundingDocs ? `, ${groundingNote(groundingDocs)}` : ""),
     blocks: {
       tone:           promptRow.tone_block_id,
       structure:      promptRow.structure_block_id,
@@ -401,6 +319,8 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     model,
     finish_reason:         finishReason,
     lint,
+    correlation_id:        correlationId,
+    ...(groundingDocs && { grounding: groundingSnapshot(groundingDocs) }),
     ...(quizResult && { quiz: quizResult }),
   };
 }

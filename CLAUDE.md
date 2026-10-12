@@ -74,9 +74,10 @@ is code the developer owns and can read, version, and debug. This is non-negotia
 - Express + TypeScript, deployed on Render (paid Starter tier — must stay warm, not
   the free spin-down tier, because in-process jobs would be orphaned on sleep).
 - Supabase: Postgres (data) + Storage (image files). Two projects: **Moosii** (live catalog,
-  PG 15) and **financial** (PG 17, built from a Moosii schema dump; no content, no prompt rows and
-  no auth users yet — so DB-composed prompt jobs fail there until it gets its own content). The
-  backend uses the SERVICE-ROLE key and intentionally bypasses RLS.
+  PG 15) and **financial** (PG 17, built from a Moosii schema dump). Financial's content, prompt
+  rows and admin/demo users come only from FINANCIAL ONLY migrations (084–089 onward); a schema
+  dump never carries them, and it has no source documents yet. The backend uses the SERVICE-ROLE
+  key and intentionally bypasses RLS.
 - Build: `npm install && npm run build`; start: `npm start`; tests: `npm test` (new test files
   must be added to the `test` script in `package.json`). Render injects PORT.
 - Auto-deploys on push to `master` (the repo's only/default branch).
@@ -127,7 +128,9 @@ LLM access is a GENERAL primitive: `getLLMClient(provider)` where provider is
 'gemini' | 'openai' | 'anthropic' — NOT a single getConfiguredLLM(), because a
 cross-model pipeline needs MULTIPLE providers simultaneously.
 - DB-composed callers derive the provider FROM the row's model (`providerForModel`), never
-  choose them independently.
+  choose them independently. **Known exception:** segment content (`callAndParseCards`) and quiz
+  still hardcode `getLLMClient("openai")`. This is latent while those rows are `gpt-*`; don't
+  point a segment or quiz row at another provider until it's fixed (backlog P2).
 - Interface shape: generate(instructions, input) -> { text, raw, model, version }.
 - `ImageGenerator` stays a SEPARATE interface (prompt -> image bytes).
 Gemini (text) and OpenAI are implemented; **Anthropic throws "not yet implemented"**
@@ -168,8 +171,14 @@ Segment content composes its prompt from the DB, not files. A "tone" = one segme
 (NOT the editable display name). Layers: VOICE (per-tone block, `/tones`); STRUCTURE
 (reusable library, `/structure-blocks`); SIZE (`content_size_profiles`, `/size-profiles`);
 CARD POSITIONS (shared singleton, `/card-positions`); TECHNICAL (system_message, scope,
-output_schema — not user-editable). `regen_segment_content` supports per-run overrides of any
+output_schema — not user-editable). ONE composer renders all of it for every content path
+(`src/lib/segmentPrompt.ts`, golden-tested): scope → Tone → Structure → Card Positions → Length →
+Avoid → Author Feedback → Context → Reference Documents → Regeneration Target. `regen_segment_content` supports per-run overrides of any
 editable layer without changing the tone, plus an optional `generate_quiz` (always REPLACES).
+REFERENCE DOCUMENTS (optional, `use_source_documents` on generate/regen): the lesson's linked
+`source_documents` go in under a code-owned "informed" framing (no doc ids, no authority note);
+zero docs or more than 200k chars fails before the LLM call; provenance is `jobs.result.grounding`, not
+stamped on cards. The `doc_grounded` review remains the separate after-the-fact check.
 A deterministic voice LINT (`voice_lint_rules` + `src/lib/voiceLint.ts`) flags AI-tells into
 `jobs.result.lint` (advisory; never blocks). The CMS manages these admin tables through the
 API, not direct Supabase writes. Sanctioned CMS-direct write paths are listed in
