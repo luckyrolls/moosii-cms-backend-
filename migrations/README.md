@@ -554,6 +554,8 @@ Main track:
   md5 `17d937caf1097e817e047e9980d12b8b` (541 chars, LF). `app_settings` row `grounding_max_chars = '30000'` +
   CHECK `app_settings_grounding_max_chars_valid` (positive integer). `ON CONFLICT DO NOTHING` for both rows (a rerun
   never overwrites an edit). card_positions untouched. Code (`use_source_documents`) fails legibly without these rows.
+  The header quotes each project's live review `SPECIFIC-BUT-UNSUPPORTED` rule with its row id and system_message md5
+  (drift watch). Known gap: financial's review names legal/tax/credit-score claims, but the block says safety/medical.
   Tested 2026-10-12 on a throwaway local PG 17 cluster restored from Moosii's `prompt_blocks` + `app_settings`:
   apply, rerun = no-op, card_positions md5 `b217089d…` unchanged, `'30k'` → 23514, block_type `'bogus'` → 23514.
 Prompt track:

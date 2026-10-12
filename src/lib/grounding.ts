@@ -55,15 +55,18 @@ export function parseGroundingMaxChars(value: string | null | undefined): number
 // Zero-docs and size checks for GENERATION (the review has no cap). Throws legibly, before
 // any LLM call or destructive step. Never truncates: a cut document would make "informed
 // by doc X" false.
-export function checkGroundingDocs<T extends { body: string }>(lessonId: string, docs: T[], maxChars: number): T[] {
+export function checkGroundingDocs<T extends { id: string; name: string; body: string }>(lessonId: string, docs: T[], maxChars: number): T[] {
   if (docs.length === 0) {
     throw new Error(`No source documents linked to lesson ${lessonId} — link at least one or turn off use_source_documents.`);
   }
   const total = docs.reduce((n, d) => n + (d.body ?? "").length, 0);
   if (total > maxChars) {
+    // Name every document and its size so the editor knows what to unlink or shorten.
+    const sizes = docs.map((d) => `"${d.name}" (${d.id}): ${(d.body ?? "").length}`).join("; ");
     throw new Error(
       `Linked source documents for lesson ${lessonId} total ${total} characters, over the ${maxChars} limit ` +
-      `(app_settings.${GROUNDING_MAX_CHARS_KEY}) — unlink or shorten a document, or turn off use_source_documents.`
+      `(app_settings.${GROUNDING_MAX_CHARS_KEY}) — ${sizes}. Nothing was truncated or sent; unlink or shorten a ` +
+      `document, or turn off use_source_documents.`
     );
   }
   return docs;

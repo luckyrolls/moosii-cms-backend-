@@ -15,6 +15,23 @@
 --      same immutable-name rule as card_positions. It is NOT referenced from `prompts` (grounding depends
 --      on the lesson's docs, not on the tone). The card_positions block is NOT touched.
 --      The specifics rule mirrors the doc_grounded review, which flags unsupported specifics.
+--
+--      ⚠ DRIFT WATCH — keep the block's specifics rule and the review's matching rule in step. The
+--      review rule as LIVE on 2026-10-12 (active prompts row prompt_type='review_doc_grounded', model
+--      gemini-2.5-flash; quoted verbatim from system_message):
+--        MOOSII  row b5c7e5c9-5f0b-4002-b93c-89dec5e03ef8, system_message md5 1c4a2f4b7af0efc486cf1416833df8af (CRLF):
+--          "- SPECIFIC-BUT-UNSUPPORTED — a confident specific claim (a statistic, a precise number, a named
+--          guideline/threshold, a strong causal or medical assertion) that has NO provenance in ANY linked
+--          document. (kind="unsupported", severity="warning", source_passage="no passage found"). Do NOT flag
+--          ordinary supportive, emotional, or general prose — only confident SPECIFICS that assert fact."
+--        FINANCIAL row f0890000-0000-4000-8000-000000000404 (089), md5 e33b135c476c0e50a76d97ee18bb6caa (LF):
+--          "- SPECIFIC-BUT-UNSUPPORTED — a confident specific claim (a statistic, a precise number, a named rule
+--          or threshold, a strong causal, legal, tax or credit-score assertion) that has NO provenance in ANY
+--          linked document. (kind="unsupported", severity="warning", source_passage="no passage found"). Do NOT
+--          flag ordinary supportive or general prose — only confident SPECIFICS that assert fact."
+--      Known gap at seed time: this block names "strong safety or medical claims" on BOTH projects; financial's
+--      review rule names legal, tax and credit-score assertions instead. If either md5 above changes, re-read
+--      both rules before trusting the pair.
 --   3. app_settings 'grounding_max_chars' = '30000': the total body characters across a lesson's linked
 --      documents that a GROUNDED GENERATION may carry. The doc_grounded review has NO cap and never reads
 --      this. A CHECK keeps the value a positive integer (structural, per invariant 3).

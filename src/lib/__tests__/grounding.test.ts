@@ -46,6 +46,27 @@ test("the seeded 30,000 cap: exactly 30,000 passes, 30,001 fails (never truncate
   assert.throws(() => checkGroundingDocs("L1", at, parseGroundingMaxChars("29999")), /over the 29999 limit/);
 });
 
+test("over the cap fails naming every document and its size, and never truncates", () => {
+  const docs = [doc("id-a", "NIH Safe to Sleep", "x".repeat(25_000)), doc("id-b", "AAP Policy", "y".repeat(5_001))];
+  const before = docs.map((d) => d.body);
+  let msg = "";
+  let returned: unknown = "not set";
+  try { returned = checkGroundingDocs("L9", docs, parseGroundingMaxChars("30000")); } catch (e) { msg = (e as Error).message; }
+  assert.equal(returned, "not set", "nothing is returned over the cap: no partial or truncated list");
+  assert.match(msg, /lesson L9 total 30001 characters, over the 30000 limit/);
+  assert.match(msg, /"NIH Safe to Sleep" \(id-a\): 25000/);
+  assert.match(msg, /"AAP Policy" \(id-b\): 5001/);
+  assert.match(msg, /Nothing was truncated or sent/);
+  assert.deepEqual(docs.map((d) => d.body), before, "document bodies untouched");
+  assert.equal(docs.length, 2);
+});
+
+test("under the cap every body is returned whole", () => {
+  const docs = [doc("a", "A", "x".repeat(29_999)), doc("b", "B", "y")];
+  const out = checkGroundingDocs("L1", docs, 30000);
+  assert.deepEqual(out.map((d) => d.body.length), [29_999, 1]);
+});
+
 test("zero linked docs fails legibly, naming the lesson and the option", () => {
   assert.throws(() => checkGroundingDocs("L1", [], 30000), /No source documents linked to lesson L1 .*use_source_documents/);
 });

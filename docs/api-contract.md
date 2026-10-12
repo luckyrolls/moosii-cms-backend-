@@ -479,8 +479,9 @@ All of these **fail before any LLM call or content change** (`src/lib/sourceDocu
 - zero linked docs: `No source documents linked to lesson <id> — link at least one or turn off use_source_documents.`
 - **over the cap:** linked bodies total more than `app_settings.grounding_max_chars`
   (seeded **30000**; a CHECK keeps it a positive integer): `Linked source documents for
-  lesson <id> total N characters, over the 30000 limit (app_settings.grounding_max_chars) — …`.
-  Never truncated, because a cut doc would make "informed by" false. **Generation only:** the
+  lesson <id> total N characters, over the 30000 limit (app_settings.grounding_max_chars) — "<name>" (<id>): <chars>;
+  … Nothing was truncated or sent; …`. Every linked document and its size is named. Never
+  truncated, because a cut doc would make "informed by" false. **Generation only:** the
   doc_grounded review has no cap (test `reviewPrompt.test.ts`).
 - **Provenance:** `jobs.result.grounding = { documents: [{ id, name, version_label, chars }] }`
   (version copied at generation time, the same staleness model as
