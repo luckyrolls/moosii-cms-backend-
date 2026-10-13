@@ -33,13 +33,13 @@ Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real 
 projects 2026-09-26). Both are guarded by `is_admin()`, so anon EXECUTE is inert; revoke anon, keep
 authenticated (the CMS calls them).
 
-### Lock `user.moosies` against client writes (after the moosii-rn award slice)
-**Why:** migration 111 made the `completed_items` trigger the only award path, but `user_self_update` still lets a
-signed-in user UPDATE their own `user` row, `moosies` included. moosii-rn writes it today (`useAwardMoosies`,
-`useFinishQuestionnaire`), so it can't be revoked until that slice lands.
-**What:** once RN stops awarding, a migration that `REVOKE UPDATE (moosies) ON public."user" FROM authenticated`
-(column-level; keep the other self-update columns) — or a BEFORE UPDATE guard — on both projects. Check the CMS and
-the reader don't write it (neither does today).
+### `"user"`: drop the open INSERT policy
+**Why:** besides the own-row `user_self_insert`, `"user"` carries `"Enable insert for authenticated users only"`
+`WITH CHECK (true)` (both projects). Policies OR together, so any signed-in user can insert a `"user"` row for ANOTHER
+auth uid that has none yet (squatting that user's profile and its email under `user_email_key`). Since 112 only the
+four onboarding columns are insertable, so no role / moosies escalation — but the squat remains. Found 2026-10-13 (F32).
+**What:** drop that policy on both projects (RN's onboarding insert is own-row and stays covered by
+`user_self_insert`); rolled-back persona check like 105.
 
 ## P2
 

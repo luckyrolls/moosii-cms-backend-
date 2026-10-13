@@ -2075,12 +2075,17 @@ backend must preserve and the frontend leans on:
   (the reader) has column SELECT on `kind`. Completing an activity is the same `completed_items` write as a
   lesson, and pays **0 Moosies** (migration 111; activity awards are reserved for the follow-up slice). Design and
   later verification (fact transitions / check-ins): FINDINGS-activities.md, FINDINGS-activity-followups.md.
-- **Moosies — ONE server-side award path (migration 111). Clients must NOT award Moosies.** Never write
-  `user.moosies` and never insert `moosie_awards`; write the completion and read the balance back. The
+- **Moosies — ONE server-side award path (migrations 111–112). Clients must NOT award Moosies.** `user.moosies` is
+  **server-written only**: since 112 a signed-in client has no UPDATE or INSERT privilege on that column (42501), and
+  nobody but the trigger / service role inserts `moosie_awards`. Write the completion and read the balance back. The
   `completed_items` AFTER INSERT trigger `trigger_add_moosies()` (SECURITY DEFINER) pays every award:
   - **amount:** lesson → `lessons.points`, but **0 when `lessons.kind = 'activity'`**; questionnaire →
     `questionnaire.points`; **`user_configurations.moosi_to_add` only when the item has no points** (NULL);
     no config → 0; never negative.
+  - **A diagnostic pays once (112, F33):** a `questionnaire.kind = 'diagnostic'` pays only on the user's FIRST
+    completion of it; any later completion row for the same user + questionnaire pays **0** and still writes its ledger
+    row (audit). Concurrent first completions are serialized by a per-(user, questionnaire) advisory lock, so a race
+    can't pay twice. **`kind = 'checkin'` pays on every completion row.** Lessons / activities: unchanged.
   - **ledger `moosie_awards`:** `id uuid`, `user_id` (FK `public."user"`, ON DELETE CASCADE), `amount int >= 0`,
     `reason` (`'completion'` | `'activity_did_it'` | `'activity_verified'` — the two activity reasons are RESERVED:
     allowed, written by nothing yet), `source_id text`, `created_at`. **`UNIQUE (reason, source_id)`**: a source pays
@@ -2093,9 +2098,15 @@ backend must preserve and the frontend leans on:
     second completion of the same lesson fails **23505** (the RN app checks for an existing row first; only a race
     hits it, and the caller should treat 23505 as "already completed").
   - RLS: a signed-in user reads **their own** ledger rows (admins all); nobody but the trigger / service role writes.
-  - Balances were reset to 0 and the ledger started empty when 111 was applied (no real users).
-  - ⚠ Until moosii-rn's own slice lands, the app still adds `points` client-side on top (`useAwardMoosies`,
-    `useFinishQuestionnaire`); that client award is the one to delete.
+  - Balances were reset to 0 and the ledger started empty when 111 was applied (no real users). moosii-rn stopped
+    awarding client-side in `b744b4f`.
+- **`"user"` — what a signed-in client may write (migration 112, F32; column-level grants).** UPDATE: `display_name`,
+  `name`, `gender`, `parenting_status`, `financials`, `birth_date`, `onboarding_complete`, `has_seen_mlp_intro`,
+  `has_seen_lesson_intro`, `has_seen_questionnaire_intro`. INSERT (onboarding, own row): `id`, `email`,
+  `daily_reminder_time`, `onboarding_complete`. **Everything else — `moosies`, `role`, `can_review_editorial`,
+  `can_approve_clinical`, `is_verified`, `email` (update), notification settings, … — fails 42501** for `authenticated`;
+  anon writes nothing. RLS still scopes writes to the user's own row. A new client write to another column needs a
+  migration that grants it. The backend (service role) and the SECURITY DEFINER functions are unaffected.
 - **`jobs`:** `id`, `type` (text), `status` (text, default `queued`),
   `input jsonb` (NOT NULL `{}`), `result jsonb`, `error jsonb`, `created_at`,
   `started_at`, `finished_at`. Generic + self-describing — one job table for all

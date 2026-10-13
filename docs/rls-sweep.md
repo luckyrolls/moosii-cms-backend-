@@ -142,8 +142,13 @@ only their own `user_lesson_progress` rows (no CMS caller reads it).
 |---|---|---|
 | `moosie_awards` | RLS on; `moosie_awards_sel`: own `user_id` or `is_admin()` (authenticated); **no write policy, no write grant** to anon / authenticated; anon nothing | written only by `trigger_add_moosies()` (SECURITY DEFINER, EXECUTE revoked from PUBLIC / anon / authenticated) and the service role |
 
-`user.moosies` is still client-writable through `user_self_update` until the moosii-rn award slice lands
-(`docs/backlog.md` P1).
+## `"user"` — column-level write grants (migration 112, both projects)
+
+RLS (`user_self_update` / `user_self_insert`, own row) was the only limit on what a signed-in user could write to their
+own row — every column, `role` and `can_approve_clinical` included. 112 adds the column layer: `authenticated` lost
+table-level INSERT/UPDATE and holds UPDATE on exactly the 10 columns the clients write and INSERT on the 4 onboarding
+columns (list: `docs/api-contract.md` §5); anon lost INSERT/UPDATE. `user.moosies` is server-written only. Still
+open: the INSERT policy `"Enable insert for authenticated users only"` `WITH CHECK (true)` (`docs/backlog.md` P1).
 
 ## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
 

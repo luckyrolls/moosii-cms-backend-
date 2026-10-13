@@ -603,6 +603,19 @@ Main track:
   RLS + policy, grants, partial unique index), balances 0, ledger 0; `verify.sql` live (rolled back, a lesson flipped to
   activity inside the transaction, real check-in) all PASS; after: balances 0, ledger 0, completions 6.
   `database.types.ts` regenerated (adds `moosie_awards`; no bridge to drop).
+- **112 — lock `"user".moosies` (F32) + diagnostics pay once (F33)** — **DRAFT (pending apply).**
+  BOTH PROJECTS, grants + trigger. `trigger_add_moosies()` (same name/ACL; hash-guarded 111 `10d3d5de…` → `09d509d0…`):
+  a `kind='diagnostic'` questionnaire pays only on the user's first completion (later rows amount 0, ledger row kept),
+  serialized by a per-(user, questionnaire) `pg_advisory_xact_lock`; check-ins pay every row; lessons/activities
+  unchanged. `"user"`: table-level INSERT/UPDATE revoked from anon + authenticated; authenticated re-granted UPDATE on
+  the 10 client-written columns and INSERT on the 4 onboarding columns (inventory in the file header: moosii-rn
+  b744b4f, moosii-cms b99c82a, moosii-reader 337f0d6; no client writes moosies). Also closes self-writes of `role` /
+  `can_review_editorial` / `can_approve_clinical`. No new objects → `database.types.ts` unchanged.
+  Tested 2026-10-13 on the local PG 17 cluster from 111 (schema-only Moosii restore + 111): apply, re-run = no-op,
+  `docs/drafts/112-moosies-lock/verify.sql` all PASS (diagnostic 7 → 0 → 0 with ledger rows, check-in 7 + 7,
+  authenticated UPDATE of moosies / role / can_* / is_verified / email → 42501, each of the 10 columns → 1 row, app
+  completion still +5); guard refuses a foreign trigger body with grants untouched; `npm test` with
+  `MOOSIE_TEST_DB_URL` 227/227 (incl. a two-connection race: one diagnostic pays once).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
