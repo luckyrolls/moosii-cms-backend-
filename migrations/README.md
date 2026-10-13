@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 111 · Moosii 110** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..110; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 111 · Moosii 111** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..111; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -573,7 +573,7 @@ Main track:
   `17d937caf1097e817e047e9980d12b8b`, safety/medical wording), card_positions md5 `b217089d…` unchanged, cap 30000,
   `'30k'` → 23514. End-to-end read-only: `loadGrounding` on b31254cd returns the block + 1 doc (1252 chars) and the
   rendered section carries no doc id.
-- **111 — Moosies: one server-side award path (F28) + lesson-completion unique key (F29)** — **APPLIED financial (2026-10-13) · Moosii pending.**
+- **111 — Moosies: one server-side award path (F28) + lesson-completion unique key (F29)** — **APPLIED financial (2026-10-13) · APPLIED Moosii (2026-10-13).**
   BOTH PROJECTS, schema + trigger + one-time data reset. New ledger `moosie_awards` (`UNIQUE (reason, source_id)`;
   `source_id text`, since `completed_items.id` is a bigint identity; CHECKs on amount >= 0, reason, source shape; RLS
   own/admin read, no client write). `trigger_add_moosies()` rewritten (same name; SECURITY DEFINER, search_path pinned,
@@ -596,6 +596,13 @@ Main track:
   0, ledger 0; `verify.sql` live (rolled back, check-in fixture, real activity "Set a Statement-Date Reminder") all PASS;
   after: balances 0, ledger 0, completions 1. Sam's seeded orientation completion predates the ledger, so it has no
   award row and Sam's balance is 0.
+  Moosii 2026-10-13: identity (sysid 7481590244898220655, domain moosii, PG 15.8); pre-check no ledger, md5 `2121c7c6…`,
+  0 duplicate groups, balances 171 over 6 users, 6 completions; dry run (rolled back) → ledger, md5 `10d3d5de…`,
+  search_path `public, pg_temp`, balances 0, then live state unchanged (171); apply OK; verify: same structure as
+  financial (SECURITY DEFINER, `search_path=public, pg_temp`, EXECUTE only service_role, trigger bound, 6 constraints,
+  RLS + policy, grants, partial unique index), balances 0, ledger 0; `verify.sql` live (rolled back, a lesson flipped to
+  activity inside the transaction, real check-in) all PASS; after: balances 0, ledger 0, completions 6.
+  `database.types.ts` regenerated (adds `moosie_awards`; no bridge to drop).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

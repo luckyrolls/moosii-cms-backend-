@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+    PostgrestVersion: "12.2.3"
   }
   public: {
     Tables: {
@@ -2483,6 +2483,55 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      moosie_awards: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          reason: string
+          source_id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          reason: string
+          source_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          reason?: string
+          source_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "moosie_awards_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "suggested_groups"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "moosie_awards_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moosie_awards_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_mlp_data"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       new_user_tracks: {
         Row: {
