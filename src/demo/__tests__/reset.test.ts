@@ -1,7 +1,7 @@
-// Demo reset (pure half): argument parsing, seed protection, persona scoping, moosies. Run: `npm test`.
+// Demo reset (pure half): argument parsing, seed protection, persona scoping, moosies (ledger, migration 111). Run: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset, DEMO_PERSONAS, SAM_ORIENTATION_LESSON } from "../reset";
+import { parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset, DEMO_PERSONAS, RESET_TABLES, SAM_ORIENTATION_LESSON } from "../reset";
 
 const SAM = DEMO_PERSONAS.sam;
 const SARAH = DEMO_PERSONAS.sarah;
@@ -34,8 +34,26 @@ test("rowsToDelete: every persona row except the seed, and never another user's 
   assert.deepEqual(rowsToDelete("completed_items", rows).map((r) => r.id), [2, 3]);
 });
 
-test("moosies are recomputed from the completions that remain; no config leaves them alone", () => {
-  assert.equal(moosiesAfterReset(1, 10), 10);   // Sam: the seed only
-  assert.equal(moosiesAfterReset(0, 10), 0);    // Sarah
-  assert.equal(moosiesAfterReset(3, null), null);
+test("moosie_awards: the award Sam's protected seed completion paid is kept; every other persona award goes", () => {
+  const seedIds = new Set(["101"]);
+  const rows = [
+    { id: "a1", user_id: SAM, reason: "completion", source_id: "101", amount: 5 },   // the seed completion's award
+    { id: "a2", user_id: SAM, reason: "completion", source_id: "102", amount: 5 },
+    { id: "a3", user_id: SARAH, reason: "completion", source_id: "101", amount: 5 }, // same source id, other persona
+    { id: "a4", user_id: OTHER, reason: "completion", source_id: "103", amount: 5 }, // never another user's row
+  ];
+  assert.deepEqual(rowsToDelete("moosie_awards", rows, seedIds).map((r) => r.id), ["a2", "a3"]);
+  assert.deepEqual(rowsToDelete("moosie_awards", rows).map((r) => r.id), ["a1", "a2", "a3"]);  // no seed ids → nothing kept
+  assert.ok(!isProtectedSeed("moosie_awards", { id: "a5", user_id: SAM, reason: "activity_did_it", source_id: "101" }, seedIds));
+});
+
+test("RESET_TABLES clears moosie_awards, after completed_items (the seed's completion id is learned there first)", () => {
+  assert.ok(RESET_TABLES.includes("moosie_awards"));
+  assert.ok(RESET_TABLES.indexOf("completed_items") < RESET_TABLES.indexOf("moosie_awards"));
+});
+
+test("moosies after a reset = the sum of the awards that remain", () => {
+  assert.equal(moosiesAfterReset([5]), 5);     // Sam: the seed's award only
+  assert.equal(moosiesAfterReset([]), 0);      // Sarah
+  assert.equal(moosiesAfterReset([5, 0, 7]), 12);
 });

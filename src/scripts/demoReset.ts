@@ -1,13 +1,13 @@
 import "dotenv/config";
 import { Client } from "pg";
 import {
-  DEMO_PERSONAS, RESET_TABLES, SELECT_COLUMNS, parseArgs, rowsToDelete, moosiesAfterReset,
+  DEMO_PERSONAS, RESET_TABLES, SELECT_COLUMNS, parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset,
   type DemoPersona, type Row,
 } from "../demo/reset";
 
 // npm run demo:reset [-- --go]   (FINANCIAL ONLY)
 // Returns Sam and Sarah to their pre-demo state: deletes their per-user progress rows (RESET_TABLES) except
-// Sam's seeded orientation completion, recomputes user.moosies from what remains, resets has_seen_mlp_intro,
+// Sam's seeded orientation completion, recomputes user.moosies from the moosie_awards that remain, resets has_seen_mlp_intro,
 // then asks the financial service to rebuild both plans. Dry run unless --go. Rules: src/demo/reset.ts.
 // Connects with FINANCIAL_DB_URL (never SUPABASE_URL, which may point at Moosii) in ONE transaction, and
 // refuses unless that database is the financial project (app_settings.domain + system identifier).
@@ -54,10 +54,17 @@ async function main(): Promise<void> {
 
     console.log(`\n${args.go ? "APPLY" : "DRY RUN"} — personas: sam, sarah\n`);
     console.log(`${"table".padEnd(30)} ${"before".padStart(6)} ${"delete".padStart(6)} ${"keep".padStart(5)}`);
+    if ((await pg.query(`SELECT to_regclass('public.moosie_awards') AS t`)).rows[0].t === null) {
+      fail("public.moosie_awards does not exist — apply migration 111 first");
+    }
     const plan: { table: (typeof RESET_TABLES)[number]; del: Row[] }[] = [];
+    const protectedCompletionIds = new Set<string>();
     for (const table of RESET_TABLES) {
       const rows = await read(table);
-      const del = rowsToDelete(table, rows);
+      if (table === "completed_items") {
+        for (const r of rows) if (isProtectedSeed(table, r)) protectedCompletionIds.add(String(r.id));
+      }
+      const del = rowsToDelete(table, rows, protectedCompletionIds);
       plan.push({ table, del });
       console.log(`${table.padEnd(30)} ${String(rows.length).padStart(6)} ${String(del.length).padStart(6)} ${String(rows.length - del.length).padStart(5)}`);
       if (del.length) {
@@ -67,17 +74,16 @@ async function main(): Promise<void> {
       }
     }
 
-    // Moosies (recomputed from the completions that remain) + the plan-intro flag.
+    // Moosies (the sum of the awards that remain) + the plan-intro flag.
     console.log("");
     const users = await pg.query(
-      `SELECT u.id, u.moosies, u.has_seen_mlp_intro, c.moosi_to_add,
-              (SELECT count(*)::int FROM public.completed_items ci WHERE ci.user_id = u.id) AS kept
-         FROM public."user" u LEFT JOIN public.user_configurations c ON c.user_id = u.id
-        WHERE u.id = ANY($1::uuid[]) ORDER BY u.id`, [ids]);
+      `SELECT u.id, u.moosies, u.has_seen_mlp_intro,
+              coalesce((SELECT array_agg(a.amount) FROM public.moosie_awards a WHERE a.user_id = u.id), '{}') AS kept
+         FROM public."user" u WHERE u.id = ANY($1::uuid[]) ORDER BY u.id`, [ids]);
     for (const u of users.rows) {
-      const target = moosiesAfterReset(u.kept, u.moosi_to_add);
-      console.log(`user ${nameOf(u.id).padEnd(6)} moosies ${u.moosies} → ${target ?? "(unchanged, no config)"}   has_seen_mlp_intro ${u.has_seen_mlp_intro} → false`);
-      await pg.query(`UPDATE public."user" SET has_seen_mlp_intro = false, moosies = coalesce($2, moosies) WHERE id = $1`, [u.id, target]);
+      const target = moosiesAfterReset((u.kept as number[]).map(Number));
+      console.log(`user ${nameOf(u.id).padEnd(6)} moosies ${u.moosies} → ${target}   has_seen_mlp_intro ${u.has_seen_mlp_intro} → false`);
+      await pg.query(`UPDATE public."user" SET has_seen_mlp_intro = false, moosies = $2 WHERE id = $1`, [u.id, target]);
     }
 
     console.log(`\nAFTER`);

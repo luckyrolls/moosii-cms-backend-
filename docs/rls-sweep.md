@@ -136,6 +136,15 @@ user (RN parent, demo reader session) can now insert and read **only their own**
 role keep full access; `is_admin()` still reads every `completed_items` row (CMS views over it). A plain admin reads
 only their own `user_lesson_progress` rows (no CMS caller reads it).
 
+## Moosies ledger — read own, write none (migration 111, both projects)
+
+| Table | Posture | Note |
+|---|---|---|
+| `moosie_awards` | RLS on; `moosie_awards_sel`: own `user_id` or `is_admin()` (authenticated); **no write policy, no write grant** to anon / authenticated; anon nothing | written only by `trigger_add_moosies()` (SECURITY DEFINER, EXECUTE revoked from PUBLIC / anon / authenticated) and the service role |
+
+`user.moosies` is still client-writable through `user_self_update` until the moosii-rn award slice lands
+(`docs/backlog.md` P1).
+
 ## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
 
 The active-tracks views (`user_active_tracks`, `user_active_tracks_with_reason`, `user_mlp_data`,

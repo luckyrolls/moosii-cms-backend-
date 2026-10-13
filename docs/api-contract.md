@@ -2073,7 +2073,29 @@ backend must preserve and the frontend leans on:
   description they already fetch for plan items) to show a "Do" badge. `create_lessons_with_segments`
   accepts an optional `kind` per stub (absent → `'lesson'`); generated stubs stay `'lesson'`. Financial anon
   (the reader) has column SELECT on `kind`. Completing an activity is the same `completed_items` write as a
-  lesson. Design and later verification (fact transitions / check-ins): FINDINGS-activities.md.
+  lesson, and pays **0 Moosies** (migration 111; activity awards are reserved for the follow-up slice). Design and
+  later verification (fact transitions / check-ins): FINDINGS-activities.md, FINDINGS-activity-followups.md.
+- **Moosies — ONE server-side award path (migration 111). Clients must NOT award Moosies.** Never write
+  `user.moosies` and never insert `moosie_awards`; write the completion and read the balance back. The
+  `completed_items` AFTER INSERT trigger `trigger_add_moosies()` (SECURITY DEFINER) pays every award:
+  - **amount:** lesson → `lessons.points`, but **0 when `lessons.kind = 'activity'`**; questionnaire →
+    `questionnaire.points`; **`user_configurations.moosi_to_add` only when the item has no points** (NULL);
+    no config → 0; never negative.
+  - **ledger `moosie_awards`:** `id uuid`, `user_id` (FK `public."user"`, ON DELETE CASCADE), `amount int >= 0`,
+    `reason` (`'completion'` | `'activity_did_it'` | `'activity_verified'` — the two activity reasons are RESERVED:
+    allowed, written by nothing yet), `source_id text`, `created_at`. **`UNIQUE (reason, source_id)`**: a source pays
+    at most once. For `'completion'`, `source_id` = `completed_items.id` as text (a BIGINT identity, hence `text`, not
+    `uuid`; CHECK `moosie_awards_source_shape` pins decimal ids for completions and uuids for the activity reasons).
+  - The ledger row is inserted `ON CONFLICT DO NOTHING`; **`user.moosies` moves only if it was inserted**, in the same
+    transaction as the completion. `user.moosies` = the running balance of the user's ledger rows.
+  - A **recurring check-in pays on every new completion row** (each row is a new source). A lesson pays once:
+    **`completed_items_user_lesson_unique`** = `UNIQUE (user_id, lesson_id) WHERE item_type = 'lesson'` (F29), so a
+    second completion of the same lesson fails **23505** (the RN app checks for an existing row first; only a race
+    hits it, and the caller should treat 23505 as "already completed").
+  - RLS: a signed-in user reads **their own** ledger rows (admins all); nobody but the trigger / service role writes.
+  - Balances were reset to 0 and the ledger started empty when 111 was applied (no real users).
+  - ⚠ Until moosii-rn's own slice lands, the app still adds `points` client-side on top (`useAwardMoosies`,
+    `useFinishQuestionnaire`); that client award is the one to delete.
 - **`jobs`:** `id`, `type` (text), `status` (text, default `queued`),
   `input jsonb` (NOT NULL `{}`), `result jsonb`, `error jsonb`, `created_at`,
   `started_at`, `finished_at`. Generic + self-describing — one job table for all

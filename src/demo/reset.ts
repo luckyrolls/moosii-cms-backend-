@@ -1,6 +1,7 @@
 // Demo reset — the PURE half of `npm run demo:reset` (scripts/demoReset.ts does the I/O). Returns the demo
 // personas to their pre-demo state on FINANCIAL: deletes the per-user progress a demo session writes, keeps
-// Sam's seeded orientation completion (FINDINGS-demo-personas, "Seeded completion"), recomputes moosies.
+// Sam's seeded orientation completion (FINDINGS-demo-personas, "Seeded completion"), recomputes moosies from the
+// award ledger (moosie_awards, migration 111).
 // Never touched: user_facts, demo_outcome_series, user_configurations, audits, any other user.
 
 export const DEMO_PERSONAS = {
@@ -12,8 +13,9 @@ export type DemoPersona = keyof typeof DEMO_PERSONAS;
 // "What the App Can See Now" — Sam's seeded (backdated) orientation completion. Kept by every reset.
 export const SAM_ORIENTATION_LESSON = "06eef3f3-c2ab-43e9-ba58-8dc52a742232";
 
-// Per-user progress/state a demo session can write (app completions, questionnaires/check-ins, classify apply).
-// Each has an `id` PK and a `user_id` column; none has a DELETE trigger.
+// Per-user progress/state a demo session can write (app completions, questionnaires/check-ins, classify apply,
+// the Moosies awards those completions paid). Each has an `id` PK and a `user_id` column; none has a DELETE trigger.
+// completed_items comes before moosie_awards: the protected seed's completion id is learned from the first.
 export const RESET_TABLES = [
   "completed_items",
   "user_lesson_progress",
@@ -22,6 +24,7 @@ export const RESET_TABLES = [
   "user_track_activations",
   "user_mlp_mods",
   "user_tracks",
+  "moosie_awards",
 ] as const;
 export type ResetTable = (typeof RESET_TABLES)[number];
 
@@ -34,6 +37,7 @@ export const SELECT_COLUMNS: Record<ResetTable, string> = {
   user_track_activations: "id, user_id",
   user_mlp_mods: "id, user_id",
   user_tracks: "id, user_id",
+  moosie_awards: "id, user_id, reason, source_id, amount",
 };
 
 export type Row = { id: string | number; user_id: string } & Record<string, unknown>;
@@ -47,8 +51,11 @@ export function parseArgs(argv: string[]): { go: boolean } | { error: string } {
   return { go };
 }
 
-export function isProtectedSeed(table: ResetTable, row: Row): boolean {
+// protectedCompletionIds: completed_items ids of the protected seed (from isProtectedSeed on completed_items), so the
+// award that seed completion paid — moosie_awards reason 'completion', source_id = completed_items.id — is kept too.
+export function isProtectedSeed(table: ResetTable, row: Row, protectedCompletionIds: ReadonlySet<string> = new Set()): boolean {
   if (row.user_id !== DEMO_PERSONAS.sam) return false;
+  if (table === "moosie_awards") return row.reason === "completion" && protectedCompletionIds.has(String(row.source_id));
   if (table === "completed_items") {
     return row.item_type === "lesson" && (row.item_id === SAM_ORIENTATION_LESSON || row.lesson_id === SAM_ORIENTATION_LESSON);
   }
@@ -58,14 +65,13 @@ export function isProtectedSeed(table: ResetTable, row: Row): boolean {
 
 // Rows to delete: the personas' rows minus the protected seed. Rows of any other user are never returned,
 // even if the caller passes them in (belt and braces on top of the query filter).
-export function rowsToDelete(table: ResetTable, rows: Row[]): Row[] {
+export function rowsToDelete(table: ResetTable, rows: Row[], protectedCompletionIds: ReadonlySet<string> = new Set()): Row[] {
   const personaIds = new Set<string>(Object.values(DEMO_PERSONAS));
-  return rows.filter((r) => personaIds.has(r.user_id) && !isProtectedSeed(table, r));
+  return rows.filter((r) => personaIds.has(r.user_id) && !isProtectedSeed(table, r, protectedCompletionIds));
 }
 
-// Moosies are awarded per completed_items INSERT (trigger_add_moosies: + user_configurations.moosi_to_add) and
-// never taken back on delete, so after a reset they are recomputed from the completions that remain.
-export function moosiesAfterReset(remainingCompletions: number, moosiToAdd: number | null): number | null {
-  if (moosiToAdd === null || !Number.isFinite(moosiToAdd)) return null;   // no config → leave moosies alone
-  return remainingCompletions * moosiToAdd;
+// Moosies are paid only through the moosie_awards ledger (migration 111: one row per award, user.moosies = their
+// running balance) and never taken back on delete, so after a reset the balance is the sum of the awards that remain.
+export function moosiesAfterReset(remainingAwardAmounts: number[]): number {
+  return remainingAwardAmounts.reduce((sum, a) => sum + (Number.isFinite(a) ? a : 0), 0);
 }

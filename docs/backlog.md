@@ -33,6 +33,14 @@ Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real 
 projects 2026-09-26). Both are guarded by `is_admin()`, so anon EXECUTE is inert; revoke anon, keep
 authenticated (the CMS calls them).
 
+### Lock `user.moosies` against client writes (after the moosii-rn award slice)
+**Why:** migration 111 made the `completed_items` trigger the only award path, but `user_self_update` still lets a
+signed-in user UPDATE their own `user` row, `moosies` included. moosii-rn writes it today (`useAwardMoosies`,
+`useFinishQuestionnaire`), so it can't be revoked until that slice lands.
+**What:** once RN stops awarding, a migration that `REVOKE UPDATE (moosies) ON public."user" FROM authenticated`
+(column-level; keep the other self-update columns) — or a BEFORE UPDATE guard — on both projects. Check the CMS and
+the reader don't write it (neither does today).
+
 ## P2
 
 ### Reaper should also fail jobs stuck in `queued`
@@ -62,6 +70,11 @@ unchanged as `overrides.length` silently replaces the profile. FINDINGS §8.10.
 (CMS seat for the second half).
 
 ## P3
+
+### `completed_items`: lesson rows must carry `lesson_id`
+**Why:** F29's unique key (111) is `(user_id, lesson_id) WHERE item_type = 'lesson'`; a lesson row with a NULL
+`lesson_id` escapes it and the trigger falls back to `item_id`. 0 such rows on both projects (2026-10-13), and RN
+always sets both. **What:** `CHECK (item_type <> 'lesson' OR lesson_id IS NOT NULL)` (and `= item_id`), both projects.
 
 ### Drop the six no-caller views
 `v_lesson_details`, `v_segment_details`, `lessons_with_track_name`, `lesson_segment_counts_with_track`,

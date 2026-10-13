@@ -573,6 +573,21 @@ Main track:
   `17d937caf1097e817e047e9980d12b8b`, safety/medical wording), card_positions md5 `b217089d…` unchanged, cap 30000,
   `'30k'` → 23514. End-to-end read-only: `loadGrounding` on b31254cd returns the block + 1 doc (1252 chars) and the
   rendered section carries no doc id.
+- **111 — Moosies: one server-side award path (F28) + lesson-completion unique key (F29)** — **DRAFT (pending apply).**
+  BOTH PROJECTS, schema + trigger + one-time data reset. New ledger `moosie_awards` (`UNIQUE (reason, source_id)`;
+  `source_id text`, since `completed_items.id` is a bigint identity; CHECKs on amount >= 0, reason, source shape; RLS
+  own/admin read, no client write). `trigger_add_moosies()` rewritten (same name; SECURITY DEFINER, search_path pinned,
+  EXECUTE revoked from PUBLIC/anon/authenticated): pays lesson / questionnaire `points`, 0 for `kind='activity'`,
+  `moosi_to_add` only when there are no points; ledger row ON CONFLICT DO NOTHING, balance moves only if it was
+  inserted. Hash-guarded (legacy `2121c7c6…` → `10d3d5de…`). F29: `completed_items_user_lesson_unique` (partial,
+  `item_type='lesson'`); refuses on duplicates. One-time reset (only on the run that creates the ledger): every
+  `user.moosies` → 0. Duplicate check 2026-10-13: 0 groups / 0 rows on financial and on Moosii.
+  Tested 2026-10-13 on a throwaway local PG 17 cluster restored from a schema-only dump of Moosii
+  (`docs/drafts/111-moosies/`): apply (seed balance 40 → 0), re-run = no-op (a balance of 33 + its ledger row kept),
+  `verify.sql` all PASS (lesson 5, activity 0, check-in 7 + 7, no-points → moosi_to_add 10, duplicate lesson → 23505,
+  replayed award no-op, bad source_id → 23514, `authenticated` insert pays 6 and cannot write the ledger → 42501);
+  guards refuse (3 duplicate rows → RAISE, nothing created; foreign trigger body → RAISE); `npm test` with
+  `MOOSIE_TEST_DB_URL` 220/220.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
