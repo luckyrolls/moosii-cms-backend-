@@ -603,19 +603,26 @@ Main track:
   RLS + policy, grants, partial unique index), balances 0, ledger 0; `verify.sql` live (rolled back, a lesson flipped to
   activity inside the transaction, real check-in) all PASS; after: balances 0, ledger 0, completions 6.
   `database.types.ts` regenerated (adds `moosie_awards`; no bridge to drop).
-- **112 — lock `"user".moosies` (F32) + diagnostics pay once (F33)** — **DRAFT (pending apply).**
-  BOTH PROJECTS, grants + trigger. `trigger_add_moosies()` (same name/ACL; hash-guarded 111 `10d3d5de…` → `09d509d0…`):
+- **112 — lock `"user".moosies` (F32) + own-row `"user"` INSERT + diagnostics pay once (F33)** — **DRAFT (pending apply).**
+  BOTH PROJECTS, grants + one policy + trigger. `trigger_add_moosies()` (same name/ACL; hash-guarded 111 `10d3d5de…` → `09d509d0…`):
   a `kind='diagnostic'` questionnaire pays only on the user's first completion (later rows amount 0, ledger row kept),
   serialized by a per-(user, questionnaire) `pg_advisory_xact_lock`; check-ins pay every row; lessons/activities
   unchanged. `"user"`: table-level INSERT/UPDATE revoked from anon + authenticated; authenticated re-granted UPDATE on
   the 10 client-written columns and INSERT on the 4 onboarding columns (inventory in the file header: moosii-rn
   b744b4f, moosii-cms b99c82a, moosii-reader 337f0d6; no client writes moosies). Also closes self-writes of `role` /
-  `can_review_editorial` / `can_approve_clinical`. No new objects → `database.types.ts` unchanged.
+  `can_review_editorial` / `can_approve_clinical`. Policy `"Enable insert for authenticated users only"`: `WITH CHECK
+  (true)` → `(id = (SELECT auth.uid()))` (folded in 2026-10-17; RN's insert, `verify.tsx:95`, writes the session's own
+  id; guarded: refuses if the policy is missing). No new objects → `database.types.ts` unchanged.
   Tested 2026-10-13 on the local PG 17 cluster from 111 (schema-only Moosii restore + 111): apply, re-run = no-op,
   `docs/drafts/112-moosies-lock/verify.sql` all PASS (diagnostic 7 → 0 → 0 with ledger rows, check-in 7 + 7,
   authenticated UPDATE of moosies / role / can_* / is_verified / email → 42501, each of the 10 columns → 1 row, app
   completion still +5); guard refuses a foreign trigger body with grants untouched; `npm test` with
   `MOOSIE_TEST_DB_URL` 227/227 (incl. a two-connection race: one diagnostic pays once).
+  Amended 2026-10-17 (own-row INSERT), re-tested on the same cluster: amended file applied over the original 112, re-run
+  = no-op, policy check `(id = ( SELECT auth.uid() AS uid))`; `verify.sql` all PASS incl. INSERT of another user's row
+  → 42501 (RLS) and own row → 1 row (moosies 0, role user); negative control with the old `WITH CHECK (true)` → verify
+  FAILs on that case; guards refuse a missing policy and a foreign trigger body, grants and policy untouched;
+  `npm test` with `MOOSIE_TEST_DB_URL` 228/228.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

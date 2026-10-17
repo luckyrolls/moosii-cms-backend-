@@ -2103,7 +2103,9 @@ backend must preserve and the frontend leans on:
 - **`"user"` — what a signed-in client may write (migration 112, F32; column-level grants).** UPDATE: `display_name`,
   `name`, `gender`, `parenting_status`, `financials`, `birth_date`, `onboarding_complete`, `has_seen_mlp_intro`,
   `has_seen_lesson_intro`, `has_seen_questionnaire_intro`. INSERT (onboarding, own row): `id`, `email`,
-  `daily_reminder_time`, `onboarding_complete`. **Everything else — `moosies`, `role`, `can_review_editorial`,
+  `daily_reminder_time`, `onboarding_complete` — and **only a row whose `id` is the caller's own auth uid** (the
+  authenticated INSERT policy checks `id = auth.uid()`; another id → 42501). A new auth user normally already has its
+  row (`new_user_trigger` on `auth.users`); RN's insert is the fallback. **Everything else — `moosies`, `role`, `can_review_editorial`,
   `can_approve_clinical`, `is_verified`, `email` (update), notification settings, … — fails 42501** for `authenticated`;
   anon writes nothing. RLS still scopes writes to the user's own row. A new client write to another column needs a
   migration that grants it. The backend (service role) and the SECURITY DEFINER functions are unaffected.

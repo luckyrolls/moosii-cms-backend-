@@ -102,5 +102,34 @@ BEGIN
   RAISE NOTICE 'PASS authenticated completion → trigger moved balance +%', d;
 END $$;
 
+-- Own-row INSERT. A throwaway auth user (rolled back); live auth.users has new_user_trigger, which creates its
+-- "user" row at once, so that row is deleted first — RN's onboarding insert is the fallback for exactly this state.
+DO $$ DECLARE v_new uuid := gen_random_uuid(); BEGIN
+  INSERT INTO auth.users (id, created_at) VALUES (v_new, now());
+  DELETE FROM public."user" WHERE id = v_new;
+  PERFORM set_config('v.new', v_new::text, true);
+  RAISE NOTICE 'own-row insert: throwaway auth user % (rolled back)', v_new;
+END $$;
+-- (a) the verify user, signed in, inserts a row for the OTHER id → refused by RLS (42501)
+SELECT set_config('request.jwt.claims', json_build_object('sub', current_setting('v.uid'), 'role', 'authenticated')::text, true);
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  INSERT INTO public."user" (id, email, daily_reminder_time, onboarding_complete)
+  VALUES (current_setting('v.new')::uuid, 'm112-squat-' || current_setting('v.new') || '@example.test', '09:00', false);
+  RAISE EXCEPTION 'FAIL authenticated inserted a "user" row for another id';
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'PASS authenticated INSERT of another user''s row → 42501 (%)', SQLERRM;
+END $$;
+-- (b) the new user, signed in, inserts its OWN row with RN's four columns → OK
+SELECT set_config('request.jwt.claims', json_build_object('sub', current_setting('v.new'), 'role', 'authenticated')::text, true);
+INSERT INTO public."user" (id, email, daily_reminder_time, onboarding_complete)
+VALUES (current_setting('v.new')::uuid, 'm112-own-' || current_setting('v.new') || '@example.test', '09:00', false);
+RESET ROLE;
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM public."user" WHERE id = current_setting('v.new')::uuid AND moosies = 0 AND role = 'user';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL own-row insert: % rows with moosies 0 / role user', n; END IF;
+  RAISE NOTICE 'PASS authenticated INSERT of its own row → 1 row (moosies 0, role user)';
+END $$;
+
 ROLLBACK;
 \echo 'verify 112: all checks passed — rolled back, nothing kept'

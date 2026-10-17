@@ -147,8 +147,9 @@ only their own `user_lesson_progress` rows (no CMS caller reads it).
 RLS (`user_self_update` / `user_self_insert`, own row) was the only limit on what a signed-in user could write to their
 own row — every column, `role` and `can_approve_clinical` included. 112 adds the column layer: `authenticated` lost
 table-level INSERT/UPDATE and holds UPDATE on exactly the 10 columns the clients write and INSERT on the 4 onboarding
-columns (list: `docs/api-contract.md` §5); anon lost INSERT/UPDATE. `user.moosies` is server-written only. Still
-open: the INSERT policy `"Enable insert for authenticated users only"` `WITH CHECK (true)` (`docs/backlog.md` P1).
+columns (list: `docs/api-contract.md` §5); anon lost INSERT/UPDATE. `user.moosies` is server-written only. The INSERT
+policy `"Enable insert for authenticated users only"` had `WITH CHECK (true)` — any signed-in user could create the
+`"user"` row of ANOTHER auth id that had none; 112 changed its check to `id = auth.uid()`.
 
 ## Per-user rows — own + admin read, anon none (migration 078, 2026-09-14)
 

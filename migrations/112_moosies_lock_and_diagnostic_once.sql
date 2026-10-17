@@ -1,6 +1,6 @@
 -- ============================================================================
--- MIGRATION 112: lock "user".moosies against clients (F32) + diagnostics pay once (F33)
---   BOTH PROJECTS (grants + trigger) — DRAFT (pending apply)
+-- MIGRATION 112: lock "user".moosies against clients (F32) + own-row "user" INSERT + diagnostics pay once (F33)
+--   BOTH PROJECTS (grants + one policy + trigger) — DRAFT (pending apply)
 -- ============================================================================
 -- WHY: migration 111 made trigger_add_moosies + moosie_awards the ONLY award path, and moosii-rn b744b4f stopped
 -- writing moosies. Two follow-ups (Mark 2026-10-13):
@@ -28,8 +28,12 @@
 --   Unaffected: service_role (table grants kept), the postgres-owned SECURITY DEFINER functions (trigger_add_moosies,
 --   create_new_user, handle_user_verification_update), the backend (service role / postgres), BEFORE UPDATE
 --   set_updated_at (column privileges apply to the columns the statement names, not trigger-set ones).
---   NOT changed here (reported, backlog): the INSERT policy "Enable insert for authenticated users only" WITH CHECK
---   (true) still lets a signed-in user insert a "user" row for ANOTHER id (now limited to the four granted columns).
+--   Own-row INSERT (folded in, Mark 2026-10-17): the policy "Enable insert for authenticated users only" (TO
+--   authenticated) had WITH CHECK (true). Policies OR together, so a signed-in user could insert a "user" row for
+--   ANOTHER auth id that had none yet (squatting that profile and its email under user_email_key). Its check becomes
+--   id = auth.uid(). RN's one insert (app/(onboarding)/verify.tsx:95) writes id = data.session.user.id from verifyOtp
+--   (:68) — the caller's own auth id — so it is unaffected. user_self_insert (own row, super_admin, service) unchanged.
+--   Guarded: refuses if that policy is missing (drift).
 --
 -- Trigger body hash-guarded: refuses unless the live body is 111's (md5 10d3d5de…) or 112's (09d509d0…).
 -- BOTH PROJECTS: one schema (invariant 4). APPLY per migrations/README.md: financial first, then Moosii.
@@ -38,10 +42,11 @@
 
 -- ---------------------------------------------------------------------------
 -- PRE-CHECK — run FIRST (read-only). EXPECT md5 10d3d5defc033fb8b7c658ad2d92d0b7; authenticated holds table-level
--- INSERT + UPDATE on "user":
+-- INSERT + UPDATE on "user"; the policy "Enable insert for authenticated users only" has with_check = 'true':
 --   SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc WHERE proname = 'trigger_add_moosies';
 --   SELECT grantee, privilege_type FROM information_schema.role_table_grants
 --    WHERE table_schema = 'public' AND table_name = 'user' AND grantee IN ('anon','authenticated') ORDER BY 1, 2;
+--   SELECT policyname, roles, with_check FROM pg_policies WHERE tablename = 'user' AND cmd = 'INSERT';
 -- ---------------------------------------------------------------------------
 
 BEGIN;
@@ -123,6 +128,16 @@ GRANT UPDATE (display_name, name, gender, parenting_status, financials, birth_da
   ON public."user" TO authenticated;
 GRANT INSERT (id, email, daily_reminder_time, onboarding_complete) ON public."user" TO authenticated;
 
+-- ---- Own-row INSERT: the open authenticated INSERT policy checks the caller's id ----
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user'
+                 AND policyname = 'Enable insert for authenticated users only' AND cmd = 'INSERT') THEN
+    RAISE EXCEPTION '112: policy "Enable insert for authenticated users only" on "user" not found — re-base before applying';
+  END IF;
+END $$;
+ALTER POLICY "Enable insert for authenticated users only" ON public."user"
+  TO authenticated WITH CHECK (id = (SELECT auth.uid()));
+
 COMMIT;
 
 -- ---------------------------------------------------------------------------
@@ -131,7 +146,9 @@ COMMIT;
 --    service_role; completed_items_insert_trigger still bound.
 -- 2. Grants: authenticated / anon hold NO table-level INSERT or UPDATE on "user"; authenticated column UPDATE on exactly
 --    the 10 columns and column INSERT on exactly the 4; service_role table-level privileges unchanged.
+--    Policy "Enable insert for authenticated users only": with_check = (id = (SELECT auth.uid())), roles {authenticated}.
 -- 3. Behaviour, ROLLED BACK: docs/drafts/112-moosies-lock/verify.sql — diagnostic pays once then 0 (ledger row kept),
 --    check-in pays each time, authenticated UPDATE of moosies / role → 42501, each granted column → OK, an
---    authenticated completion still moves the balance.
+--    authenticated completion still moves the balance, an authenticated INSERT of a row for ANOTHER id → 42501 (RLS),
+--    of its own row → OK.
 -- ---------------------------------------------------------------------------

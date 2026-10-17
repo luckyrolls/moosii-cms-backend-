@@ -262,3 +262,20 @@ test("the award trigger still moves the balance after the lock (service and app 
     assert.equal((await state(db, f.user)).moosies, 12);
   });
 });
+
+test("authenticated cannot INSERT a \"user\" row for ANOTHER id (RLS 42501); its own row still works", { skip }, async () => {
+  await inRolledBackTx(async (db) => {
+    const f = await fixture(db);                     // the signed-in caller (has a row)
+    const other = randomUUID();                      // an auth user with no "user" row yet
+    await db.query(`INSERT INTO auth.users (id) VALUES ($1)`, [other]);
+    await asAuthenticated(db, f.user);
+    await expectCode(db,
+      `INSERT INTO public."user" (id, email, daily_reminder_time, onboarding_complete) VALUES ($1, $2, '09:00', false)`,
+      [other, `m112-squat-${other}@example.test`], "42501");
+    await db.query(`SELECT set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: other, role: "authenticated" })]);
+    const r = await db.query(
+      `INSERT INTO public."user" (id, email, daily_reminder_time, onboarding_complete) VALUES ($1, $2, '09:00', false)`,
+      [other, `m112-own-${other}@example.test`]);
+    assert.equal(r.rowCount, 1);
+  });
+});
