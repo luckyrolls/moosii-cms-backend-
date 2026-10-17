@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 112 · Moosii 112** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 113 · Moosii 112** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..112; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
 (all APPLIED).
@@ -642,7 +642,7 @@ Main track:
   only, trigger bound, table-level writes off for anon/authenticated, 10 UPDATE + 4 INSERT columns, anon 0, policy
   `(id = auth.uid())`), 0 users whose balance ≠ ledger sum; `verify.sql` live (rolled back) all PASS; after: 24 / 4 / 2,
   auth users 6, user rows 6. No new objects → `database.types.ts` unchanged.
-- **113 — activity follow-ups, slice 1 + F37 (no client deletes of `completed_items`)** — **DRAFT (pending apply).**
+- **113 — activity follow-ups, slice 1 + F37 (no client deletes of `completed_items`)** — **APPLIED financial (2026-10-17) · Moosii pending.**
   BOTH PROJECTS, schema + 3 settings rows. F37: REVOKE DELETE + TRUNCATE on `completed_items` from anon/authenticated;
   DROP `completed_items_del` and the catch-all `user_or_super_admin_access` (its S/I/U duplicated by `_sel/_ins/_upd`;
   `is_admin()` includes super_admin). Client delete inventory 2026-10-17 (moosii-rn b744b4f, moosii-cms ba18ba5,
@@ -659,6 +659,14 @@ Main track:
   pre-existing completion, idempotent finish, not_yet ×2 → out of the view, grace lapse, unpublished/archived hidden,
   auto-resolve committed + self-done, pre-commitment evidence ignored, seeded fact resolves with its id, did_it + bonus
   once each, client DELETE on completed_items → 42501, client writes to follow-ups → 42501).
+  Financial 2026-10-17: identity (sysid 7678069749886157684, domain financial, PG 17.6); pre-check: no follow-up table /
+  lesson columns / settings, completed_items policies del/ins/sel/upd/ALL, client DELETE on; state 1 completion / 0
+  Moosies / 0 ledger / 1 activity; dry run (rolled back) → table present, client DELETE off, 3 policies, limits (2,14),
+  then live state unchanged; apply OK; verify: completed_items policies = ins/sel/upd, DELETE + TRUNCATE off for anon +
+  authenticated (service_role on), 4 lesson constraints, 14 follow-up constraints, RLS + uaf_sel, follow-ups anon nothing /
+  authenticated SELECT only, view security_invoker (anon no SELECT), the 4 functions EXECUTE service_role only and
+  activity_followup_limits SECURITY DEFINER for authenticated + service_role, settings 14 / 2 / 5; `verify.sql` live
+  (rolled back) all PASS; after: 1 completion / 0 / 0 / 0 follow-ups, auth users 3, lessons 12, fact keys 6.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
