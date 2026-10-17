@@ -14,7 +14,7 @@ export type DemoPersona = keyof typeof DEMO_PERSONAS;
 export const SAM_ORIENTATION_LESSON = "06eef3f3-c2ab-43e9-ba58-8dc52a742232";
 
 // Per-user progress/state a demo session can write (app completions, questionnaires/check-ins, classify apply,
-// the Moosies awards those completions paid). Each has an `id` PK and a `user_id` column; none has a DELETE trigger.
+// activity follow-ups, the Moosies awards those paid). Each has an `id` PK and a `user_id` column; none has a DELETE trigger.
 // completed_items comes before moosie_awards: the protected seed's completion id is learned from the first.
 export const RESET_TABLES = [
   "completed_items",
@@ -24,6 +24,7 @@ export const RESET_TABLES = [
   "user_track_activations",
   "user_mlp_mods",
   "user_tracks",
+  "user_activity_followups",
   "moosie_awards",
 ] as const;
 export type ResetTable = (typeof RESET_TABLES)[number];
@@ -37,6 +38,7 @@ export const SELECT_COLUMNS: Record<ResetTable, string> = {
   user_track_activations: "id, user_id",
   user_mlp_mods: "id, user_id",
   user_tracks: "id, user_id",
+  user_activity_followups: "id, user_id",
   moosie_awards: "id, user_id, reason, source_id, amount",
 };
 

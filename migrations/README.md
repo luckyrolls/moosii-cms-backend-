@@ -642,6 +642,23 @@ Main track:
   only, trigger bound, table-level writes off for anon/authenticated, 10 UPDATE + 4 INSERT columns, anon 0, policy
   `(id = auth.uid())`), 0 users whose balance ≠ ledger sum; `verify.sql` live (rolled back) all PASS; after: 24 / 4 / 2,
   auth users 6, user rows 6. No new objects → `database.types.ts` unchanged.
+- **113 — activity follow-ups, slice 1 + F37 (no client deletes of `completed_items`)** — **DRAFT (pending apply).**
+  BOTH PROJECTS, schema + 3 settings rows. F37: REVOKE DELETE + TRUNCATE on `completed_items` from anon/authenticated;
+  DROP `completed_items_del` and the catch-all `user_or_super_admin_access` (its S/I/U duplicated by `_sel/_ins/_upd`;
+  `is_admin()` includes super_admin). Client delete inventory 2026-10-17 (moosii-rn b744b4f, moosii-cms ba18ba5,
+  moosii-reader 337f0d6): none. `lessons` gains `followup_after_days`, `verify_fact_key`, `verify_fact_value`
+  (activity-only CHECK, pair CHECK, composite FK `fact_values` RESTRICT; the vocabulary is a table).
+  `user_activity_followups` (status committed/done/skipped, 7 CHECKs, UNIQUE (user, lesson), RLS own/admin SELECT, no
+  client writes). `app_settings` followup_max_asks 2 / followup_grace_days 14 / followup_verified_bonus 5 + CHECKs.
+  `activity_followup_limits()` (SECURITY DEFINER). View `user_activity_followups_due` (security_invoker). Functions
+  `activity_award`, `activity_finish`, `activity_followup_answer`, `resolve_activity_followups` (EXECUTE service_role
+  only). Guards: 107 + 111 live; `completed_items_sel/_ins/_upd` present.
+  Tested 2026-10-17 on the local PG 17 cluster (schema-only Moosii restore): applied over 111+112, re-run = no-op; the
+  missing-policy guard refuses; a FRESH restore with 111 → 112 → 113 applies clean; `docs/drafts/113-activity-followups/
+  verify.sql` all PASS on both; `npm test` with `MOOSIE_TEST_DB_URL` 256/256 (18 follow-up DB tests: each choice,
+  pre-existing completion, idempotent finish, not_yet ×2 → out of the view, grace lapse, unpublished/archived hidden,
+  auto-resolve committed + self-done, pre-commitment evidence ignored, seeded fact resolves with its id, did_it + bonus
+  once each, client DELETE on completed_items → 42501, client writes to follow-ups → 42501).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

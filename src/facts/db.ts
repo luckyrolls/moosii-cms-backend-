@@ -1,5 +1,6 @@
 import { supabase } from "../supabase";
 import { enqueueRebuildUserIfIdle } from "../jobs/runner";
+import { resolveActivityFollowups } from "../activities/db";
 import { UnknownUserError, type FactsDeps, type ExistingObservation } from "./service";
 import type { FactsReadDeps } from "./router";
 import type { FactRow, Vocabulary } from "./validate";
@@ -71,5 +72,6 @@ export const factsDbDeps: FactsDeps & FactsReadDeps = {
   findExisting,
   insertRows,
   enqueueRebuild: (userId, ctx) => enqueueRebuildUserIfIdle(userId, ctx),
+  resolveFollowups: (userId) => resolveActivityFollowups(userId),
   loadFactsForUser,
 };

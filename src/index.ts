@@ -24,6 +24,7 @@ import mlpRouter from "./routes/mlp";
 import sourceDocumentsRouter from "./routes/sourceDocuments";
 import factsRouter from "./routes/facts";
 import demoRouter from "./routes/demo";
+import { activitiesRouter, activityFollowupsRouter } from "./routes/activities";
 import { checkFactsConfig } from "./facts/config";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
@@ -72,6 +73,11 @@ app.use("/source-documents", jwtAuthMiddleware, sourceDocumentsRouter);
 // see resolveCallerScope. Mounted WITHOUT jwtAuthMiddleware.
 app.use("/classify-update", classifyUpdateRouter);
 app.use("/mlp", mlpRouter);
+
+// Activity follow-ups (api-contract.md §10): app-facing, end-user JWT verified per route, own rows only.
+// A separate surface from the plan — never part of user_mlp.
+app.use("/activities", activitiesRouter);
+app.use("/activity-followups", activityFollowupsRouter);
 
 // Facts (api-contract.md §8). Each route carries its own auth: POST is the partner intake
 // (FACTS_API_KEY, 404 unless DOMAIN=financial); GET /:user_id is the admin inspector.

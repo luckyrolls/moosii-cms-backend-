@@ -57,3 +57,9 @@ test("moosies after a reset = the sum of the awards that remain", () => {
   assert.equal(moosiesAfterReset([]), 0);      // Sarah
   assert.equal(moosiesAfterReset([5, 0, 7]), 12);
 });
+
+test("RESET_TABLES clears user_activity_followups (no protected seed rows)", () => {
+  assert.ok(RESET_TABLES.includes("user_activity_followups"));
+  assert.ok(!isProtectedSeed("user_activity_followups", { id: "f1", user_id: SAM }));
+  assert.deepEqual(rowsToDelete("user_activity_followups", [{ id: "f1", user_id: SAM }, { id: "f2", user_id: SARAH }, { id: "f3", user_id: OTHER }]).map((r) => r.id), ["f1", "f2"]);
+});

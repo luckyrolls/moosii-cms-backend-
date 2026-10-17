@@ -142,6 +142,14 @@ only their own `user_lesson_progress` rows (no CMS caller reads it).
 |---|---|---|
 | `moosie_awards` | RLS on; `moosie_awards_sel`: own `user_id` or `is_admin()` (authenticated); **no write policy, no write grant** to anon / authenticated; anon nothing | written only by `trigger_add_moosies()` (SECURITY DEFINER, EXECUTE revoked from PUBLIC / anon / authenticated) and the service role |
 
+## Activity follow-ups + no client deletes of completions (migration 113, both projects)
+
+| Object | Posture | Note |
+|---|---|---|
+| `completed_items` | no DELETE / TRUNCATE for anon or authenticated; policies `completed_items_del` and the catch-all `user_or_super_admin_access` dropped | `_sel` / `_ins` / `_upd` unchanged; deletes are service role + FK cascades |
+| `user_activity_followups` | RLS on; `uaf_sel`: own `user_id` or `is_admin()` (authenticated); no client INSERT / UPDATE / DELETE; anon nothing | written only by the backend's SQL functions |
+| `user_activity_followups_due` (view) | `security_invoker`; authenticated + service_role SELECT; anon nothing | reads `activity_followup_limits()` (SECURITY DEFINER, returns only max asks + grace days, because `app_settings` has RLS and no policy) |
+
 ## `"user"` — column-level write grants (migration 112, both projects)
 
 RLS (`user_self_update` / `user_self_insert`, own row) was the only limit on what a signed-in user could write to their

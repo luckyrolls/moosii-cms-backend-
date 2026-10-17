@@ -119,3 +119,35 @@ test("an enqueue that failed is reported honestly as rebuild_enqueued: false (fa
   if (out.status === 200) assert.deepEqual(out.body, { written: 2, rebuild_enqueued: false });
   assert.equal(table.size, 2);
 });
+
+// ---- activity follow-ups hook (migration 113) ----
+
+test("follow-ups are verified AFTER the write and BEFORE the rebuild, only when something new was written", async () => {
+  const { deps, calls } = fakeDeps();
+  const resolved: string[] = [];
+  deps.resolveFollowups = async (userId) => { calls.order.push("resolve"); resolved.push(userId); return { resolved: 1 }; };
+  const first = await recordFacts(batch, deps, "corr-f1");
+  assert.equal(first.status, 200);
+  assert.deepEqual(calls.order, ["vocab", "existing", "insert", "resolve", "enqueue"]);
+  assert.deepEqual(resolved, [USER]);
+  calls.order.length = 0;
+  await recordFacts(batch, deps, "corr-f2");                       // identical redelivery: written = 0
+  assert.deepEqual(calls.order, ["vocab", "existing", "insert", "enqueue"], "no evidence added → no verification");
+});
+
+test("a follow-up verification failure never fails the facts write (the rebuild still runs)", async () => {
+  const { deps, calls } = fakeDeps();
+  deps.resolveFollowups = async () => { throw new Error("rpc down"); };
+  const out = await recordFacts(batch, deps, "corr-f3");
+  assert.deepEqual(out, { status: 200, body: { written: 2, rebuild_enqueued: true }, userId: USER, skipped: 0 });
+  assert.equal(calls.enqueue.length, 1);
+});
+
+test("a rejected batch never reaches follow-up verification", async () => {
+  const { deps } = fakeDeps();
+  let hit = 0;
+  deps.resolveFollowups = async () => { hit++; return { resolved: 0 }; };
+  const out = await recordFacts({ user_id: USER, facts: [{ key: "has_direct_deposit", value: "maybe", observed_at: "2026-09-15T14:00:00Z" }] }, deps, "corr-f4");
+  assert.equal(out.status, 400);
+  assert.equal(hit, 0);
+});

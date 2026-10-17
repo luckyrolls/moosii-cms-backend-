@@ -20,6 +20,9 @@ export type FactsDeps = {
   // user_id has no auth account (user_facts_user_id_fkey, migration 076).
   insertRows(rows: FactRow[]): Promise<{ written: number }>;
   enqueueRebuild(userId: string, ctx: { reason: string; correlationId: string }): Promise<{ enqueued: boolean; jobId?: string; coalescedInto?: string }>;
+  // Activity follow-ups (migration 113): verify the user's committed / self-done follow-ups against the facts just
+  // written. Optional so callers without follow-ups (tests, tools) need not supply it. Never fails the write.
+  resolveFollowups?(userId: string): Promise<{ resolved: number }>;
 };
 
 export class UnknownUserError extends Error {
@@ -67,7 +70,18 @@ export async function recordFacts(body: unknown, deps: FactsDeps, correlationId:
     throw e;
   }
 
-  // After the write committed. Enqueued even when written = 0 (an identical redelivery): a
+  // After the write committed: verify activity follow-ups, only when something new was written (a redelivery adds no
+  // evidence). The facts are already committed, so a failure here is logged and never fails the call.
+  if (written > 0 && deps.resolveFollowups) {
+    try {
+      const { resolved } = await deps.resolveFollowups(v.userId);
+      if (resolved > 0) console.log(`[facts] user=${v.userId} activity follow-ups verified=${resolved} corr=${correlationId}`);
+    } catch (e) {
+      console.error(`[facts] follow-up verification failed user=${v.userId} corr=${correlationId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Enqueued even when written = 0 (an identical redelivery): a
   // rebuild is idempotent, and it covers a previous call whose rebuild failed.
   const r = await deps.enqueueRebuild(v.userId, { reason: opts.reason ?? "facts_intake", correlationId });
   return {

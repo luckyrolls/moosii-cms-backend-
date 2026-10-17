@@ -2073,8 +2073,15 @@ backend must preserve and the frontend leans on:
   description they already fetch for plan items) to show a "Do" badge. `create_lessons_with_segments`
   accepts an optional `kind` per stub (absent → `'lesson'`); generated stubs stay `'lesson'`. Financial anon
   (the reader) has column SELECT on `kind`. Completing an activity is the same `completed_items` write as a
-  lesson, and pays **0 Moosies** (migration 111; activity awards are reserved for the follow-up slice). Design and
-  later verification (fact transitions / check-ins): FINDINGS-activities.md, FINDINGS-activity-followups.md.
+  lesson, and pays **0 Moosies** (migration 111); the activity's points are paid by its follow-up (§10). Design:
+  FINDINGS-activities.md, FINDINGS-activity-followups.md.
+- **Activity follow-up settings on `lessons`** (migration 113; metadata, no re-approval): `followup_after_days int`
+  (> 0; NULL = "I'll do it" not offered), `verify_fact_key` + `verify_fact_value` (both or neither; FK `fact_values
+  (fact_key, value)` RESTRICT: the fact that proves it was done). CHECK: only on `kind = 'activity'`. §10.
+- **`completed_items`: clients never delete (migration 113, F37).** `anon` / `authenticated` hold no DELETE or
+  TRUNCATE, and no DELETE policy remains (`completed_items_del` and the catch-all `user_or_super_admin_access` were
+  dropped; `completed_items_sel` / `_ins` / `_upd` unchanged). Deletes are backend-only: the service role (content
+  teardown, `demo:reset`) and FK cascades. This keeps "delete it and redo it" from paying again.
 - **Moosies — ONE server-side award path (migrations 111–112). Clients must NOT award Moosies.** `user.moosies` is
   **server-written only**: since 112 a signed-in client has no UPDATE or INSERT privilege on that column (42501), and
   nobody but the trigger / service role inserts `moosie_awards`. Write the completion and read the balance back. The
@@ -2577,3 +2584,73 @@ The persona is the token's user — never a parameter. Both responses are `Cache
   logged, stored or cached. Embed it in an iframe (≥ 320px wide) immediately; fetch a new one on every load.
 - Code: `src/demo/partner.ts` (pure: gates, spending summary, insight rules, allowlist), `src/routes/demo.ts`,
   `MxProvider.createWidgetUrl` (`src/facts/derive/mxProvider.ts`).
+
+## 10. Activity follow-ups — DELIVERED (migration 113; both domains)
+
+An activity (`lessons.kind = 'activity'`) ends with three choices. **Follow-ups are their own surface: they are never
+part of `mlp_item_pool` or `user_mlp`** (invariants 1, 8). Every choice writes the ordinary completion, so the activity
+leaves the plan like any lesson; the follow-up lives in `user_activity_followups`.
+
+**Table `user_activity_followups`**: one row per (user, activity), for every end-card choice. Written ONLY by the
+routes below (through SQL functions); a client has SELECT on its own rows (admins all) and no INSERT/UPDATE/DELETE.
+`id`, `user_id` (FK auth.users, cascade), `lesson_id` (FK lessons, cascade), `status` (`committed` | `done` |
+`skipped`), `asks` (count of "Not yet" taps; emails never count), `due_at` (NOT NULL while committed), `committed_at`,
+`resolved_at` (NULL exactly while committed), `resolved_by` (`self` | `data`; set exactly when done), `verified_at`,
+`verified_fact_id` (FK user_facts, SET NULL on delete), `created_at`, `updated_at`. UNIQUE (user_id, lesson_id).
+
+**Settings** (`app_settings`): `followup_max_asks` = 2, `followup_grace_days` = 14, `followup_verified_bonus` = 5.
+
+**View `user_activity_followups_due`** (security_invoker, so RLS binds): committed rows with `due_at <= now()`,
+`asks < followup_max_asks`, `now() <= due_at + followup_grace_days`, on a published activity whose lesson and track
+aren't archived. Columns: `id, user_id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at,
+committed_at, created_at, lapses_at`. **Lapsed is derived** (asks exhausted, or grace passed), never stored; nothing
+runs on a schedule.
+
+**Moosies** (ledger, §5): the activity's completion pays 0; **"Did it"** (end card or follow-up) pays `lessons.points`
+as `activity_did_it`; **data verification** pays `followup_verified_bonus` as `activity_verified`. `source_id` = the
+follow-up id, so each pays at most once.
+
+All three routes: `Authorization: Bearer <end-user Supabase JWT>`; the user id comes from the token, never the body;
+own rows only; each write is one transaction. `401 unauthorized` for a missing or invalid token.
+
+```
+POST /activities/:lessonId/finish        Body: { choice: "did_it" | "later" | "not_for_me" }
+→ 200 { followup: <row>, created: boolean, awarded: number }
+```
+- Ensures the `completed_items` row exists (inserts it, or accepts one RN already wrote; never fails on 23505), then
+  writes the follow-up: `did_it` → `done` / `self` + the `activity_did_it` award; `later` → `committed`, `due_at = now +
+  followup_after_days`; `not_for_me` → `skipped`.
+- **Idempotent:** if a row already exists for (user, activity), it is returned unchanged with `created: false`,
+  `awarded: 0`, whatever the choice.
+- `400 invalid_choice` · `400 invalid_request` (lessonId not a uuid) · `400 not_activity` · `400 no_followup_configured`
+  (`later` on an activity without `followup_after_days`) · `404 lesson_not_found` · `404 unknown_user` (no `"user"`
+  profile row) · `500 activity_failed`.
+
+```
+POST /activity-followups/:id/answer      Body: { answer: "did_it" | "not_yet" }
+→ 200 { followup: <row>, awarded: number }
+```
+- Only on the caller's own `committed` rows. `did_it` → `done` / `self` + the `activity_did_it` award (allowed even
+  when lapsed); `not_yet` → `asks + 1`, `due_at = now + followup_after_days`.
+- `400 invalid_answer` · `400 invalid_request` · `400 no_followup_configured` · `404 followup_not_found` (unknown, or
+  another user's) · `409 not_committed` · `409 followup_lapsed` (`not_yet` once asks are exhausted or grace has passed).
+
+```
+GET /activity-followups/due
+→ 200 { followups: [ { id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at, committed_at, lapses_at } ] }
+```
+- The caller's rows from `user_activity_followups_due`, soonest first.
+
+**Data verification (auto-resolve).** Every facts write that wrote at least one row (`POST /facts`, `derive_facts`,
+`seed_facts`, all through `recordFacts`) then runs `resolve_activity_followups(user)`. It looks at the user's
+`committed` rows and `done` rows not yet verified, on an activity with `verify_fact_key` / `verify_fact_value`. If the
+user's CURRENT value of that fact (`user_facts_latest`) is the target AND that observation is dated after the commitment
+(`committed_at`, or `created_at` for an end-card did_it), it sets `verified_at` + `verified_fact_id` (the resolving
+`user_facts` row); a committed row also becomes `done` / `data`; the `activity_verified` bonus is paid. Seeded facts
+count. Evidence dated before the commitment never resolves. Skipped rows are never verified. A verification failure is
+logged and never fails the facts write; the `POST /facts` response is unchanged.
+
+Not in this slice: email, RN / reader / CMS screens, demo-token auth on these routes. Code: `src/activities/` (router
+factory, db deps), `src/routes/activities.ts`, the `recordFacts` hook in `src/facts/service.ts`. SQL:
+`activity_finish`, `activity_followup_answer`, `resolve_activity_followups`, `activity_award` (EXECUTE service_role
+only); `activity_followup_limits()` (SECURITY DEFINER; max asks + grace days only, for the invoker view).
