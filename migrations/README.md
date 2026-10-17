@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 111 · Moosii 111** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 112 · Moosii 111** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..111; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
 (all APPLIED).
@@ -603,7 +603,7 @@ Main track:
   RLS + policy, grants, partial unique index), balances 0, ledger 0; `verify.sql` live (rolled back, a lesson flipped to
   activity inside the transaction, real check-in) all PASS; after: balances 0, ledger 0, completions 6.
   `database.types.ts` regenerated (adds `moosie_awards`; no bridge to drop).
-- **112 — lock `"user".moosies` (F32) + own-row `"user"` INSERT + diagnostics pay once (F33)** — **DRAFT (pending apply).**
+- **112 — lock `"user".moosies` (F32) + own-row `"user"` INSERT + diagnostics pay once (F33)** — **APPLIED financial (2026-10-17) · Moosii pending.**
   BOTH PROJECTS, grants + one policy + trigger. `trigger_add_moosies()` (same name/ACL; hash-guarded 111 `10d3d5de…` → `09d509d0…`):
   a `kind='diagnostic'` questionnaire pays only on the user's first completion (later rows amount 0, ledger row kept),
   serialized by a per-(user, questionnaire) `pg_advisory_xact_lock`; check-ins pay every row; lessons/activities
@@ -623,6 +623,17 @@ Main track:
   → 42501 (RLS) and own row → 1 row (moosies 0, role user); negative control with the old `WITH CHECK (true)` → verify
   FAILs on that case; guards refuse a missing policy and a foreign trigger body, grants and policy untouched;
   `npm test` with `MOOSIE_TEST_DB_URL` 228/228.
+  Financial 2026-10-17: identity (sysid 7678069749886157684, domain financial, PG 17.6); pre-check md5 `10d3d5de…`, anon
+  + authenticated table-level INSERT/UPDATE on `"user"`, INSERT policy `WITH CHECK (true)`, state 0 Moosies / 0 ledger /
+  1 completion; dry run (rolled back) → md5 `09d509d0…`, search_path pinned, table UPDATE off, `moosies` off,
+  `display_name` on, policy `(id = auth.uid())`, then live state unchanged; apply OK; verify: SECURITY DEFINER +
+  `search_path=public, pg_temp`, EXECUTE only service_role, trigger bound; table-level INSERT/UPDATE: anon f/f,
+  authenticated f/f, service_role t/t; authenticated column UPDATE = exactly the 10, column INSERT = exactly the 4, anon
+  0 writable columns; policy `(id = ( SELECT auth.uid() AS uid))`; state unchanged. `verify.sql` live (rolled back): first
+  run reported a FALSE fail on the own-row INSERT case — its caller was the first user by id, financial's super_admin,
+  whom `user_self_insert` lets insert any row by design; verify.sql fixed to use a throwaway plain caller; re-run all
+  PASS (diagnostic 7 → 0 → 0, check-in 7 + 7, 7 forbidden writes → 42501, 10 columns → 1 row, app completion +5,
+  another user's row → 42501, own row → 1 row); after: 0 / 0 / 1, auth users 3, user rows 3.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
