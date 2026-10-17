@@ -102,16 +102,22 @@ BEGIN
   RAISE NOTICE 'PASS authenticated completion → trigger moved balance +%', d;
 END $$;
 
--- Own-row INSERT. A throwaway auth user (rolled back); live auth.users has new_user_trigger, which creates its
--- "user" row at once, so that row is deleted first — RN's onboarding insert is the fallback for exactly this state.
-DO $$ DECLARE v_new uuid := gen_random_uuid(); BEGIN
-  INSERT INTO auth.users (id, created_at) VALUES (v_new, now());
+-- Own-row INSERT. Two throwaway auth users (rolled back): CALLER, a plain role='user' account, and TARGET, an auth id
+-- with no "user" row. The caller must NOT be a real user picked by id: user_self_insert (unchanged) lets a super_admin
+-- insert any row by design, so an admin caller would wrongly "fail" this check (it did on financial, 2026-10-17).
+-- Live auth.users has new_user_trigger, which creates each new user's "user" row at once: the caller keeps its row
+-- (made here when no trigger exists, e.g. the local stub), the target's is deleted — RN's onboarding insert is the
+-- fallback for exactly that state.
+DO $$ DECLARE v_caller uuid := gen_random_uuid(); v_new uuid := gen_random_uuid(); BEGIN
+  INSERT INTO auth.users (id, created_at) VALUES (v_caller, now()), (v_new, now());
+  INSERT INTO public."user" (id, daily_reminder_time) VALUES (v_caller, '09:00') ON CONFLICT (id) DO NOTHING;
+  UPDATE public."user" SET role = 'user' WHERE id = v_caller AND role IS DISTINCT FROM 'user';
   DELETE FROM public."user" WHERE id = v_new;
-  PERFORM set_config('v.new', v_new::text, true);
-  RAISE NOTICE 'own-row insert: throwaway auth user % (rolled back)', v_new;
+  PERFORM set_config('v.caller', v_caller::text, true), set_config('v.new', v_new::text, true);
+  RAISE NOTICE 'own-row insert: throwaway caller % (role user) · target % (no row) — rolled back', v_caller, v_new;
 END $$;
--- (a) the verify user, signed in, inserts a row for the OTHER id → refused by RLS (42501)
-SELECT set_config('request.jwt.claims', json_build_object('sub', current_setting('v.uid'), 'role', 'authenticated')::text, true);
+-- (a) the plain caller, signed in, inserts a row for the TARGET id → refused by RLS (42501)
+SELECT set_config('request.jwt.claims', json_build_object('sub', current_setting('v.caller'), 'role', 'authenticated')::text, true);
 SET LOCAL ROLE authenticated;
 DO $$ BEGIN
   INSERT INTO public."user" (id, email, daily_reminder_time, onboarding_complete)
@@ -120,7 +126,7 @@ DO $$ BEGIN
 EXCEPTION WHEN insufficient_privilege THEN
   RAISE NOTICE 'PASS authenticated INSERT of another user''s row → 42501 (%)', SQLERRM;
 END $$;
--- (b) the new user, signed in, inserts its OWN row with RN's four columns → OK
+-- (b) the target, signed in, inserts its OWN row with RN's four columns → OK
 SELECT set_config('request.jwt.claims', json_build_object('sub', current_setting('v.new'), 'role', 'authenticated')::text, true);
 INSERT INTO public."user" (id, email, daily_reminder_time, onboarding_complete)
 VALUES (current_setting('v.new')::uuid, 'm112-own-' || current_setting('v.new') || '@example.test', '09:00', false);
