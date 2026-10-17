@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 112 · Moosii 111** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..111; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 112 · Moosii 112** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..112; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -603,7 +603,7 @@ Main track:
   RLS + policy, grants, partial unique index), balances 0, ledger 0; `verify.sql` live (rolled back, a lesson flipped to
   activity inside the transaction, real check-in) all PASS; after: balances 0, ledger 0, completions 6.
   `database.types.ts` regenerated (adds `moosie_awards`; no bridge to drop).
-- **112 — lock `"user".moosies` (F32) + own-row `"user"` INSERT + diagnostics pay once (F33)** — **APPLIED financial (2026-10-17) · Moosii pending.**
+- **112 — lock `"user".moosies` (F32) + own-row `"user"` INSERT + diagnostics pay once (F33)** — **APPLIED financial (2026-10-17) · APPLIED Moosii (2026-10-17).**
   BOTH PROJECTS, grants + one policy + trigger. `trigger_add_moosies()` (same name/ACL; hash-guarded 111 `10d3d5de…` → `09d509d0…`):
   a `kind='diagnostic'` questionnaire pays only on the user's first completion (later rows amount 0, ledger row kept),
   serialized by a per-(user, questionnaire) `pg_advisory_xact_lock`; check-ins pay every row; lessons/activities
@@ -634,6 +634,14 @@ Main track:
   whom `user_self_insert` lets insert any row by design; verify.sql fixed to use a throwaway plain caller; re-run all
   PASS (diagnostic 7 → 0 → 0, check-in 7 + 7, 7 forbidden writes → 42501, 10 columns → 1 row, app completion +5,
   another user's row → 42501, own row → 1 row); after: 0 / 0 / 1, auth users 3, user rows 3.
+  Moosii 2026-10-17: identity (sysid 7481590244898220655, domain moosii, PG 15.8); pre-check as financial (md5
+  `10d3d5de…`, table-level INSERT/UPDATE for anon + authenticated, policy `WITH CHECK (true)`); state 24 Moosies / 4
+  ledger rows / 2 completions (app activity since 111; two awarded completions were later deleted, their awards kept —
+  balances = ledger sums for every user); dry run (rolled back) identical to financial, live state unchanged; apply OK;
+  verify: structure identical to financial (md5 `09d509d0…`, SECURITY DEFINER, search_path pinned, EXECUTE service_role
+  only, trigger bound, table-level writes off for anon/authenticated, 10 UPDATE + 4 INSERT columns, anon 0, policy
+  `(id = auth.uid())`), 0 users whose balance ≠ ledger sum; `verify.sql` live (rolled back) all PASS; after: 24 / 4 / 2,
+  auth users 6, user rows 6. No new objects → `database.types.ts` unchanged.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
