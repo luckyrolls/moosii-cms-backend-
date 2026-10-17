@@ -33,6 +33,17 @@ Left over from the `FINDINGS-rpc-grants.md` audit after 094/095 closed the real 
 projects 2026-09-26). Both are guarded by `is_admin()`, so anon EXECUTE is inert; revoke anon, keep
 authenticated (the CMS calls them).
 
+### Moosies: delete-and-redo pays again
+**Why:** 111's ledger pays once per `completed_items` ROW (`source_id` = the row id), and the F29 index only blocks two
+LIVE completions of one lesson. A signed-in user may DELETE their own completions (`completed_items_del`, own row), so
+"delete the completion, finish the lesson again" pays the lesson's points again, indefinitely; a deleted diagnostic
+re-pays too (112 looks for an earlier completion ROW). Seen on Moosii 2026-10-17: two awards whose completions were
+later deleted (one user, 10-13; looks like test cleanup), balances still correct vs the ledger.
+**What (decision):** either (a) key lesson / diagnostic awards on the item, not the row — e.g. `source_id` =
+`<user>:<lesson_id>` under a new reason, so a re-completion conflicts — or (b) revoke DELETE on `completed_items` from
+`authenticated` (no client deletes today: moosii-rn, moosii-cms, moosii-reader checked 2026-10-13) and keep deletes
+backend-only (`demo:reset`, teardown). (b) is one migration; (a) changes the ledger contract.
+
 ## P2
 
 ### Reaper should also fail jobs stuck in `queued`
