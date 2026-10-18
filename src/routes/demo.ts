@@ -11,10 +11,14 @@ import {
   WIDGET_ALLOWLIST, type GateDeps, type CurrentFact,
 } from "../demo/partner";
 import { MxProvider, MxError } from "../facts/derive/mxProvider";
+import { simulateFact } from "../demo/simulate";
+import { factsDbDeps } from "../facts/db";
+import { randomUUID } from "crypto";
 
 // POST /demo/session — demo persona sign-in for the financial reader (api-contract §9).
 // GET  /demo/outcomes — Beat 6 outcome history, real + seeded points (api-contract §9b).
 // GET  /demo/partner-data, /demo/mx-widget-url — partner page data (api-contract §9c); authed by the DEMO SESSION.
+// POST /demo/simulate-fact — record one illustrative fact for the persona (api-contract §9d); authed by the DEMO SESSION.
 // Mounted bare in index.ts: the access code / demo session is the gate, not the admin JWT gate.
 // CORS: the reader origin must be in ALLOWED_ORIGINS.
 
@@ -22,6 +26,7 @@ const limiter = new FixedWindowLimiter(10, 60_000);           // 10 sign-ins per
 const outcomesLimiter = new FixedWindowLimiter(10, 60_000);   // 10 outcome reads per IP per minute
 const partnerLimiter = new FixedWindowLimiter(30, 60_000);    // 30 partner-data reads per IP per minute
 const widgetLimiter = new FixedWindowLimiter(10, 60_000);     // 10 widget URLs per IP per minute
+const simulateLimiter = new FixedWindowLimiter(10, 60_000);   // 10 simulated facts per IP per minute
 
 // Every auth user flagged with app_metadata.demo_persona (service role; users can't set it).
 async function listDemoUsers(): Promise<{ id: string; email: string | undefined; persona: string }[]> {
@@ -224,6 +229,35 @@ router.get("/mx-widget-url", async (req: Request, res: Response): Promise<void> 
   } catch (e) {
     console.error(`[demo] mx-widget-url failed ip=${ipTag}: ${e instanceof Error ? e.message : String(e)}`);
     apiError(res, 502, "mx_widget_url_failed", "could not get a widget URL from MX");
+  }
+});
+
+// ---- simulated fact (api-contract §9d) ------------------------------------------------------------------------------
+
+router.post("/simulate-fact", async (req: Request, res: Response): Promise<void> => {
+  const ip = clientIp(req);
+  const ipTag = createHash("sha256").update(ip).digest("hex").slice(0, 6);
+  res.set("Cache-Control", "no-store");
+  const correlationId = randomUUID();
+  try {
+    const who = await demoGate(req.headers.authorization, ip, gateDeps(simulateLimiter));
+    if (isRefusal(who)) {
+      console.warn(`[demo] simulate-fact refused ${who.status} ${who.code} ip=${ipTag}`);
+      apiError(res, who.status, who.code, who.message);
+      return;
+    }
+    const out = await simulateFact(who, req.body, { correlationId, now: new Date() }, factsDbDeps);
+    if (out.status !== 200) {
+      console.warn(`[demo] simulate-fact rejected ${out.status} ${out.code} persona=${who.persona} corr=${correlationId}: ${out.message}`);
+      apiError(res, out.status, out.code, out.message);
+      return;
+    }
+    console.log(`[demo] simulate-fact persona=${who.persona} ${out.body.fact_key}=${out.body.value} written=${out.body.written} ` +
+      `followups_verified=${out.body.followups_verified} rebuild_enqueued=${out.body.rebuild_enqueued} corr=${correlationId}`);
+    res.status(200).json(out.body);
+  } catch (e) {
+    console.error(`[demo] simulate-fact failed ip=${ipTag} corr=${correlationId}: ${e instanceof Error ? e.message : String(e)}`);
+    apiError(res, 500, "demo_simulate_failed", "could not record the simulated fact");
   }
 });
 

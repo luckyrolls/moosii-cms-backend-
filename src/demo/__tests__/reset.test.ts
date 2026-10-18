@@ -1,7 +1,7 @@
 // Demo reset (pure half): argument parsing, seed protection, persona scoping, moosies (ledger, migration 111). Run: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset, DEMO_PERSONAS, RESET_TABLES, SAM_ORIENTATION_LESSON } from "../reset";
+import { parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset, simulatedFactsToDelete, DEMO_PERSONAS, RESET_TABLES, SAM_ORIENTATION_LESSON } from "../reset";
 
 const SAM = DEMO_PERSONAS.sam;
 const SARAH = DEMO_PERSONAS.sarah;
@@ -62,4 +62,16 @@ test("RESET_TABLES clears user_activity_followups (no protected seed rows)", () 
   assert.ok(RESET_TABLES.includes("user_activity_followups"));
   assert.ok(!isProtectedSeed("user_activity_followups", { id: "f1", user_id: SAM }));
   assert.deepEqual(rowsToDelete("user_activity_followups", [{ id: "f1", user_id: SAM }, { id: "f2", user_id: SARAH }, { id: "f3", user_id: OTHER }]).map((r) => r.id), ["f1", "f2"]);
+});
+
+test("simulated facts: only the personas' seed rows with source_ref demo-simulate are deleted", () => {
+  const rows = [
+    { id: "u1", user_id: SAM, fact_key: "credit_utilization_band", value: "low", source: "seed", source_ref: "demo-simulate" },
+    { id: "u2", user_id: SAM, fact_key: "credit_utilization_band", value: "high", source: "estimated", source_ref: "job:1" },
+    { id: "u3", user_id: SAM, fact_key: "has_emergency_buffer", value: "true", source: "seed", source_ref: "demo-seed" },   // §8e seed: kept
+    { id: "u4", user_id: SARAH, fact_key: "has_emergency_buffer", value: "true", source: "seed", source_ref: "demo-simulate" },
+    { id: "u5", user_id: OTHER, fact_key: "credit_utilization_band", value: "low", source: "seed", source_ref: "demo-simulate" }, // not a persona
+    { id: "u6", user_id: SAM, fact_key: "credit_utilization_band", value: "low", source: "derived", source_ref: "demo-simulate" }, // not seed
+  ];
+  assert.deepEqual(simulatedFactsToDelete(rows).map((r) => r.id), ["u1", "u4"]);
 });

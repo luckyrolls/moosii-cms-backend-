@@ -2585,6 +2585,30 @@ The persona is the token's user — never a parameter. Both responses are `Cache
 - Code: `src/demo/partner.ts` (pure: gates, spending summary, insight rules, allowlist), `src/routes/demo.ts`,
   `MxProvider.createWidgetUrl` (`src/facts/derive/mxProvider.ts`).
 
+### 9d. Demo control: simulate a fact — DELIVERED (financial only)
+
+```
+POST /demo/simulate-fact
+Authorization: Bearer <demo session access_token>    // the session POST /demo/session minted (§9)
+Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer", value: string }
+
+→ 200 { persona, user_id, fact_key, value, observed_at, written, rebuild_enqueued, followups_verified }
+→ 400 fact_not_allowed (any other key) · 400 invalid_request · 400 unknown_fact (value not in the vocabulary, or numeric)
+→ 404 not_found (DOMAIN ≠ financial, checked first) · 429 rate_limited (10/min per IP) · 401 unauthorized
+→ 403 not_demo_persona · 500 demo_simulate_failed
+```
+- Gates as §9c (domain → rate limit → token → persona). The persona is the token's user, never a parameter.
+- Records ONE observation for that user, `observed_at` = now, through `recordFacts` (§8b) — the same core as
+  `POST /facts` and `derive_facts`: vocabulary and no-amount rules apply, the user's coalesced `rebuild_mlp` is
+  enqueued (`triggered_by: "demo_simulate_fact"`), and activity follow-ups are verified exactly as after a real
+  derivation (§10; `followups_verified` = how many it verified).
+- Provenance: `source = 'seed'`, `source_ref = 'demo-simulate'` — labelled seeded / Illustrative wherever facts are
+  shown (§9b, §9c insights, `GET /facts`). Never presented as real.
+- `npm run demo:reset` deletes exactly these rows (`source = 'seed' AND source_ref = 'demo-simulate'`, personas only),
+  so each persona's real (derived) value is current again with its real provenance. Re-appending the original value
+  instead would mislabel it as seeded, and re-deriving can't win (its observation is older; latest wins). Real fact
+  history is untouched. Cache-Control: no-store. Code: `src/demo/simulate.ts` (pure), `src/routes/demo.ts`.
+
 ## 10. Activity follow-ups — DELIVERED (migration 113; both domains)
 
 An activity (`lessons.kind = 'activity'`) ends with three choices. **Follow-ups are their own surface: they are never
@@ -2612,6 +2636,12 @@ follow-up id, so each pays at most once.
 
 All three routes: `Authorization: Bearer <end-user Supabase JWT>`; the user id comes from the token, never the body;
 own rows only; each write is one transaction. `401 unauthorized` for a missing or invalid token.
+**Demo sessions (financial):** the token `POST /demo/session` mints is an ordinary Supabase session for the persona's
+auth user (§9), so these three routes accept it as that user — no separate demo auth, and a demo session reaches no
+route it couldn't before. One persona can't see or answer another's follow-ups (`404 followup_not_found`).
+
+**Financial demo config (migration 114):** "Set a Statement-Date Reminder" (`d9f6e3b4-…`) has `followup_after_days =
+7` and is verified by `credit_utilization_band = low` (demo control: §9d).
 
 ```
 POST /activities/:lessonId/finish        Body: { choice: "did_it" | "later" | "not_for_me" }
@@ -2650,7 +2680,7 @@ user's CURRENT value of that fact (`user_facts_latest`) is the target AND that o
 count. Evidence dated before the commitment never resolves. Skipped rows are never verified. A verification failure is
 logged and never fails the facts write; the `POST /facts` response is unchanged.
 
-Not in this slice: email, RN / reader / CMS screens, demo-token auth on these routes. Code: `src/activities/` (router
+Not in this slice: email, RN / reader / CMS screens. Code: `src/activities/` (router
 factory, db deps), `src/routes/activities.ts`, the `recordFacts` hook in `src/facts/service.ts`. SQL:
 `activity_finish`, `activity_followup_answer`, `resolve_activity_followups`, `activity_award` (EXECUTE service_role
 only); `activity_followup_limits()` (SECURITY DEFINER; max asks + grace days only, for the invoker view).

@@ -331,3 +331,43 @@ test("lessons: follow-up settings only on activities; verify key/value both or n
     await rejects(db, `UPDATE public.lessons SET verify_fact_value = 'maybe' WHERE id = $1`, [f.activity], "23503");
   });
 });
+
+// ---- demo path (financial demo, migration 114 config shape) ----
+
+test("demo: Sam-shaped run — later → simulated 'low' (seed, demo-simulate) → done by data, bonus once; deleting the simulated row restores 'high'", { skip }, async () => {
+  await tx(async (db) => {
+    const f = await fixture(db);
+    // the persona's real band, derived weeks ago
+    const real = await fact(db, f.user, f.factKey, "false", new Date(Date.now() - 20 * 86_400_000).toISOString(), "estimated");
+    const r = await finish(db, f.user, f.activity, "later");
+    const sim = (await db.query(
+      `INSERT INTO public.user_facts (user_id, fact_key, value, observed_at, source, source_ref) VALUES ($1, $2, 'true', $3, 'seed', 'demo-simulate') RETURNING id`,
+      [f.user, f.factKey, new Date(Date.now() + 1000).toISOString()])).rows[0].id;
+    const out = await resolve(db, f.user);
+    assert.deepEqual(out.map((x) => [x.followup_id, x.was, x.fact_id, x.awarded]), [[r.followup.id, "committed", sim, 5]]);
+    assert.deepEqual((await resolve(db, f.user)), []);
+    assert.deepEqual(await awards(db, f.user), [["activity_verified", 5], ["completion", 0]]);
+    // demo:reset's fact step: delete only the simulated row → the real observation is current again, with its provenance
+    await db.query(`DELETE FROM public.user_facts WHERE user_id = $1 AND source = 'seed' AND source_ref = 'demo-simulate'`, [f.user]);
+    const latest = (await db.query(`SELECT value, source, observation_id FROM public.user_facts_latest WHERE user_id = $1 AND fact_key = $2`, [f.user, f.factKey])).rows[0];
+    assert.deepEqual(latest, { value: "false", source: "estimated", observation_id: real });
+    // the follow-up keeps verified_at; its evidence pointer is cleared by ON DELETE SET NULL (demo:reset deletes the row anyway)
+    const row = (await db.query(`SELECT verified_at IS NOT NULL AS v, verified_fact_id FROM public.user_activity_followups WHERE id = $1`, [r.followup.id])).rows[0];
+    assert.deepEqual(row, { v: true, verified_fact_id: null });
+  });
+});
+
+test("demo: one persona cannot answer or see another persona's follow-up", { skip }, async () => {
+  await tx(async (db) => {
+    const sam = await fixture(db);
+    const sarah = await fixture(db);
+    const samRow = await finish(db, sam.user, sam.activity, "later");
+    await backdate(db, samRow.followup.id, 1);
+    await rejects(db, `SELECT public.activity_followup_answer($1, $2, 'did_it')`, [sarah.user, samRow.followup.id], /activity:followup_not_found/);
+    await rejects(db, `SELECT public.activity_followup_answer($1, $2, 'not_yet')`, [sarah.user, samRow.followup.id], /activity:followup_not_found/);
+    assert.deepEqual(await dueIds(db, sarah.user), []);
+    assert.deepEqual(await dueIds(db, sam.user), [samRow.followup.id]);
+    const untouched = (await db.query(`SELECT status, asks FROM public.user_activity_followups WHERE id = $1`, [samRow.followup.id])).rows[0];
+    assert.deepEqual(untouched, { status: "committed", asks: 0 });
+  });
+});

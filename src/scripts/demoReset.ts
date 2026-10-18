@@ -1,13 +1,15 @@
 import "dotenv/config";
 import { Client } from "pg";
 import {
-  DEMO_PERSONAS, RESET_TABLES, SELECT_COLUMNS, parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset,
+  DEMO_PERSONAS, RESET_TABLES, SELECT_COLUMNS, FACT_COLUMNS, parseArgs, rowsToDelete, isProtectedSeed, moosiesAfterReset,
+  simulatedFactsToDelete,
   type DemoPersona, type Row,
 } from "../demo/reset";
 
 // npm run demo:reset [-- --go]   (FINANCIAL ONLY)
 // Returns Sam and Sarah to their pre-demo state: deletes their per-user progress rows (RESET_TABLES) except
-// Sam's seeded orientation completion, recomputes user.moosies from the moosie_awards that remain, resets has_seen_mlp_intro,
+// Sam's seeded orientation completion, deletes the facts POST /demo/simulate-fact wrote (so the real ones are current
+// again), recomputes user.moosies from the moosie_awards that remain, resets has_seen_mlp_intro,
 // then asks the financial service to rebuild both plans. Dry run unless --go. Rules: src/demo/reset.ts.
 // Connects with FINANCIAL_DB_URL (never SUPABASE_URL, which may point at Moosii) in ONE transaction, and
 // refuses unless that database is the financial project (app_settings.domain + system identifier).
@@ -73,6 +75,19 @@ async function main(): Promise<void> {
         if (r.rowCount !== del.length) fail(`${table}: deleted ${r.rowCount}, planned ${del.length}`);
       }
     }
+
+    // Facts: delete only what POST /demo/simulate-fact wrote; the real observations become current again.
+    const facts: Row[] = (await pg.query(`SELECT ${FACT_COLUMNS} FROM public.user_facts WHERE user_id = ANY($1::uuid[])`, [ids])).rows;
+    const simulated = simulatedFactsToDelete(facts);
+    console.log(`${"user_facts (simulated only)".padEnd(30)} ${String(facts.length).padStart(6)} ${String(simulated.length).padStart(6)} ${String(facts.length - simulated.length).padStart(5)}`);
+    for (const f of simulated) console.log(`  - ${nameOf(f.user_id)} ${f.fact_key}=${f.value}`);
+    if (simulated.length) {
+      const r = await pg.query(`DELETE FROM public.user_facts WHERE id = ANY($1::uuid[]) AND user_id = ANY($2::uuid[]) AND source = 'seed' AND source_ref = 'demo-simulate'`,
+        [simulated.map((x) => x.id), ids]);
+      if (r.rowCount !== simulated.length) fail(`user_facts: deleted ${r.rowCount}, planned ${simulated.length}`);
+    }
+    const latest = await pg.query(`SELECT user_id, fact_key, value, source FROM public.user_facts_latest WHERE user_id = ANY($1::uuid[]) ORDER BY user_id, fact_key`, [ids]);
+    for (const l of latest.rows) console.log(`  now: ${nameOf(l.user_id).padEnd(6)} ${l.fact_key}=${l.value} (${l.source})`);
 
     // Moosies (the sum of the awards that remain) + the plan-intro flag.
     console.log("");

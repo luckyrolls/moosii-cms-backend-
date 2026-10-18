@@ -668,6 +668,12 @@ Main track:
   activity_followup_limits SECURITY DEFINER for authenticated + service_role, settings 14 / 2 / 5; `verify.sql` live
   (rolled back) all PASS; after: 1 completion / 0 / 0 / 0 follow-ups, auth users 3, lessons 12, fact keys 6.
   Moosii 2026-10-17: identity (sysid 7481590244898220655, domain moosii, PG 15.8); pre-check as financial; state 3 completions / 29 Moosies / 5 ledger / 0 activities (app activity since 112); dry run (rolled back) identical to financial, live state unchanged; apply OK; verify: structure identical to financial; balances = ledger sums for every user; `verify.sql` live (rolled back) all PASS; after: 3 / 29 / 5 / 0 follow-ups, auth users 6, lessons 154, fact keys 0. `database.types.ts` regenerated.
+- **114 — follow-up config for "Set a Statement-Date Reminder"** — *** FINANCIAL ONLY *** — **DRAFT (pending apply).**
+  Data, one row: lesson `d9f6e3b4-…` → `followup_after_days = 7`, `verify_fact_key = 'credit_utilization_band'`,
+  `verify_fact_value = 'low'`. Refuses unless `app_settings.domain = 'financial'`, the lesson is that activity, the
+  vocabulary has (credit_utilization_band, low), and its current settings are NULL or already these (drift → refuse).
+  Tested 2026-10-17 on a throwaway local copy: domain moosii → RAISE; financial → applied (7, credit_utilization_band,
+  low); re-run = no-op; drifted value (3) → RAISE, row untouched. Not applied on Moosii (it has no such lesson).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -2,7 +2,9 @@
 // personas to their pre-demo state on FINANCIAL: deletes the per-user progress a demo session writes, keeps
 // Sam's seeded orientation completion (FINDINGS-demo-personas, "Seeded completion"), recomputes moosies from the
 // award ledger (moosie_awards, migration 111).
-// Never touched: user_facts, demo_outcome_series, user_configurations, audits, any other user.
+// Facts: only the rows POST /demo/simulate-fact wrote (source 'seed', source_ref 'demo-simulate') are deleted, so each
+// persona's real (derived) observations become current again. Never touched: every other user_facts row,
+// demo_outcome_series, user_configurations, audits, any other user.
 
 export const DEMO_PERSONAS = {
   sam: "19587e0a-bfe0-48e2-94a1-055a5bbc9584",
@@ -43,6 +45,19 @@ export const SELECT_COLUMNS: Record<ResetTable, string> = {
 };
 
 export type Row = { id: string | number; user_id: string } & Record<string, unknown>;
+
+// user_facts rows written by POST /demo/simulate-fact. Deleting them (rather than re-appending the original value)
+// restores the persona's real current value WITH its real provenance: a re-appended row would have to be a new, newer
+// observation labelled seeded, and re-deriving can't help (its observation is older than the simulated one, and
+// latest wins). F14 (append-only history for real facts) is untouched: only illustrative rows go.
+export const SIMULATED_FACT_SOURCE = "seed";
+export const SIMULATED_FACT_SOURCE_REF = "demo-simulate";
+export const FACT_COLUMNS = "id, user_id, fact_key, value, source, source_ref";
+
+export function simulatedFactsToDelete(rows: Row[]): Row[] {
+  const personaIds = new Set<string>(Object.values(DEMO_PERSONAS));
+  return rows.filter((r) => personaIds.has(r.user_id) && r.source === SIMULATED_FACT_SOURCE && r.source_ref === SIMULATED_FACT_SOURCE_REF);
+}
 
 export function parseArgs(argv: string[]): { go: boolean } | { error: string } {
   let go = false;
