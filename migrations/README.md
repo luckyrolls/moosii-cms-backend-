@@ -678,6 +678,16 @@ Main track:
   three NULLs, no other lesson configured; dry run (rolled back) → (7, credit_utilization_band, low), then NULLs again;
   apply OK; verify: (7, credit_utilization_band, low), content md5 `8a6bdace…` unchanged, still published, segment
   `complete`, 5 cards `clinically_approved`, no other lesson configured; re-run = no-op.
+- **115 — `activity_finish`: progress parity (F42) + "Did it" on a committed row (F44)** — **DRAFT (pending apply).**
+  BOTH PROJECTS, one function. CREATE OR REPLACE (same signature / jsonb return → 113's service_role-only EXECUTE kept);
+  hash-guarded 113 `686e0937…` → `a4676266…` (identical on both projects, 2026-10-19). F42: the new-row path upserts
+  `user_lesson_progress {is_completed: true}` (ON CONFLICT (user_id, lesson_id) … WHERE not already true) in the same
+  transaction. F44: `did_it` on an existing `committed` row → done / self / resolved_at now + `activity_did_it` once;
+  every other repeat returns the row unchanged; skipped is final.
+  Tested 2026-10-19 on the local PG 17 cluster (fresh restore + 111–114): apply, re-run = no-op, EXECUTE still
+  service_role only; a foreign body → RAISE, body untouched; `docs/drafts/115-activity-finish/verify.sql` all PASS;
+  `npm test` with `MOOSIE_TEST_DB_URL` 271/271 (later → did_it resolves + pays once, repeat pays 0, skipped final,
+  later/not_for_me no-ops, status always returned, progress written once / pre-existing kept).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

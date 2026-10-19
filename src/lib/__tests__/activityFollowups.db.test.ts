@@ -371,3 +371,79 @@ test("demo: one persona cannot answer or see another persona's follow-up", { ski
     assert.deepEqual(untouched, { status: "committed", asks: 0 });
   });
 });
+
+// ---- migration 115: progress parity (F42) + "Did it" on a committed row (F44) ----
+
+async function progress(db: Client, user: string, lesson: string): Promise<{ n: number; done: boolean | null; updated: string | null }> {
+  const r = (await db.query(`SELECT count(*)::int AS n, bool_and(is_completed) AS done, max(updated_at)::text AS updated
+                               FROM public.user_lesson_progress WHERE user_id = $1 AND lesson_id = $2`, [user, lesson])).rows[0];
+  return { n: r.n, done: r.done, updated: r.updated };
+}
+
+test("115: later → finish(did_it) resolves the committed row (done/self) and pays activity_did_it once; a repeat pays nothing", { skip }, async () => {
+  await tx(async (db) => {
+    const f = await fixture(db);
+    const later = await finish(db, f.user, f.activity, "later");
+    const did = await finish(db, f.user, f.activity, "did_it");
+    assert.equal(did.created, false);
+    assert.equal(did.followup.id, later.followup.id);
+    assert.equal(did.followup.status, "done");
+    assert.equal(did.followup.resolved_by, "self");
+    assert.equal(did.awarded, 5);
+    const again = await finish(db, f.user, f.activity, "did_it");
+    assert.equal(again.awarded, 0);
+    assert.deepEqual(again.followup, did.followup);                 // unchanged
+    assert.deepEqual(await awards(db, f.user), [["activity_did_it", 5], ["completion", 0]]);
+    assert.equal(await balance(db, f.user), 5);
+    // answer() on it is now refused (no longer committed)
+    await rejects(db, `SELECT public.activity_followup_answer($1, $2, 'did_it')`, [f.user, did.followup.id], /activity:not_committed/);
+  });
+});
+
+test("115: every other repeat is a no-op returning the row unchanged (skipped is final; later/not_for_me never change a row)", { skip }, async () => {
+  await tx(async (db) => {
+    const f = await fixture(db);
+    const g = await fixture(db);
+    const skipped = await finish(db, f.user, f.activity, "not_for_me");
+    for (const c of ["did_it", "later", "not_for_me"]) {
+      const r = await finish(db, f.user, f.activity, c);
+      assert.deepEqual([r.created, r.awarded, r.followup], [false, 0, skipped.followup], c);
+    }
+    assert.equal(skipped.followup.status, "skipped");
+    const committed = await finish(db, g.user, g.activity, "later");
+    for (const c of ["later", "not_for_me"]) {
+      const r = await finish(db, g.user, g.activity, c);
+      assert.deepEqual([r.created, r.awarded, r.followup], [false, 0, committed.followup], c);
+    }
+    assert.equal(await balance(db, f.user) + await balance(db, g.user), 0);
+  });
+});
+
+test("115: the response always carries the row's status (reopening shows the existing state)", { skip }, async () => {
+  await tx(async (db) => {
+    const f = await fixture(db);
+    await finish(db, f.user, f.activity, "later");
+    const reopened = await finish(db, f.user, f.activity, "later");
+    assert.equal(reopened.followup.status, "committed");
+    assert.ok(reopened.followup.due_at);
+  });
+});
+
+test("115: finish writes user_lesson_progress {is_completed: true} once; repeats don't touch it; a pre-existing row is kept", { skip }, async () => {
+  await tx(async (db) => {
+    const f = await fixture(db);
+    await finish(db, f.user, f.activity, "later");
+    const first = await progress(db, f.user, f.activity);
+    assert.deepEqual([first.n, first.done], [1, true]);
+    await finish(db, f.user, f.activity, "did_it");
+    await finish(db, f.user, f.activity, "not_for_me");
+    assert.deepEqual(await progress(db, f.user, f.activity), first);  // same row, same updated_at
+    // RN already wrote the progress row (and the completion): accepted, still one row
+    const g = await fixture(db);
+    await db.query(`INSERT INTO public.user_lesson_progress (user_id, lesson_id, is_completed) VALUES ($1, $2, true)`, [g.user, g.activity]);
+    await db.query(`INSERT INTO public.completed_items (user_id, item_id, item_type, lesson_id, item_name, score) VALUES ($1, $2, 'lesson', $2, 'Act', 0)`, [g.user, g.activity]);
+    const r = await finish(db, g.user, g.activity, "did_it");
+    assert.equal(r.created, true);
+    assert.deepEqual([(await progress(db, g.user, g.activity)).n, await completions(db, g.user, g.activity)], [1, 1]);
+  });
+});

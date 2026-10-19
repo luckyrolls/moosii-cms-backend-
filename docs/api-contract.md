@@ -2647,11 +2647,18 @@ route it couldn't before. One persona can't see or answer another's follow-ups (
 POST /activities/:lessonId/finish        Body: { choice: "did_it" | "later" | "not_for_me" }
 → 200 { followup: <row>, created: boolean, awarded: number }
 ```
-- Ensures the `completed_items` row exists (inserts it, or accepts one RN already wrote; never fails on 23505), then
-  writes the follow-up: `did_it` → `done` / `self` + the `activity_did_it` award; `later` → `committed`, `due_at = now +
-  followup_after_days`; `not_for_me` → `skipped`.
-- **Idempotent:** if a row already exists for (user, activity), it is returned unchanged with `created: false`,
-  `awarded: 0`, whatever the choice.
+- First call for (user, activity): ensures the `completed_items` row exists (inserts it, or accepts one RN already
+  wrote; never fails on 23505), upserts `user_lesson_progress {is_completed: true}` on (user_id, lesson_id) — parity
+  with moosii-rn's own completion (migration 115, F42) — then writes the follow-up: `did_it` → `done` / `self` + the
+  `activity_did_it` award; `later` → `committed`, `due_at = now + followup_after_days`; `not_for_me` → `skipped`. All in
+  one transaction.
+- **Repeat calls** (a row already exists; `created: false`):
+  - `did_it` on a **`committed`** row resolves it exactly like `answer(did_it)`: `done` / `self`, `resolved_at` now,
+    `activity_did_it` paid once (migration 115, F44). The updated row is returned with `awarded` = the payment.
+  - **Everything else is a no-op** returning the existing row unchanged with `awarded: 0`: `later` or `not_for_me` on
+    any row; anything on a `done` or `skipped` row. **`skipped` is final in v1.** The progress row is not touched.
+- The response always carries the row (`followup.status`, `due_at`, …), so a client reopening an activity can show its
+  existing state.
 - `400 invalid_choice` · `400 invalid_request` (lessonId not a uuid) · `400 not_activity` · `400 no_followup_configured`
   (`later` on an activity without `followup_after_days`) · `404 lesson_not_found` · `404 unknown_user` (no `"user"`
   profile row) · `500 activity_failed`.
