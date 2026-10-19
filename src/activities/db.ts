@@ -1,6 +1,7 @@
 import { supabase } from "../supabase";
 import type { Database } from "../types/database.types";
 import { ActivityDbError, type ActivitiesDeps } from "./router";
+import type { RecentRaw } from "./recent";
 
 // Real deps for the activity follow-up routes and the recordFacts hook: the service-role client calling migration 113's
 // SQL functions (EXECUTE service_role only). Each call is one transaction inside Postgres.
@@ -24,6 +25,17 @@ export const activitiesDbDeps: ActivitiesDeps = {
       .order("due_at", { ascending: true });
     if (error) throw new ActivityDbError(error.code, error.message);
     return data ?? [];
+  },
+  async listRecent(userId, sinceIso) {
+    const { data, error } = await supabase
+      .from("user_activity_followups")
+      .select("id, lesson_id, status, asks, due_at, committed_at, resolved_at, resolved_by, verified_at, created_at, " +
+              "lesson:lessons!user_activity_followups_lesson_id_fkey(lesson_name), " +
+              "fact:user_facts!user_activity_followups_verified_fact_id_fkey(source, source_ref)")
+      .eq("user_id", userId)
+      .or(`status.eq.committed,resolved_at.gte.${sinceIso}`);
+    if (error) throw new ActivityDbError(error.code, error.message);
+    return (data ?? []) as unknown as RecentRaw[];
   },
 };
 

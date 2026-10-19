@@ -2671,6 +2671,20 @@ GET /activity-followups/due
 ```
 - The caller's rows from `user_activity_followups_due`, soonest first.
 
+```
+GET /activity-followups/recent
+→ 200 { followups: [ { id, lesson_id, lesson_name, status, asks, due_at, resolved_at, resolved_by, verified_at,
+                       verified_source } ] }
+```
+- The caller's own follow-ups: every `committed` row (due or not) plus every row resolved (`done` or `skipped`) in the
+  last **14 days**, newest first (by `resolved_at`, else `committed_at`, else `created_at`). For showing a follow-up that
+  data just resolved, which `/due` never returns.
+- `verified_source` = the provenance of the resolving fact row: `demo-simulated` (written by `POST /demo/simulate-fact`,
+  §9d — label it Illustrative), `seeded` (any other seed row), `derived` (a real observation: derived / estimated from
+  linked accounts, or partner-reported); `null` when the row isn't verified or its evidence row was deleted.
+- No amounts and no Moosies fields. Demo sessions are accepted as the persona's user, like the other two routes.
+  `401 unauthorized` · `500 activity_failed`. Code: `src/activities/recent.ts` (pure).
+
 **Data verification (auto-resolve).** Every facts write that wrote at least one row (`POST /facts`, `derive_facts`,
 `seed_facts`, all through `recordFacts`) then runs `resolve_activity_followups(user)`. It looks at the user's
 `committed` rows and `done` rows not yet verified, on an activity with `verify_fact_key` / `verify_fact_value`. If the

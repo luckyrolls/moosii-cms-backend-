@@ -16,6 +16,7 @@ const deps: ActivitiesDeps = {
   async finish(...args) { calls.push({ fn: "finish", args }); if (failWith) throw failWith; return { followup: { id: FOLLOWUP }, created: true, awarded: 5 }; },
   async answer(...args) { calls.push({ fn: "answer", args }); if (failWith) throw failWith; return { followup: { id: FOLLOWUP }, awarded: 0 }; },
   async listDue(...args) { calls.push({ fn: "listDue", args }); return [{ id: FOLLOWUP, lesson_name: "Set a reminder" }]; },
+  async listRecent(...args) { calls.push({ fn: "listRecent", args }); return []; },
 };
 const { activities, followups } = createActivitiesRouters({
   async verifyUser(token) {

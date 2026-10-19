@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { apiError } from "../lib/errors";
 import { isUuid } from "../facts/validate";
+import { toRecent, recentSince, type RecentRaw } from "./recent";
 
 // Activity follow-ups — app-facing routes (api-contract.md §10). Built by a FACTORY so tests mount them over real HTTP
 // with fake deps + a fake token check; the real wiring is src/routes/activities.ts.
@@ -22,6 +23,8 @@ export type ActivitiesDeps = {
   finish(userId: string, lessonId: string, choice: FinishChoice): Promise<unknown>;
   answer(userId: string, followupId: string, answer: Answer): Promise<unknown>;
   listDue(userId: string): Promise<unknown[]>;
+  // The caller's committed follow-ups plus those resolved at or after `sinceIso` (shaped by toRecent).
+  listRecent(userId: string, sinceIso: string): Promise<RecentRaw[]>;
 };
 
 // The SQL functions RAISE 'activity:<code>: <message>'; the code picks the status. A missing "user" profile surfaces as
@@ -50,7 +53,8 @@ export function mapActivityError(e: unknown): { status: number; code: string; me
 
 const isOneOf = <T extends string>(list: readonly T[], v: unknown): v is T => typeof v === "string" && (list as readonly string[]).includes(v);
 
-export function createActivitiesRouters(opts: { verifyUser: VerifyUser; deps: ActivitiesDeps }): { activities: Router; followups: Router } {
+export function createActivitiesRouters(opts: { verifyUser: VerifyUser; deps: ActivitiesDeps; now?: () => Date }): { activities: Router; followups: Router } {
+  const now = opts.now ?? (() => new Date());
   async function authed(req: Request, res: Response): Promise<string | null> {
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {
@@ -96,6 +100,20 @@ export function createActivitiesRouters(opts: { verifyUser: VerifyUser; deps: Ac
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[activities] due failed user=${userId}: ${msg}`);
+      apiError(res, 500, "activity_failed", msg);
+    }
+  });
+  // GET /activity-followups/recent — committed rows (due or not) + rows resolved in the last 14 days, newest first,
+  // with the resolving fact's provenance (verified_source). Own rows only.
+  followups.get("/recent", async (req: Request, res: Response): Promise<void> => {
+    const userId = await authed(req, res);
+    if (!userId) return;
+    try {
+      const at = now();
+      res.json({ followups: toRecent(await opts.deps.listRecent(userId, recentSince(at)), at) });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[activities] recent failed user=${userId}: ${msg}`);
       apiError(res, 500, "activity_failed", msg);
     }
   });
