@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 115 · Moosii 113** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105 and 107..113; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100 and 106 are financial-only**
+(Current APPLIED high-water, per project from 069: **financial 115 · Moosii 115** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113 and 115; **075 is financial-only** (decision D6);
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106 and 114 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -678,7 +678,7 @@ Main track:
   three NULLs, no other lesson configured; dry run (rolled back) → (7, credit_utilization_band, low), then NULLs again;
   apply OK; verify: (7, credit_utilization_band, low), content md5 `8a6bdace…` unchanged, still published, segment
   `complete`, 5 cards `clinically_approved`, no other lesson configured; re-run = no-op.
-- **115 — `activity_finish`: progress parity (F42) + "Did it" on a committed row (F44)** — **APPLIED financial (2026-10-19) · Moosii pending.**
+- **115 — `activity_finish`: progress parity (F42) + "Did it" on a committed row (F44)** — **APPLIED financial (2026-10-19) · APPLIED Moosii (2026-10-19).**
   BOTH PROJECTS, one function. CREATE OR REPLACE (same signature / jsonb return → 113's service_role-only EXECUTE kept);
   hash-guarded 113 `686e0937…` → `a4676266…` (identical on both projects, 2026-10-19). F42: the new-row path upserts
   `user_lesson_progress {is_completed: true}` (ON CONFLICT (user_id, lesson_id) … WHERE not already true) in the same
@@ -692,6 +692,10 @@ Main track:
   service_role only, state 0 follow-ups / 1 progress / 1 completion / 0 ledger; dry run (rolled back) → `a4676266…`, grants
   intact, then `686e0937…` again; apply OK; verify: md5 `a4676266…`, EXECUTE service_role only; `verify.sql` live (rolled
   back) all PASS; after: 0 / 1 / 1 / 0, auth users 3, lessons 12.
+  Moosii 2026-10-19: identity (sysid 7481590244898220655, domain moosii, PG 15.8); pre-check as financial (md5 `686e0937…`,
+  service_role only), state 0 follow-ups / 10 progress / 3 completions / 5 ledger; dry run (rolled back) identical; apply
+  OK; verify: md5 `a4676266…`, EXECUTE service_role only; `verify.sql` live (rolled back) all PASS; after: 0 / 10 / 3 / 5,
+  auth users 6, lessons 154. No new objects → `database.types.ts` unchanged.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
