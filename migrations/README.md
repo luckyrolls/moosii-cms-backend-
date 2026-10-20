@@ -696,6 +696,15 @@ Main track:
   service_role only), state 0 follow-ups / 10 progress / 3 completions / 5 ledger; dry run (rolled back) identical; apply
   OK; verify: md5 `a4676266…`, EXECUTE service_role only; `verify.sql` live (rolled back) all PASS; after: 0 / 10 / 3 / 5,
   auth users 6, lessons 154. No new objects → `database.types.ts` unchanged.
+- **116 — "Put Your Buffer on Autopilot" becomes Sarah's verifiable activity** — *** FINANCIAL ONLY *** — **DRAFT (pending apply).**
+  Data, one existing lesson (`e7fc45b6`, Building a Buffer, priority 200, unpublished; title / track / priority / topic /
+  publish state unchanged): kind `activity`, followup_after_days 14, verify (has_emergency_buffer, 'true') — the stored
+  vocabulary token — and the new description. Guards: domain; lesson present, unpublished, unarchived, in Building a
+  Buffer, titled as expected; kind lesson/activity; vocabulary; drift. Content + images come from jobs afterwards
+  (unapproved). Reworked 2026-10-23 (was: create a new lesson).
+  Tested 2026-10-23 on a throwaway local copy: domain moosii → RAISE; published → RAISE; wrong track → RAISE; financial →
+  applied (activity, 14, has_emergency_buffer, true, new description; title / priority 200 / unpublished unchanged;
+  anchor 6d4502d2 untouched); re-run = no-op (row not rewritten); drifted value → RAISE, row untouched.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
