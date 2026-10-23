@@ -22,9 +22,9 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 115 · Moosii 115** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 116 · Moosii 115** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113 and 115; **075 is financial-only** (decision D6);
-**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106 and 114 are financial-only**
+**082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
@@ -696,7 +696,7 @@ Main track:
   service_role only), state 0 follow-ups / 10 progress / 3 completions / 5 ledger; dry run (rolled back) identical; apply
   OK; verify: md5 `a4676266…`, EXECUTE service_role only; `verify.sql` live (rolled back) all PASS; after: 0 / 10 / 3 / 5,
   auth users 6, lessons 154. No new objects → `database.types.ts` unchanged.
-- **116 — "Put Your Buffer on Autopilot" becomes Sarah's verifiable activity** — *** FINANCIAL ONLY *** — **DRAFT (pending apply).**
+- **116 — "Put Your Buffer on Autopilot" becomes Sarah's verifiable activity** — *** FINANCIAL ONLY *** — **APPLIED financial (2026-10-23).**
   Data, one existing lesson (`e7fc45b6`, Building a Buffer, priority 200, unpublished; title / track / priority / topic /
   publish state unchanged): kind `activity`, followup_after_days 14, verify (has_emergency_buffer, 'true') — the stored
   vocabulary token — and the new description. Guards: domain; lesson present, unpublished, unarchived, in Building a
@@ -705,6 +705,12 @@ Main track:
   Tested 2026-10-23 on a throwaway local copy: domain moosii → RAISE; published → RAISE; wrong track → RAISE; financial →
   applied (activity, 14, has_emergency_buffer, true, new description; title / priority 200 / unpublished unchanged;
   anchor 6d4502d2 untouched); re-run = no-op (row not rewritten); drifted value → RAISE, row untouched.
+  Financial 2026-10-23: identity (sysid 7678069749886157684, domain financial, PG 17.6); pre-check: lesson, 200, unpublished,
+  unarchived, Building a Buffer, NULL follow-up settings; other 11 lessons fingerprinted (`b22f6b2a…`); dry run (rolled back)
+  → the intended row, then unchanged; apply OK; verify: (activity, 14, has_emergency_buffer, true, new description), title /
+  track / priority 200 / topic / unpublished unchanged, other lessons' fingerprint identical; segment `3d1b3de6-…`.
+  Then (jobs, not the migration): regen_segment_content whole_segment, plain_money, structure override, no quiz → 5 draft
+  cards; 5 generate_sub_segment_image → 5 candidate images; nothing approved, lesson unpublished.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
