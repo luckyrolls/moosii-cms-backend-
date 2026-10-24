@@ -459,6 +459,20 @@ regen scopes and the track batch): scope → `## Tone` → `## Structure` → `#
 `## Reference Documents` (only with `use_source_documents`) → `## Regeneration Target`
 (single-card regen only). Empty layers are omitted.
 
+**Activities get an activity-shaped structure (migration 117).** When the segment's lesson has `kind = 'activity'`,
+the `## Structure` layer is the DB block `prompt_blocks` structure/`activity_v1` (resolved by that immutable name, not
+referenced from `prompts`) instead of the tone's default structure block. Text per domain: "Write this as an activity,
+not a lesson. Card 1: why this matters, in two sentences. Cards 2–4: concrete steps the reader can do in under ten
+minutes. Last card: "Do it now" in one sentence." — financial adds "No dollar amounts.". This job takes no overrides,
+so for an activity it always applies `activity_v1`. The block missing / inactive / empty **fails before any model call
+or content change** (`Activity structure block (prompt_blocks structure/activity_v1) not found — apply migration 117,
+or pass an explicit structure override.` / `… is inactive …` / `… is empty …`); there is never a fallback text in code.
+**Lessons (`kind = 'lesson'`) are byte-identical to before** (test `structureChoice.test.ts` against the composer
+golden). `jobs.result.structure` records what was applied: `activity_v1`, or the tone default block's name (e.g.
+`standard_arc`), or `none` (a tone with no structure block); `ai_generation_log.blocks.structure` = the block actually
+used. Selection: `src/lib/structureChoice.ts`. **`generate_track_content` follows the same rule** (§2f): its content units
+opt in, so an activity in a track batch also gets `activity_v1` and a lesson its tone default.
+
 **`use_source_documents` — informed grounding (2026-10-12; migration 110).** When `true`, the
 section `## Reference Documents` is added after `## Context`. Its body is the **DB block**
 `prompt_blocks` (`block_type='grounding'`, `name='grounding_v1'`, a shared singleton resolved
@@ -638,8 +652,12 @@ always records the tone's DEFAULT block ids, even when `structure_block_id` /
 full `prompt` are the accurate record (backlog P3).
 
 **Structure (## Structure) resolution precedence:** `structure` prose override →
-`structure_block_id` (a different structure block for this run) → the tone's default
-`structure_block_id` (see §2g / §2i).
+`structure_block_id` (a different structure block for this run) → **for an activity (`lessons.kind = 'activity'`),
+the `activity_v1` block (migration 117; see §2b)** → the tone's default
+`structure_block_id` (see §2g / §2i). An explicit override always wins over the activity rule. Both scopes. The result
+echoes `structure`: `override` (prose override), or the applied block's name (`activity_v1`, a block override, or the
+tone default), or `none`. A missing / inactive / empty `activity_v1` on an activity with no override fails before the
+model call, existing cards intact. Lessons are unchanged.
 
 **Size (## Length) resolution precedence:** `length` prose override → `size_profile_id`
 (a different profile for this run) with optional inline `size` numeric tweaks merged
@@ -1652,7 +1670,9 @@ left NULL (it is a LABEL in this slice, not a key — no dedup/uniqueness). The 
 `POST /jobs { type:'generate_track_content', input:{...} } → 202 { job_id }`.
 Fans out over the EXISTING per-unit generators (`generate_segment_content` + optional
 `generate_quiz`) across ALL of a track's lessons/segments. No new generation logic —
-orchestration + progress only.
+orchestration + progress only. Content units apply the same structure rule as the job (§2b, migration 117): an
+activity gets the `activity_v1` structure block, a lesson its tone's default; a missing / inactive / empty
+`activity_v1` fails that activity's unit (recorded, the batch continues), never a lesson's.
 
 ```
 input: {

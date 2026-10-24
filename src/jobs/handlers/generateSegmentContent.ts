@@ -1,3 +1,4 @@
+import { planStructure, resolveStructure, type StructureDeps, type BlockRow } from "../../lib/structureChoice";
 import { randomUUID } from "crypto";
 import { supabase } from "../../supabase";
 import { getLLMClient } from "../../llm";
@@ -63,6 +64,23 @@ export async function loadSegmentPromptRowById(toneId: string): Promise<SegmentC
   if (!row.model)          throw new Error(`Tone ${toneId} has no model`);
   return row;
 }
+
+// Real deps for src/lib/structureChoice.ts. By id: the same query and error text as loadBlock (the tone-default path
+// stays identical); by name: the activity block (migration 117), null when absent.
+export const structureDbDeps: StructureDeps = {
+  async loadBlockById(blockId) {
+    if (!blockId) return null;
+    const { data, error } = await db.from("prompt_blocks").select("id, name, content, is_active").eq("id", blockId).single();
+    if (error || !data) throw new Error(`Failed to load structure block (id: ${blockId}): ${error?.message}`);
+    return data as BlockRow;
+  },
+  async loadStructureBlockByName(name) {
+    const { data, error } = await db.from("prompt_blocks").select("id, name, content, is_active")
+      .eq("block_type", "structure").eq("name", name).maybeSingle();
+    if (error) throw new Error(`Failed to load structure block ${name}: ${error.message}`);
+    return (data as BlockRow | null) ?? null;
+  },
+};
 
 export async function loadBlock(blockId: string | null, label: string): Promise<string> {
   if (!blockId) return "";
@@ -196,13 +214,15 @@ type Input = {
 // Thin job wrapper. Core logic is generateSegmentContent (below), exported so the
 // batch orchestrator can drive it directly with the BATCH's correlationId.
 export async function generateSegmentContentHandler(job: Job): Promise<unknown> {
-  return generateSegmentContent(job.input as Input);
+  // The job applies the activity rule (activities get the activity_v1 structure); so does the track batch
+  // (TRACK_CONTENT_GENERATE_OPTS in generateTrackContent.ts) — see src/lib/structureChoice.ts.
+  return generateSegmentContent(job.input as Input, { activityStructure: true });
 }
 
 // Core: generate + replace a segment's cards (whole-unit). correlationId defaults to
 // a fresh uuid (standalone job); the batch passes its own so a whole run is one
 // provenance thread. Throws on any failure (the batch records + continues).
-export async function generateSegmentContent(input: Input & { correlationId?: string }) {
+export async function generateSegmentContent(input: Input & { correlationId?: string }, opts: { activityStructure?: boolean } = {}) {
   const { seg_id, tone_id, generate_quiz: alsoGenerateQuiz = false, use_source_documents: useDocs = false } = input;
   if (!seg_id)  throw new Error("input.seg_id is required");
   if (!tone_id) throw new Error("input.tone_id is required");
@@ -233,12 +253,21 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
   // Step 2 — load prompt row + blocks in parallel
   const promptRow = await loadSegmentPromptRowById(tone_id);
 
-  const [toneContent, structureContent, cardPositionsContent, lengthContent] = await Promise.all([
+  // Structure: the tone's default block — or, for an activity when the caller opts in, the activity_v1 block (fails
+  // here, before any model call, if it is missing / inactive / empty). Lessons: identical text to before.
+  const structurePlan = planStructure({
+    kind: (lesson as { kind?: string | null }).kind ?? null,
+    toneBlockId: promptRow.structure_block_id,
+    activityRule: opts.activityStructure === true,
+  });
+  const [toneContent, structure, cardPositionsContent, lengthContent] = await Promise.all([
     loadBlock(promptRow.tone_block_id,      "tone"),
-    loadBlock(promptRow.structure_block_id, "structure"),
+    resolveStructure(structurePlan, structureDbDeps),
     loadBlock(promptRow.card_positions_block_id, "card positions"),  // "" if FK null; throws if set-but-fails
     resolveLengthContent(promptRow),   // size profile (default) → rendered length, else block
   ]);
+
+  const structureContent = structure.content;
 
   // Step 3 — compose prompts (avoid = error-severity voice-lint bans, injected)
   const systemMessage = promptRow.system_message;
@@ -268,10 +297,11 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     operation:         "segment_content",
     relatedEntityType: "segment",
     relatedEntityId:   seg_id,
-    notes:             `tone: ${promptRow.tone ?? tone_id} (${tone_id})` + (groundingDocs ? `, ${groundingNote(groundingDocs)}` : ""),
+    notes:             `tone: ${promptRow.tone ?? tone_id} (${tone_id})` + (groundingDocs ? `, ${groundingNote(groundingDocs)}` : "") +
+                       (structurePlan.source === "activity" ? `, structure: ${structure.applied}` : ""),
     blocks: {
       tone:           promptRow.tone_block_id,
-      structure:      promptRow.structure_block_id,
+      structure:      structurePlan.source === "activity" ? structure.blockId : promptRow.structure_block_id,
       length:         promptRow.length_block_id,
       card_positions: promptRow.card_positions_block_id,
     },
@@ -322,6 +352,7 @@ export async function generateSegmentContent(input: Input & { correlationId?: st
     model,
     finish_reason:         finishReason,
     lint,
+    structure:             structure.applied,   // "override" | a block name (activity_v1, the tone default) | "none"
     correlation_id:        correlationId,
     ...(groundingDocs && { grounding: groundingSnapshot(groundingDocs) }),
     ...(quizResult && { quiz: quizResult }),

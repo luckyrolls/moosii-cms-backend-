@@ -163,17 +163,32 @@ async function resumeCutoff(track_id: string, batchCreatedAt: string): Promise<s
 // prompt. Throws on failure (the executor records it and continues).
 export type RunUnit = (unit: Unit, tone_id: string, correlationId: string) => Promise<void>;
 
-const realRunUnit: RunUnit = async (unit, tone_id, correlationId) => {
-  if (unit.type === "content") {
-    await generateSegmentContent({ seg_id: unit.seg_id, tone_id, generate_quiz: false, correlationId });
-    // Freshly-(re)generated cards default to review_state='draft' (migration 056); recompute
-    // derives seg_status='pending' so an include_approved regen can never stay approved.
-    // seg_status is never written directly.
-    await recomputeSegStatus(unit.seg_id);
-  } else {
-    await generateQuiz({ seg_id: unit.seg_id, correlationId, isRegen: true });
-  }
+// Content units opt in to the activity rule exactly like the generate_segment_content job: an activity gets the
+// activity_v1 structure block, a lesson its tone's default (src/lib/structureChoice.ts; api-contract §2b, §2f).
+export const TRACK_CONTENT_GENERATE_OPTS = { activityStructure: true } as const;
+
+export type RunUnitDeps = {
+  generate: typeof generateSegmentContent;
+  recompute: typeof recomputeSegStatus;
+  quiz: typeof generateQuiz;
 };
+
+// Built from injected deps so the wiring is unit-tested (src/jobs/handlers/__tests__/generateTrackContent.test.ts).
+export function makeRunUnit(deps: RunUnitDeps): RunUnit {
+  return async (unit, tone_id, correlationId) => {
+    if (unit.type === "content") {
+      await deps.generate({ seg_id: unit.seg_id, tone_id, generate_quiz: false, correlationId }, TRACK_CONTENT_GENERATE_OPTS);
+      // Freshly-(re)generated cards default to review_state='draft' (migration 056); recompute
+      // derives seg_status='pending' so an include_approved regen can never stay approved.
+      // seg_status is never written directly.
+      await deps.recompute(unit.seg_id);
+    } else {
+      await deps.quiz({ seg_id: unit.seg_id, correlationId, isRegen: true });
+    }
+  };
+}
+
+const realRunUnit: RunUnit = makeRunUnit({ generate: generateSegmentContent, recompute: recomputeSegStatus, quiz: generateQuiz });
 
 // Execute a plan with bounded concurrency, writing live progress into jobs.result.
 // One unit failing is recorded, never fatal. runUnit is injectable so proofs can drive

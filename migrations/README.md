@@ -711,6 +711,15 @@ Main track:
   track / priority 200 / topic / unpublished unchanged, other lessons' fingerprint identical; segment `3d1b3de6-…`.
   Then (jobs, not the migration): regen_segment_content whole_segment, plain_money, structure override, no quiz → 5 draft
   cards; 5 generate_sub_segment_image → 5 candidate images; nothing approved, lesson unpublished.
+- **117 — structure block `activity_v1` (activities generate activity-shaped cards)** — **DRAFT (pending apply).**
+  BOTH PROJECTS, data, one `prompt_blocks` row (structure / `activity_v1` / "Activity (v1)", active), text chosen by
+  `app_settings.domain`: financial ends "No dollar amounts." (md5 `93d7ecf7…`), moosii without it (md5 `83e45c89…`); any
+  other domain → RAISE, rolled back. ON CONFLICT (block_type, name) DO NOTHING. No schema change. Not referenced from
+  `prompts`. Code: `src/lib/structureChoice.ts` (generate + regen apply it for kind activity when no explicit structure
+  override, and so does the track batch's content units; lessons byte-identical).
+  Tested 2026-10-24 on throwaway local copies: financial → one row, the financial text, md5 `93d7ecf7…` (equal to the
+  brief's text hashed independently); moosii → md5 `83e45c89…`; domain `bogus` → RAISE, 0 rows; re-run after an edit →
+  no-op, the edit kept.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

@@ -6,8 +6,10 @@ import {
   resolveLengthContent,
   composeUserMessage,
   callAndParseCards,
+  structureDbDeps,
 } from "./generateSegmentContent";
 import { generateQuiz } from "./generateQuiz";
+import { planStructure, resolveStructure } from "../../lib/structureChoice";
 import { purgeImagesForSubSegments } from "../../storage/purgeImages";
 import { recomputeSegStatus, resetCardsToDraft } from "../../lib/cardReview";
 import { loadPromptBanInstruction } from "../../lib/voiceLint";
@@ -122,9 +124,17 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
   const systemMessage    = promptRow.system_message;
   const scopeText        = ov(overrides?.scope)     ?? promptRow.scope;
   const toneContent      = ov(overrides?.tone)      ?? await loadBlock(promptRow.tone_block_id, "tone");
-  // Structure precedence: explicit prose override > block swap > tone's default block.
-  const structureContent = ov(overrides?.structure)
-    ?? await loadBlock(ov(overrides?.structure_block_id) ?? promptRow.structure_block_id, "structure");
+  // Structure precedence (src/lib/structureChoice.ts): explicit prose override > block swap > the activity_v1 block
+  // for an activity (fails here, before any model call, if missing / inactive / empty) > tone's default block.
+  const structurePlan = planStructure({
+    kind: (lesson as { kind?: string | null }).kind ?? null,
+    overrideText: overrides?.structure,
+    overrideBlockId: overrides?.structure_block_id,
+    toneBlockId: promptRow.structure_block_id,
+    activityRule: true,
+  });
+  const structure = await resolveStructure(structurePlan, structureDbDeps);
+  const structureContent = structure.content;
   // Length precedence: explicit prose override > size override (profile/inline) >
   // tone's default size profile > legacy length block.
   const lengthContent    = ov(overrides?.length)
@@ -183,7 +193,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
                        (groundingDocs ? `, ${groundingNote(groundingDocs)}` : ""),
     blocks: {
       tone:           promptRow.tone_block_id,
-      structure:      promptRow.structure_block_id,
+      structure:      structurePlan.source === "activity" ? structure.blockId : promptRow.structure_block_id,
       length:         promptRow.length_block_id,
       card_positions: promptRow.card_positions_block_id,
     },
@@ -247,6 +257,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
       sub_segment_ids:       inserted.map((r) => r.id),
       approval_reset:        true,
       overrides_applied:     overridesApplied,
+      structure:             structure.applied,   // "override" | a block name (activity_v1, a block override, the tone default) | "none"
       lint,
       model,
       finish_reason:         finishReason,
@@ -303,6 +314,7 @@ export async function regenSegmentContentHandler(job: Job): Promise<unknown> {
     card_sequence:     targetCard!.sequence,
     approval_reset:    true,
     overrides_applied: overridesApplied,
+    structure:         structure.applied,
     lint,
     model,
     finish_reason:     finishReason,
