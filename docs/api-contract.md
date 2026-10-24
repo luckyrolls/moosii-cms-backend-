@@ -2533,6 +2533,11 @@ X-Demo-Code: <DEMO_ACCESS_CODE>                  // PREFERRED; no Authorization 
   `demo_outcome_series` rows. Provenance: `user_facts` → `real`, EXCEPT `source = 'seed'` (the demo seed, §8e) →
   `seeded`; every series row → `seeded`. Values are vocabulary tokens (both tables FK `fact_values`).
 - **Aggregate:** `demo_outcome_aggregate` rows, always `seeded` (illustrative, not computed).
+- **Keeping projected points in the future:** migration 106 seeded the series once, relative to its apply date, so its
+  projected points drift into the past. `npm run demo:outcomes [-- --go]` (financial only, dry run by default) re-writes
+  the personas' rows with the same values and labels, relative to the run date (anchor = today's UTC noon; Sam +42 d;
+  Sarah −30 d and +21 d). Run it before a demo once a projected point has passed. Code: `src/demo/outcomeSeries.ts`
+  (pure), `src/scripts/demoOutcomes.ts`. Never touches `user_facts`, the aggregate, plans or other users.
 - Seeded points may be in the future and drive nothing: they are never in `user_facts`, so `user_facts_latest`, track
   resolution and the plan are unaffected. Both tables are service-role only (RLS on, no policy) — this route is the
   only reader. `Cache-Control: no-store`. CORS as §9 (reader origin in `ALLOWED_ORIGINS`).
