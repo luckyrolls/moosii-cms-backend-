@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 117 · Moosii 115** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113 and 115; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 117 · Moosii 117** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115 and 117; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -711,7 +711,7 @@ Main track:
   track / priority 200 / topic / unpublished unchanged, other lessons' fingerprint identical; segment `3d1b3de6-…`.
   Then (jobs, not the migration): regen_segment_content whole_segment, plain_money, structure override, no quiz → 5 draft
   cards; 5 generate_sub_segment_image → 5 candidate images; nothing approved, lesson unpublished.
-- **117 — structure block `activity_v1` (activities generate activity-shaped cards)** — **APPLIED financial (2026-10-26) · Moosii pending.**
+- **117 — structure block `activity_v1` (activities generate activity-shaped cards)** — **APPLIED financial (2026-10-26) · APPLIED Moosii (2026-10-26).**
   BOTH PROJECTS, data, one `prompt_blocks` row (structure / `activity_v1` / "Activity (v1)", active), text chosen by
   `app_settings.domain`: financial ends "No dollar amounts." (md5 `93d7ecf7…`), moosii without it (md5 `83e45c89…`); any
   other domain → RAISE, rolled back. ON CONFLICT (block_type, name) DO NOTHING. No schema change. Not referenced from
@@ -725,6 +725,11 @@ Main track:
   to it; dry run (rolled back) → the row, md5 `93d7ecf7…`, then 0 rows; apply OK; verify: one row structure / activity_v1 /
   "Activity (v1)", active, md5 `93d7ecf747db8c3ea0838f55067b6c72`, the financial text; other blocks' fingerprint
   identical; no prompts row refers to it.
+  Moosii 2026-10-26: identity (sysid 7481590244898220655, domain moosii, PG 15.8, client UTF8); pre-check: no activity_v1,
+  structure blocks = standard_arc + sturdy_6_card_arc, other 13 blocks fingerprinted (`39c41766…`), no prompts row refers
+  to it; dry run (rolled back) → the row, md5 `83e45c89…`, then 0 rows; apply OK; verify: one row structure / activity_v1 /
+  "Activity (v1)", active, md5 `83e45c890e58c2d1ca3dacdcd6affca0`, the Moosii text (no dollar sentence); other blocks'
+  fingerprint identical; no prompts row refers to it.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
