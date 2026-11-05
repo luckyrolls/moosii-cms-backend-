@@ -51,6 +51,14 @@ function fakeFacts() {
   const deps: FactsDeps = {
     async loadVocabulary() { return { values: VOCAB }; },
     async findExisting() { return [...table.values()].map((r) => ({ fact_key: r.fact_key, value: r.value, observed_at: r.observed_at })); },
+    async latestFacts() {
+      const latest = new Map<string, FactRow>();
+      for (const r of table.values()) {
+        const cur = latest.get(r.fact_key);
+        if (!cur || Date.parse(r.observed_at) >= Date.parse(cur.observed_at)) latest.set(r.fact_key, r);
+      }
+      return [...latest.values()].map((r) => ({ fact_key: r.fact_key, value: r.value, source: r.source }));
+    },
     async insertRows(rows) {
       inserts.push(rows);
       let written = 0;

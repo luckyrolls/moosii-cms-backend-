@@ -19,6 +19,7 @@ function fakes(opts: { persona?: string | null; latest?: LatestFact[] } = {}) {
   const facts: FactsDeps = {
     async loadVocabulary() { return { values: VOCAB }; },
     async findExisting() { return []; },
+    async latestFacts() { return opts.latest ?? []; },
     async insertRows(rows) { inserts.push(rows); return { written: rows.length }; },
     async enqueueRebuild(_u, ctx) { enqueues.push(ctx.reason); return { enqueued: true }; },
   };
@@ -55,6 +56,15 @@ test("re-run writes nothing: keys already seeded with the same value are skipped
   assert.equal(r.rebuild_enqueued, false);
   assert.equal(f.inserts.length, 0);
   assert.deepEqual(r.facts.map((x) => x.status), ["unchanged", "unchanged"]);
+});
+
+test("D6: a seed whose ONLY key already carries that value (from a derivation) writes nothing", async () => {
+  const f = fakes({ latest: [{ fact_key: "has_direct_deposit", value: "true", source: "derived" }] });
+  const r = await seedFactsForUser({ user_id: SARAH, facts: [FACTS[0]] }, { correlationId: "c" }, f.deps);
+  assert.equal(r.written, 0);
+  assert.equal(r.rebuild_enqueued, false);
+  assert.equal(f.inserts.length, 0, "recordFacts stops before the write");
+  assert.deepEqual(r.facts.map((x) => x.status), ["unchanged"]);
 });
 
 test("a changed value, or the same value from a non-seed source, is written", async () => {

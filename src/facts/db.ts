@@ -1,7 +1,7 @@
 import { supabase } from "../supabase";
 import { enqueueRebuildUserIfIdle } from "../jobs/runner";
 import { resolveActivityFollowups } from "../activities/db";
-import { UnknownUserError, type FactsDeps, type ExistingObservation } from "./service";
+import { UnknownUserError, type FactsDeps, type ExistingObservation, type LatestFact } from "./service";
 import type { FactsReadDeps } from "./router";
 import type { FactRow, Vocabulary } from "./validate";
 
@@ -29,6 +29,18 @@ async function findExisting(userId: string, keys: string[], observedAts: string[
     .in("observed_at", observedAts);
   if (error) throw new Error(`existing-observation lookup failed: ${error.message}`);
   return data ?? [];
+}
+
+// The member's CURRENT value per key (latest observed_at wins, 071) — the D6 no-op check in
+// service.ts, and the seed_facts job's own "already seeded this value" check (§8e). The view is not
+// in database.types.ts, hence the bridge (CLAUDE.md: views the generator does not type stay cast).
+export async function latestFactsForUser(userId: string): Promise<LatestFact[]> {
+  const { data, error } = await (supabase as any)
+    .from("user_facts_latest")
+    .select("fact_key, value, source")
+    .eq("user_id", userId);
+  if (error) throw new Error(`user_facts_latest read failed: ${error.message}`);
+  return (data ?? []) as LatestFact[];
 }
 
 // ONE statement → one transaction: every row lands or none does. ON CONFLICT DO NOTHING makes an
@@ -70,6 +82,7 @@ async function loadFactsForUser(userId: string, historyLimit: number): Promise<{
 export const factsDbDeps: FactsDeps & FactsReadDeps = {
   loadVocabulary,
   findExisting,
+  latestFacts: latestFactsForUser,
   insertRows,
   enqueueRebuild: (userId, ctx) => enqueueRebuildUserIfIdle(userId, ctx),
   resolveFollowups: (userId) => resolveActivityFollowups(userId),

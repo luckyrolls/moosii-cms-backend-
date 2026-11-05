@@ -18,9 +18,12 @@ const fakeAdmin: RequestHandler = (req, res, next) => {
 };
 
 let writes = 0;
+// what POST /facts sees as the member's current values (user_facts_latest) — empty unless a test sets it
+let current: { fact_key: string; value: string; source?: string | null }[] = [];
 const deps: FactsDeps & { loadFactsForUser: (u: string, l: number) => Promise<{ latest: unknown[]; history: unknown[] }> } = {
   async loadVocabulary() { return { values: new Map([["has_direct_deposit", new Set(["true", "false"])]]) }; },
   async findExisting() { return []; },
+  async latestFacts() { return current; },
   async insertRows(rows) { writes += rows.length; return { written: rows.length }; },
   async enqueueRebuild() { return { enqueued: true, jobId: "job-1" }; },
   async loadFactsForUser(userId, limit) {
@@ -70,11 +73,60 @@ test("auth: missing key, wrong key and the INTERNAL key are all 401 and write no
   assert.equal(writes, before);
 });
 
-test("POST with the facts key → 200 { written, rebuild_enqueued } and nothing else", async () => {
+test("POST with the facts key → 200 { written, rebuild_enqueued, unchanged } and nothing else", async () => {
   const url = await serve("financial");
   const res = await post(url, goodBody, FACTS_KEY);
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { written: 1, rebuild_enqueued: true });
+  assert.deepEqual(await res.json(), { written: 1, rebuild_enqueued: true, unchanged: false });
+});
+
+test("D6 over HTTP: a push that matches the member's current value writes nothing and queues no rebuild", async () => {
+  const url = await serve("financial");
+  current = [{ fact_key: "has_direct_deposit", value: "true", source: "platform_api" }];
+  const before = writes;
+  const res = await post(url, goodBody, FACTS_KEY);
+  current = [];
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { written: 0, rebuild_enqueued: false, unchanged: true });
+  assert.equal(writes, before, "nothing written");
+});
+
+// ---- POST /facts/batch (§8b-batch) ----
+
+const batchBody = {
+  members: [
+    { user_id: USER, facts: [{ key: "has_direct_deposit", value: "true", observed_at: "2026-09-15T14:00:00Z" }] },
+    { user_id: "4e1d9c3a-2b7f-4e55-9a01-6d8c7b5e4f32", facts: [{ key: "has_direct_deposit", value: "false", observed_at: "2026-09-15T14:00:00Z" }] },
+  ],
+};
+
+test("batch: 404 off the financial domain, 401 without the facts key, nothing written either way", async () => {
+  const before = writes;
+  assert.equal((await post(`${await serve("moosii")}/batch`, batchBody, FACTS_KEY)).status, 404);
+  const url = await serve("financial");
+  assert.equal((await post(`${url}/batch`, batchBody)).status, 401);
+  assert.equal((await post(`${url}/batch`, batchBody, INTERNAL_KEY)).status, 401);
+  assert.equal(writes, before);
+});
+
+test("batch: 200 { summary, results } with one result per member", async () => {
+  const url = await serve("financial");
+  const res = await post(`${url}/batch`, batchBody, FACTS_KEY);
+  assert.equal(res.status, 200);
+  const j = (await res.json()) as { summary: Record<string, number>; results: Record<string, unknown>[] };
+  assert.deepEqual(Object.keys(j).sort(), ["results", "summary"]);
+  assert.deepEqual(j.summary, { members: 2, ok: 2, failed: 0, unchanged: 0, written: 2, rebuilds_enqueued: 2 });
+  assert.equal(j.results.length, 2);
+  assert.deepEqual(j.results[0], { user_id: USER, status: "ok", written: 1, unchanged: false, rebuild_enqueued: true });
+});
+
+test("batch: an envelope error is a 400 in the standard envelope and writes nothing", async () => {
+  const url = await serve("financial");
+  const before = writes;
+  const res = await post(`${url}/batch`, { members: [] }, FACTS_KEY);
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), { error: { code: "invalid_request", message: "members must be a non-empty array" } });
+  assert.equal(writes, before);
 });
 
 test("POST validation errors use the standard error envelope with a 400", async () => {

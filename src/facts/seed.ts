@@ -1,16 +1,18 @@
-import { recordFacts, type FactsDeps } from "./service";
+import { recordFacts, type FactsDeps, type LatestFact } from "./service";
 import { isUuid } from "./validate";
 
 // seed_facts core (api-contract §8e; FINDINGS-demo-personas §2). Writes SEEDED facts for a DEMO
 // persona only: source 'seed', source_ref 'demo-seed', through the same recordFacts core as POST /facts
 // and derive_facts (vocabulary, no-amounts and conflict rules all apply; the user's rebuild is enqueued).
 //
-// Idempotent across runs: a key whose CURRENT value is already this value from a seed is skipped, so a
-// re-run writes nothing and enqueues nothing. Everything external is injected (unit-tested with fakes).
+// Idempotent across runs: a key whose CURRENT value is already this value from a seed is skipped here, so a
+// re-run writes nothing and enqueues nothing. Since D6 (2026-11-05) recordFacts skips an unchanged push as
+// well, on the value alone — so a key whose current value matches but came from a derivation is reported
+// "unchanged" too. Everything external is injected (unit-tested with fakes).
 
 export const SEED_SOURCE_REF = "demo-seed";
 
-export type LatestFact = { fact_key: string; value: string; source: string };
+export type { LatestFact };
 
 export type SeedDeps = {
   domain: string;
@@ -64,6 +66,9 @@ export async function seedFactsForUser(
 
   let written = 0;
   let rebuildEnqueued = false;
+  // recordFacts applies the D6 no-op rule too (every value already current → nothing written), so a
+  // key whose current value came from a DERIVATION rather than a seed is reported "unchanged" as well.
+  let coreNoop = false;
   if (toWrite.length > 0) {
     const outcome = await recordFacts(
       { user_id: userId, facts: toWrite.map((r) => ({ key: r.key, value: r.value, observed_at: observedAt, source: "seed", source_ref: SEED_SOURCE_REF })) },
@@ -74,13 +79,14 @@ export async function seedFactsForUser(
     if (outcome.status !== 200) throw new SeedError(outcome.code, outcome.message);
     written = outcome.body.written;
     rebuildEnqueued = outcome.body.rebuild_enqueued;
+    coreNoop = outcome.body.unchanged;
   }
 
   return {
     user_id: userId,
     demo_persona: persona,
     observed_at: observedAt,
-    facts: requested.map((r) => ({ fact_key: r.key, value: r.value, status: toWrite.includes(r) ? "recorded" : "unchanged" })),
+    facts: requested.map((r) => ({ fact_key: r.key, value: r.value, status: toWrite.includes(r) && !coreNoop ? "recorded" : "unchanged" })),
     written,
     rebuild_enqueued: rebuildEnqueued,
   };

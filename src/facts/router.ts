@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { apiError } from "../lib/errors";
 import { checkFactsBearer } from "./auth";
 import { recordFacts, type FactsDeps } from "./service";
+import { recordFactsBatch } from "./batch";
 import { isUuid } from "./validate";
 
 // /facts routes, built by a FACTORY so tests mount them with fake deps + a fake admin gate
@@ -46,11 +47,43 @@ export function createFactsRouter(opts: FactsRouterOptions): Router {
         apiError(res, out.status, out.code, out.message);
         return;
       }
-      console.log(`[facts] user=${out.userId} written=${out.body.written} skipped=${out.skipped} rebuild_enqueued=${out.body.rebuild_enqueued} key=${auth.fingerprint} corr=${correlationId}`);
+      console.log(`[facts] user=${out.userId} written=${out.body.written} skipped=${out.skipped} unchanged=${out.body.unchanged} rebuild_enqueued=${out.body.rebuild_enqueued} key=${auth.fingerprint} corr=${correlationId}`);
       res.status(200).json(out.body);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[facts] write failed key=${auth.fingerprint} corr=${correlationId}: ${msg}`);
+      apiError(res, 500, "facts_write_failed", msg);
+    }
+  });
+
+  // POST /facts/batch — the same intake for MANY members in one call (api-contract §8b-batch). Same
+  // domain gate and same key as POST /facts; members are independent, so the call answers 200 and the
+  // caller reads per-member results.
+  router.post("/batch", async (req: Request, res: Response): Promise<void> => {
+    if (opts.domain !== "financial") {
+      apiError(res, 404, "not_found", "Not found");
+      return;
+    }
+    const auth = checkFactsBearer(req.headers.authorization, opts.factsKey);
+    if (!auth.ok) {
+      apiError(res, auth.status, auth.code, auth.message);
+      return;
+    }
+
+    const correlationId = randomUUID();
+    try {
+      const out = await recordFactsBatch(req.body, opts.deps, correlationId);
+      if (out.status !== 200) {
+        console.warn(`[facts] batch rejected ${out.status} ${out.code} key=${auth.fingerprint} corr=${correlationId}: ${out.message}`);
+        apiError(res, out.status, out.code, out.message);
+        return;
+      }
+      const s = out.body.summary;
+      console.log(`[facts] batch members=${s.members} ok=${s.ok} failed=${s.failed} unchanged=${s.unchanged} written=${s.written} rebuilds=${s.rebuilds_enqueued} key=${auth.fingerprint} corr=${correlationId}`);
+      res.status(200).json(out.body);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[facts] batch failed key=${auth.fingerprint} corr=${correlationId}: ${msg}`);
       apiError(res, 500, "facts_write_failed", msg);
     }
   });

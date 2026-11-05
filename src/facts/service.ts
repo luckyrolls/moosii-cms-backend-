@@ -4,17 +4,22 @@ import { validateFactsBody, type FactRow, type Vocabulary } from "./validate";
 // estimated sources, source_ref) and its own rebuild reason.
 export type RecordFactsOptions = { internal?: boolean; reason?: string };
 
-// POST /facts core — validate → conflict check → ONE write → enqueue the rebuild. The database
+// POST /facts core — validate → conflict check → no-op check (D6) → ONE write → enqueue the rebuild. The database
 // calls are INJECTED (FactsDeps) so the ordering guarantees are unit-tested with fakes:
 // nothing is written on any rejection, the write is a single call carrying every row, and the
 // rebuild is enqueued only after the write succeeded. Real deps: src/facts/db.ts.
 
 export type ExistingObservation = { fact_key: string; value: string; observed_at: string };
 
+// One row per key from user_facts_latest: the member's CURRENT value (latest observed_at wins, 071).
+export type LatestFact = { fact_key: string; value: string; source?: string | null };
+
 export type FactsDeps = {
   loadVocabulary(): Promise<Vocabulary>;
   // Rows already recorded for this user at any of these (key, observed_at) pairs.
   findExisting(userId: string, keys: string[], observedAts: string[]): Promise<ExistingObservation[]>;
+  // The member's current value per key (user_facts_latest) — the D6 no-op check below.
+  latestFacts(userId: string): Promise<LatestFact[]>;
   // ONE INSERT statement for all rows (atomic), ON CONFLICT (user_id, fact_key, observed_at) DO
   // NOTHING. Returns how many rows were actually inserted. Throws UnknownUserError when the
   // user_id has no auth account (user_facts_user_id_fkey, migration 076).
@@ -33,7 +38,7 @@ export class UnknownUserError extends Error {
 }
 
 export type RecordFactsOutcome =
-  | { status: 200; body: { written: number; rebuild_enqueued: boolean }; userId: string; skipped: number }
+  | { status: 200; body: { written: number; rebuild_enqueued: boolean; unchanged: boolean }; userId: string; skipped: number }
   | { status: 400 | 404 | 409; code: string; message: string };
 
 export async function recordFacts(body: unknown, deps: FactsDeps, correlationId: string, opts: RecordFactsOptions = {}): Promise<RecordFactsOutcome> {
@@ -62,6 +67,16 @@ export async function recordFacts(body: unknown, deps: FactsDeps, correlationId:
     }
   }
 
+  // D6 (2026-11-05): a push that tells us nothing new is a NO-OP — no rows, no plan rebuild. It
+  // applies when EVERY submitted fact already equals the member's current value (user_facts_latest):
+  // writing it could not change the plan, so the rebuild would be pure cost. One fact that differs
+  // and the whole call is written exactly as before (the batch stays all-or-nothing). Deliberately
+  // after the conflict check, so a contradiction is still a 409 even when the value matches current.
+  const current = new Map((await deps.latestFacts(v.userId)).map((l) => [l.fact_key, l.value]));
+  if (v.rows.every((r) => current.get(r.fact_key) === r.value)) {
+    return { status: 200, body: { written: 0, rebuild_enqueued: false, unchanged: true }, userId: v.userId, skipped: v.rows.length };
+  }
+
   let written: number;
   try {
     ({ written } = await deps.insertRows(v.rows));
@@ -81,12 +96,14 @@ export async function recordFacts(body: unknown, deps: FactsDeps, correlationId:
     }
   }
 
-  // Enqueued even when written = 0 (an identical redelivery): a
-  // rebuild is idempotent, and it covers a previous call whose rebuild failed.
+  // Enqueued even when written = 0 here (every row landed on an already-recorded (key, observed_at)
+  // but at least one differs from the member's current value, e.g. a late-arriving older observation):
+  // a rebuild is idempotent, and it covers a previous call whose rebuild failed. The all-unchanged
+  // case returned above without enqueueing anything.
   const r = await deps.enqueueRebuild(v.userId, { reason: opts.reason ?? "facts_intake", correlationId });
   return {
     status: 200,
-    body: { written, rebuild_enqueued: r.enqueued || Boolean(r.coalescedInto) },
+    body: { written, rebuild_enqueued: r.enqueued || Boolean(r.coalescedInto), unchanged: false },
     userId: v.userId,
     skipped: v.rows.length - written,
   };

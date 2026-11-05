@@ -2370,7 +2370,7 @@ Body: {
   ]
 }
 
-→ 200 { written: number, rebuild_enqueued: boolean }
+→ 200 { written: number, rebuild_enqueued: boolean, unchanged: boolean }
 → 400 invalid_request        — body/entry shape, user_id not a uuid, >100 facts, external_user_id sent
 → 400 missing_observed_at    — an entry has no observed_at
 → 400 invalid_observed_at    — not a full ISO 8601 instant with a zone
@@ -2389,12 +2389,24 @@ Body: {
   `{ "error": { "code": "unknown_fact", "message": "facts[1]: unknown value \"extreme\" for key \"credit_utilization_band\"" } }`.
 - **One transaction.** Every row is inserted by a single multi-row `INSERT … ON CONFLICT (user_id,
   fact_key, observed_at) DO NOTHING`, so the batch lands entirely or not at all.
-- **Redelivery is safe.** An identical batch re-sent is a no-op: `200 { written: 0,
-  rebuild_enqueued: true }`, no duplicate rows. `written` counts rows actually inserted. A
+- **An unchanged push is a NO-OP — decision D6, 2026-11-05.** When **every** submitted fact already
+  equals the member's current value (`user_facts_latest`), the call writes **no rows and enqueues no
+  rebuild**: `200 { written: 0, rebuild_enqueued: false, unchanged: true }`. It cannot change the plan,
+  so the rebuild would be pure cost — the point of the rule, since a daily push re-sends every
+  member's facts whether they moved or not. It applies on the value alone (the source and a newer
+  `observed_at` make no difference), and **wherever facts are recorded** (`recordFacts`): `POST /facts`,
+  §8b-batch, `derive_facts`, `seed_facts`, `POST /demo/simulate-fact`. **One fact that differs and the
+  whole call is written exactly as before** — the batch is one observation and stays all-or-nothing, so
+  the facts that happened to match are written too. A key the member has no value for at all is new,
+  not unchanged. The no-op path runs no follow-up verification, because it adds no evidence (§10).
+- **Redelivery is safe.** An identical batch re-sent writes nothing: `200 { written: 0,
+  rebuild_enqueued: false, unchanged: true }`, no duplicate rows (it is the no-op case above; before
+  D6 it answered `rebuild_enqueued: true`). `written` counts rows actually inserted. A
   **different** value at an already-recorded `(user, key, observed_at)` is not a redelivery — it is
   refused with `409` and nothing in the call is written (otherwise the conflict clause would drop it
-  silently). `observed_at` is normalized to UTC milliseconds, so the same instant written in another
-  zone is the same observation.
+  silently), and that still holds when the submitted value equals the member's current one: the
+  conflict check runs **before** the no-op check. `observed_at` is normalized to UTC milliseconds, so
+  the same instant written in another zone is the same observation.
 - **Append-only.** A fact that CLEARS is an ordinary new observation with the new value; history is
   kept, and `user_facts_latest` resolves the current value (latest `observed_at` wins; a late-arriving
   older observation does not).
@@ -2402,9 +2414,55 @@ Body: {
   enqueued (`triggered_by: "facts_intake"`, the request's `correlation_id`), coalescing into an
   already-**queued** job for that user but never into a running one (a running rebuild may have read
   the facts before this write). `rebuild_enqueued` is `true` when a job was enqueued or coalesced,
-  `false` only if the enqueue itself failed — the facts stay written either way, and any later
-  recompute picks them up. The rebuild is asynchronous: poll `jobs` if you need its outcome.
-- **Scope:** one user per call.
+  `false` when the enqueue itself failed — the facts stay written either way, and any later recompute
+  picks them up — or when the call was the D6 no-op above (nothing to rebuild for). The rebuild is
+  asynchronous: poll `jobs` if you need its outcome. Still enqueued when `written = 0` **and** a fact
+  differs from the current value (a late-arriving older observation that lands on an already-recorded
+  instant): a rebuild is idempotent and this covers an earlier call whose enqueue failed.
+- **Scope:** one user per call. Many members in one call: §8b-batch.
+
+### 8b-batch. `POST /facts/batch` — many members in one call — DELIVERED (D6, 2026-11-05)
+
+A daily push for a whole population is a handful of requests instead of one per member. No migration:
+the same tables, the same core, the same key.
+
+```
+POST /facts/batch
+Authorization: Bearer <FACTS_API_KEY>
+Content-Type: application/json
+
+Body: { members: [ { user_id: string, facts: [ …exactly as §8b… ] } ] }   // 1..50 members
+
+→ 200 {
+    summary: { members, ok, failed, unchanged, written, rebuilds_enqueued },
+    results: [
+      { user_id, status: "ok",    written: number, unchanged: boolean, rebuild_enqueued: boolean }
+    | { user_id, status: "error", error: { code: string, message: string } }
+    ]
+  }
+→ 400 invalid_request   — envelope only: body not an object, members empty or > 50, a member not an
+                          object, > 100 facts for one member, the same user_id twice in one call
+→ 401 unauthorized      — missing / wrong key (including INTERNAL_API_KEY), exactly as §8a
+→ 404 not_found         — DOMAIN is not 'financial' (checked BEFORE auth, like POST /facts)
+→ 500 facts_write_failed — the batch itself could not be processed
+```
+
+- **Members are independent.** Each one goes through the same core as `POST /facts` — same validation,
+  same `409` conflict rule, same all-or-nothing write, same D6 no-op, its own coalesced rebuild. One
+  member's rejection is reported in **that member's result** and never touches another member's write,
+  so a batch that reached the handler answers **200** and the caller must read `results`: a member can
+  carry any §8b error code (`unknown_fact`, `unknown_user`, `conflicting_observation`, …) plus
+  `facts_write_failed` when that member's write itself threw.
+- `results` is in request order, one entry per member. `user_id` is echoed as sent (`null` if it was
+  not a string). The `summary` counts are for logs and alerting; `written` is rows, `rebuilds_enqueued`
+  and `unchanged` are members.
+- **Members run one at a time**, in order — at this scale a predictable, debuggable order beats
+  concurrency. The fact vocabulary is loaded **once per batch**, not once per member.
+- **The same `user_id` twice in one call is refused** (`400`): the two entries would have no defined
+  order and the second would see the first's rows as "current". Send the member once, with every fact.
+- **Partner identity is unchanged (D2):** every member is addressed by `user_id`, the Supabase auth
+  uid. A partner's own member id (`partner_member_id`) is not accepted here either — that is step 2 of
+  the partner integration (`docs/FINDINGS-partner-integration.md` §4.2, decision open).
 
 ### 8c. `GET /facts/:user_id` — CMS inspector
 
@@ -2465,7 +2523,10 @@ Rules and thresholds: FINDINGS-fact-derivation.md §2 (decided 2026-09-28).
   gives a different value for an already-recorded aggregation; refresh the aggregation first).
 - **Write:** `observed_at` = the latest `successfully_aggregated_at` across the user's members.
   `source` = `derived`, or `estimated` when an input was estimated. `source_ref` = `job:<job_id>`.
-  **Idempotent:** a re-run on the same aggregation writes 0 rows. A fact that can't be determined
+  **Idempotent:** a re-run on the same aggregation writes 0 rows — and since D6 a re-run on a NEW
+  aggregation (or new manual data, so a new `observed_at`) that yields the same values writes 0 rows
+  and enqueues **no rebuild** either; `jobs.result.written` is 0 while each fact's `status` stays
+  `recorded` (the rule produced a value; nothing needed writing). A fact that can't be determined
   writes **no row** (unknown, the 075 convention) and is reported with a reason. Then the user's
   coalesced `rebuild_mlp` is enqueued (`triggered_by: "derive_facts"`).
 - **Result** (`jobs.result`): **no amounts, balances or ratios**, only counts and day spans:
@@ -2490,8 +2551,10 @@ the same core as §8b (vocabulary, no-amounts and conflict rules apply), then en
 `rebuild_mlp` (`triggered_by: "seed_facts"`). **Only for demo personas:** refuses (`not_demo_user`) any user
 whose auth `app_metadata.demo_persona` is unset. Other failures: `domain_not_supported`, `invalid_input`,
 `unknown_fact`, `conflicting_observation`, `unknown_user`.
-- **Idempotent:** a key whose current value is already this value *from a seed* is skipped. A re-run
-  writes 0 rows and enqueues no rebuild. Keys not listed are left alone (unknown stays unknown).
+- **Idempotent:** a key whose current value is already this value *from a seed* is skipped here, and
+  since D6 the core skips a key whose current value matches whatever its source (e.g. a derivation) —
+  so that one is reported `unchanged` too. A re-run writes 0 rows and enqueues no rebuild. Keys not
+  listed are left alone (unknown stays unknown).
 - **Result:** `{ user_id, demo_persona, observed_at, facts: [ { fact_key, value, status: "recorded" |
   "unchanged" } ], written, rebuild_enqueued }`.
 - Seeded rows are labeled (`source = 'seed'`) wherever facts are shown; never present them as real.
@@ -2627,6 +2690,9 @@ Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer", value: str
   `POST /facts` and `derive_facts`: vocabulary and no-amount rules apply, the user's coalesced `rebuild_mlp` is
   enqueued (`triggered_by: "demo_simulate_fact"`), and activity follow-ups are verified exactly as after a real
   derivation (§10; `followups_verified` = how many it verified).
+- **Simulating the value the persona ALREADY carries does nothing** (D6, §8b): `written: 0`,
+  `rebuild_enqueued: false`, `followups_verified: 0`, and no row is added. To show a change in a demo,
+  simulate a value that differs from the persona's current one.
 - Provenance: `source = 'seed'`, `source_ref = 'demo-simulate'` — labelled seeded / Illustrative wherever facts are
   shown (§9b, §9c insights, `GET /facts`). Never presented as real.
 - `npm run demo:reset` deletes exactly these rows (`source = 'seed' AND source_ref = 'demo-simulate'`, personas only),
@@ -2717,8 +2783,12 @@ GET /activity-followups/recent
 - No amounts and no Moosies fields. Demo sessions are accepted as the persona's user, like the other two routes.
   `401 unauthorized` · `500 activity_failed`. Code: `src/activities/recent.ts` (pure).
 
-**Data verification (auto-resolve).** Every facts write that wrote at least one row (`POST /facts`, `derive_facts`,
-`seed_facts`, all through `recordFacts`) then runs `resolve_activity_followups(user)`. It looks at the user's
+**Data verification (auto-resolve).** Every facts write that wrote at least one row (`POST /facts`, §8b-batch,
+`derive_facts`, `seed_facts`, all through `recordFacts`) then runs `resolve_activity_followups(user)`. The gate is
+unchanged by D6 — but note an unchanged push now writes no row, so it adds no evidence and verifies nothing. The one
+case that changes: a commitment made while the fact was **already** at its target value used to be verified by the
+next re-push of that same value (a fresh row dated after the commitment); it no longer is, and needs the value to
+actually move (or a demo simulate of a different value, §9d). It looks at the user's
 `committed` rows and `done` rows not yet verified, on an activity with `verify_fact_key` / `verify_fact_value`. If the
 user's CURRENT value of that fact (`user_facts_latest`) is the target AND that observation is dated after the commitment
 (`committed_at`, or `created_at` for an end-card did_it), it sets `verified_at` + `verified_fact_id` (the resolving

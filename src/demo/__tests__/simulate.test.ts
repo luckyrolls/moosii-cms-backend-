@@ -8,7 +8,7 @@ import type { FactRow } from "../../facts/validate";
 const SAM = { user_id: "19587e0a-bfe0-48e2-94a1-055a5bbc9584", persona: "sam" };
 const NOW = new Date("2026-10-17T15:00:00.000Z");
 
-function fake(resolved = 1) {
+function fake(resolved = 1, latest: { fact_key: string; value: string; source?: string | null }[] = []) {
   const calls = { insert: [] as FactRow[][], order: [] as string[], resolve: [] as string[], enqueue: [] as { reason: string }[] };
   const deps: FactsDeps = {
     async loadVocabulary() {
@@ -16,6 +16,7 @@ function fake(resolved = 1) {
                                 ["has_direct_deposit", new Set(["true", "false"])]]) };
     },
     async findExisting() { return []; },
+    async latestFacts() { return latest; },
     async insertRows(rows) { calls.order.push("insert"); calls.insert.push(rows); return { written: rows.length }; },
     async enqueueRebuild(_u, ctx) { calls.order.push("enqueue"); calls.enqueue.push({ reason: ctx.reason }); return { enqueued: true, jobId: "j" }; },
     async resolveFollowups(userId) { calls.order.push("resolve"); calls.resolve.push(userId); return { resolved }; },
@@ -55,6 +56,23 @@ test("the value must be vocabulary (no amounts): unknown or numeric values are r
     assert.equal(out.status, 400, value);
   }
   assert.equal(calls.insert.length, 0);
+});
+
+test("D6: simulating the value the persona ALREADY has changes nothing — no row, no rebuild, nothing verified", async () => {
+  const { deps, calls } = fake(1, [{ fact_key: "credit_utilization_band", value: "low", source: "seed" }]);
+  const out = await simulateFact(SAM, { fact_key: "credit_utilization_band", value: "low" }, { correlationId: "c", now: NOW }, deps);
+  assert.equal(out.status, 200);
+  if (out.status === 200) assert.deepEqual(out.body, { persona: "sam", user_id: SAM.user_id, fact_key: "credit_utilization_band", value: "low",
+    observed_at: NOW.toISOString(), written: 0, rebuild_enqueued: false, followups_verified: 0 });
+  assert.deepEqual(calls.order, [], "no write, no verification, no rebuild");
+});
+
+test("a simulated value that DIFFERS from the current one still writes and verifies (the demo path)", async () => {
+  const { deps, calls } = fake(1, [{ fact_key: "credit_utilization_band", value: "high", source: "derived" }]);
+  const out = await simulateFact(SAM, { fact_key: "credit_utilization_band", value: "low" }, { correlationId: "c", now: NOW }, deps);
+  assert.equal(out.status, 200);
+  if (out.status === 200) assert.equal(out.body.followups_verified, 1);
+  assert.deepEqual(calls.order, ["insert", "resolve", "enqueue"]);
 });
 
 test("followups_verified reports what the hook resolved (0 when nothing matched)", async () => {
