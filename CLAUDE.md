@@ -68,7 +68,7 @@ is code the developer owns and can read, version, and debug. This is non-negotia
   `/classify-update`), SQL checks wrapped in a rolled-back transaction, read-only sessions. Do not
   create test rows in Moosii to exercise a path; if the needed data doesn't exist, say so and use
   another method (e.g. re-run the pure function with the missing input).
-- Unscheduled work goes in `docs/backlog.md` (P1–P3); investigation reports in `FINDINGS-*.md`.
+- Unscheduled work goes in `docs/backlog.md` (P1–P3); investigation reports in `docs/FINDINGS-*.md`.
 
 ## Stack
 - Express + TypeScript, deployed on Render (paid Starter tier — must stay warm, not
@@ -350,9 +350,10 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
 - `docs/architecture-notes.md` — column rationale, content-phase roadmap, parked work (multi-age MLP).
 - `docs/questionnaire-evolution-roadmap.md` — forward plan for questionnaire mechanics.
 - `docs/backlog.md` — prioritised unscheduled work (P1–P3).
-- `FINDINGS-*.md` (repo root) — investigation reports (`FINDINGS-financial.md` holds the
-  financial-deployment decisions); `docs/drafts/` — proposals and local test harnesses;
-  `docs/legacy/` — retired code kept for reference.
+- `FINDINGS-*.md` — investigation reports. **A NEW one goes in `docs/`**; the existing ones stay at
+  the repo root and are not moved (`FINDINGS-financial.md` holds the financial-deployment decisions).
+  `docs/drafts/` — proposals and local test harnesses; `docs/legacy/` — retired code kept for
+  reference.
 
 ## Doc maintenance (part of DoD)
 Docs are updated **unprompted, in the same commit** as the change that necessitates them.

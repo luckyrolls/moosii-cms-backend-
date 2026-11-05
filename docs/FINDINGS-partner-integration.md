@@ -263,21 +263,25 @@ creating accounts for people who have not signed up for anything. `user.email` i
 
 ## 7. Decisions for Mark
 
-**Status: all ten are OPEN as of 2026-11-05. Nothing in this investigation has been built — no
-migration, no route, no package, no connector. The recommendations below are recommendations only.**
+**Decided by Mark 2026-11-05. Still nothing built — no migration, no route, no package, no
+connector; each accepted call lands when the step it belongs to is built.**
 
-| # | Decision | Recommendation |
-|---|---|---|
-| D1 | Reverse D2: accept `partner_member_id` on `POST /facts` (resolved per partner), keep `user_id` working | yes — step 2 is impossible otherwise |
-| D2 | Per-partner keys: `partners` table + hash lookup, `FACTS_API_KEY` grandfathered as partner 0 | yes |
-| D3 | New fact source `partner_derived` + a `rule_version` field on the push | yes; keeps `derived` ours |
-| D4 | **Do we create an auth user for every enrolled member, including holdouts who never visit?** | needed for the holdout as described; your call |
-| D5 | Package layout: npm workspace in this repo (one copy on disk) vs private registry | workspace |
-| D6 | Daily push: connector pushes only changes, and/or stop enqueueing a rebuild when `written = 0` | both, before any pilot |
-| D7 | Connector language and license — TypeScript reuses the rules verbatim; anything else means a second copy of the rules and the identity proof is lost | TypeScript + container; license is yours to pick |
-| D8 | Forms offered: container image only, or also a plain `npm start` job? | image for the pilot |
-| D9 | Pin `Accept-Version` (`v20250224` today, `v20260929` current) and re-verify the `from_date` epoch quirk per version | pin and re-verify |
-| D10 | Confirm with the partner: Platform API credentials, insights/Pulse entitlement, and that they are not SSO/Nexus/Data-Exchange-only | before sizing the pilot |
+| # | Decision | Recommendation | Mark's call (2026-11-05) |
+|---|---|---|---|
+| D1 | Reverse D2: accept `partner_member_id` on `POST /facts` (resolved per partner), keep `user_id` working | yes — step 2 is impossible otherwise | **accepted**, for step 2 |
+| D2 | Per-partner keys: `partners` table + hash lookup, `FACTS_API_KEY` grandfathered as partner 0 | yes | **accepted**, for step 2 |
+| D3 | New fact source `partner_derived` + a `rule_version` field on the push | yes; keeps `derived` ours | **accepted**, for step 3 |
+| D4 | **Do we create an auth user for every enrolled member, including holdouts who never visit?** | needed for the holdout as described; your call | **No.** No accounts for members who never open the widget: facts live on a partner-member record, and an account is created on first link. This needs a store that is not `user_facts` (its `user_id` FKs `auth.users`, §5) — **investigate when step 2 is built**. |
+| D5 | Package layout: npm workspace in this repo (one copy on disk) vs private registry | workspace | **accepted** (workspace), for step 3 |
+| D6 | Daily push: connector pushes only changes, and/or stop enqueueing a rebuild when `written = 0` | both, before any pilot | **Server-side no-op only** — skip the rebuild enqueue when `written = 0`. The connector stays **stateless**: it does not track what it pushed, so "push only changes" is out. |
+| D7 | Connector language and license | TypeScript + container; license is yours to pick | **TypeScript**; license still open |
+| D8 | Forms offered: container image only, or also a plain `npm start` job? | image for the pilot | **accepted** (image only for the pilot) |
+| D9 | Pin `Accept-Version` (`v20250224` today, `v20260929` current) and re-verify the `from_date` epoch quirk per version | pin and re-verify | **accepted**, for step 3 |
+| D10 | Confirm with the partner: Platform API credentials, insights/Pulse entitlement, and that they are not SSO/Nexus/Data-Exchange-only | before sizing the pilot | **accepted** — ask before sizing the pilot |
+
+**Consequence of D6 worth noting:** with a stateless connector, the daily push is still N calls for N
+enrolled members every day; the saving is N rebuild jobs, not N requests. §6.1's remaining lever, if
+request volume ever bites, is a multi-member endpoint — not the connector.
 
 ---
 
@@ -285,6 +289,8 @@ migration, no route, no package, no connector. The recommendations below are rec
 
 > Written for their engineer. It fits a page as long as the three steps stay as below; what would push
 > it over is listed after. **This describes endpoints that do not exist yet** — it is the target.
+> Note the guide's order is link → frame → connector, so its "step 1" is §1's step 2 and vice versa;
+> the guide is ordered the way their engineer builds it.
 
 ---
 
@@ -296,34 +302,10 @@ next. It runs in an iframe. You keep your MX credentials and your member data.
 **You will need:** your Moosii partner key (we send it), your MX Platform API credentials (they stay
 with you).
 
-#### 1. Put the plan widget on the page
+#### 1. Get a link for the member — one server call
 
-Ask your server for a link (step 2), then frame it. Any width from 360px works.
-
-```html
-<iframe src="<url from step 2>" title="Your plan" width="100%" height="640" style="border:0"></iframe>
-```
-
-When a member taps **Learn more** on an MX insight, open our link with the insight's template name.
-MX's insight widgets deliver that tap as an event, not a URL, so pass the template through:
-
-```js
-// MX insight widget event → Moosii lesson, in the same frame
-window.addEventListener('message', (e) => {
-  if (e.origin !== MX_WIDGET_ORIGIN) return;
-  const { type, metadata } = e.data ?? {};
-  if (type !== 'mx/insights/beat/callToActionClicked') return;   // confirm the event name against your MX version
-  openMoosii({ insight: metadata.beat_template });               // e.g. "CreditCardCloseToLimit"
-});
-```
-
-Insight names we understand today: `CreditUtilization`, `CreditCardCloseToLimit`,
-`SubscriptionDetected`, `SaveEnoughToLiveOn`, `GettingOriented`. Anything else opens the plan.
-
-#### 2. One server call per member for a link
-
-Single-use, valid ten minutes — the same contract as MX's `widget_urls`. Call it from your server when
-the page loads, with your own member id. Never from the browser: it needs your partner key.
+Single-use, valid ten minutes — the same contract as MX's `widget_urls`. Call it from your server,
+with your own member id. Never from the browser: it needs your partner key.
 
 ```bash
 curl -X POST https://api.moosii.example/partner/widget-url \
@@ -333,14 +315,39 @@ curl -X POST https://api.moosii.example/partner/widget-url \
 # → {"url":"https://read.moosii.example/...","single_use":true,"expires_in_seconds":600}
 ```
 
-Fetch a fresh link per page load; don't cache or log it. Tell us the origins you'll frame us from and
-we'll allow them.
+`insight` is optional: without it the link opens the member's plan. Don't cache or log the url.
 
-#### 3. Deploy the connector
+#### 2. Show it, and route "Learn more" to it
+
+Frame the url from step 1. Any width from 360px works.
+
+```html
+<iframe id="moosii" src="<url from step 1>" title="Your plan" width="100%" height="640" style="border:0"></iframe>
+```
+
+MX delivers a **Learn more** tap as an event, not a URL, so pass the insight's template name to your
+server, ask for a link with it, and point the frame at the result:
+
+```js
+window.addEventListener('message', async (e) => {
+  if (e.origin !== MX_WIDGET_ORIGIN) return;
+  const { type, metadata } = e.data ?? {};
+  if (type !== 'mx/insights/beat/callToActionClicked') return;  // confirm the name against your MX version
+  // your endpoint calls POST /partner/widget-url with the insight and returns { url }
+  const { url } = await (await fetch('/moosii/link?insight=' + encodeURIComponent(metadata.beat_template))).json();
+  document.getElementById('moosii').src = url;
+});
+```
+
+Insight names that open a lesson of their own today: `CreditUtilization`, `CreditCardCloseToLimit`,
+`SaveEnoughToLiveOn`. Anything else opens the plan. Tell us the origins you'll frame us from and we'll
+allow them.
+
+#### 3. Run the connector
 
 One container, on your side, on a schedule (daily is the default). It reads your MX data, computes
-Moosii's facts, and sends us the facts only — never amounts, never transactions. Nothing leaves your
-network except the facts, and nothing is written to your MX account.
+Moosii's facts, and sends us only your member id and up to four yes/no or banded facts — never
+amounts or transactions. Nothing is written to your MX account.
 
 ```
 MX_CLIENT_ID / MX_API_KEY     your MX Platform API credentials (stay here)
@@ -352,10 +359,12 @@ MOOSII_SCHEDULE               optional cron; default: daily 03:00 local
 docker run --env-file moosii.env ghcr.io/moosii/connector:1
 ```
 
-Per member it makes three MX GETs (`/users/{id}/members`, `/accounts`, `/transactions`) and sends us
-four booleans/bands at most. Enroll everyone — we select the comparison group on our side, so you
-don't maintain one. Run it against MX integration first; it logs a per-member summary with no amounts
-and no member identifiers.
+Per member it makes three MX GETs (`/users/{id}/members`, `/accounts`, `/transactions`). Enroll
+everyone — we select the comparison group on our side, so you don't maintain one. Run it against MX
+integration first; it logs a per-member summary with no amounts and no member identifiers.
+
+During a pilot, a randomly chosen comparison group of members sees a "not available yet" page instead
+of the plan — agreed with you up front, and nothing for you to configure.
 
 **That's it.** Questions: <contact>.
 
@@ -364,6 +373,10 @@ and no member identifiers.
 **What would make this longer than a page** (keep it out of the guide, put it in an appendix or a call):
 the MX event name differs across widget types and versions — they must check theirs; the fact
 definitions and their history requirements (a member with under 90 days of data yields fewer facts);
-retries and what a 409 means; the holdout's effect on what their members see (some get the
-not-available page); a version bump when our rules change; and the fresh-link-per-load caveat if the
-cross-origin session question (§4.3) lands badly.
+retries and what a 409 means; and a version bump when our rules change.
+
+**Insight vocabulary, as at 2026-11-05 (ours, not for the guide):** `SubscriptionDetected` and
+`GettingOriented` still resolve to the demo lesson "What the App Can See Now"
+(`moosii-reader/src/config/insights.ts`), so neither is listed above — **F63** covers repointing them
+as their real lessons publish. `GettingOriented` is additionally **not an MX template** (it is ours),
+so it does not belong in a list of MX insight names at all; it stays a valid `/learn?insight=` key.
