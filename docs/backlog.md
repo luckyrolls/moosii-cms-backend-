@@ -63,6 +63,19 @@ unchanged as `overrides.length` silently replaces the profile. FINDINGS §8.10.
 
 ## P3
 
+### Fact recency is recorded but never read (`last_confirmed_at`)
+**Why:** checked 2026-11-06 for D6. Nothing anywhere treats a fact as stale: the track arm (074) and
+`user_facts_latest` (071) read the latest VALUE only, insights (`src/demo/partner.ts`) read value +
+source, and `observed_at` is used just as the idempotency key, the latest-wins sort and the
+"after the commitment" test in `resolve_activity_followups` (113). It is displayed raw by the CMS
+inspector (`GET /facts/:user_id`) and as the x-axis of the fabricated demo outcome series. moosii-rn
+and moosii-cms do not read facts at all; moosii-reader reads only that series. So a no-op push
+(D6) losing its "we heard the same thing again" signal costs nothing today.
+**What:** if a staleness rule, an estimated-value decay or an "as of" display ever lands, a no-op
+push should still record that the value was re-confirmed — a `last_confirmed_at` on `user_facts`
+bumped by `recordFacts` on the no-op path (no new row, no rebuild), surfaced through
+`user_facts_latest`. Needs a migration; not worth one before a reader exists.
+
 ### `completed_items`: lesson rows must carry `lesson_id`
 **Why:** F29's unique key (111) is `(user_id, lesson_id) WHERE item_type = 'lesson'`; a lesson row with a NULL
 `lesson_id` escapes it and the trigger falls back to `item_id`. 0 such rows on both projects (2026-10-13), and RN

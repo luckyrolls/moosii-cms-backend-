@@ -20,7 +20,7 @@ export const activitiesDbDeps: ActivitiesDeps = {
   async listDue(userId) {
     const { data, error } = await supabase
       .from("user_activity_followups_due")
-      .select("id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at, committed_at, lapses_at")
+      .select("id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at, committed_at, lapses_at, verify_mode")
       .eq("user_id", userId)
       .order("due_at", { ascending: true });
     if (error) throw new ActivityDbError(error.code, error.message);
@@ -29,7 +29,7 @@ export const activitiesDbDeps: ActivitiesDeps = {
   async listRecent(userId, sinceIso) {
     const { data, error } = await supabase
       .from("user_activity_followups")
-      .select("id, lesson_id, status, asks, due_at, committed_at, resolved_at, resolved_by, verified_at, created_at, " +
+      .select("id, lesson_id, status, asks, due_at, committed_at, resolved_at, resolved_by, verified_at, created_at, verify_mode, " +
               "lesson:lessons!user_activity_followups_lesson_id_fkey(lesson_name), " +
               "fact:user_facts!user_activity_followups_verified_fact_id_fkey(source, source_ref)")
       .eq("user_id", userId)

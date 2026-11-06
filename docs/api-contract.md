@@ -2700,7 +2700,7 @@ Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer", value: str
   instead would mislabel it as seeded, and re-deriving can't win (its observation is older; latest wins). Real fact
   history is untouched. Cache-Control: no-store. Code: `src/demo/simulate.ts` (pure), `src/routes/demo.ts`.
 
-## 10. Activity follow-ups — DELIVERED (migration 113; both domains)
+## 10. Activity follow-ups — DELIVERED (migrations 113, 118; both domains)
 
 An activity (`lessons.kind = 'activity'`) ends with three choices. **Follow-ups are their own surface: they are never
 part of `mlp_item_pool` or `user_mlp`** (invariants 1, 8). Every choice writes the ordinary completion, so the activity
@@ -2711,14 +2711,31 @@ routes below (through SQL functions); a client has SELECT on its own rows (admin
 `id`, `user_id` (FK auth.users, cascade), `lesson_id` (FK lessons, cascade), `status` (`committed` | `done` |
 `skipped`), `asks` (count of "Not yet" taps; emails never count), `due_at` (NOT NULL while committed), `committed_at`,
 `resolved_at` (NULL exactly while committed), `resolved_by` (`self` | `data`; set exactly when done), `verified_at`,
-`verified_fact_id` (FK user_facts, SET NULL on delete), `created_at`, `updated_at`. UNIQUE (user_id, lesson_id).
+`verified_fact_id` (FK user_facts, SET NULL on delete), `verify_mode` (`data` | `self`, NOT NULL, below), `created_at`,
+`updated_at`. UNIQUE (user_id, lesson_id).
+
+**`verify_mode` — who answers this follow-up (migration 118, 2026-11-06).** Decided ONCE, when the row is created, and
+never updated:
+- **`data`** — the activity has a verify rule (`verify_fact_key` / `verify_fact_value`) AND the member's current value
+  is **not** already the target. A later observation can confirm it for them.
+- **`self`** — the activity has no verify rule, **or the member already carried the target value when they committed**.
+  Since D6 (§8b) a push of a value they already have writes no row, so no observation can ever land after this
+  commitment: there is nothing to watch, and the member is asked instead. Before 118 such a row sat in `data` limbo,
+  promising a check that could not happen.
+- It is **advisory, not a gate**: `resolve_activity_followups` ignores it. If the fact genuinely moves away and comes
+  back, that new observation is real evidence dated after the commitment, so the row still verifies and `resolved_by`
+  becomes `data` while `verify_mode` still reads `self` — "we expected to ask you; the data answered first". Refusing a
+  real confirmation to honour a label would be worse than the mismatch.
+- Returned by `POST /activities/:lessonId/finish` and `/answer` (the row is the whole table row), by
+  `GET /activity-followups/due` and by `/recent`. Awards are unchanged: `activity_verified` still pays only on data
+  verification, so a `self` follow-up earns `activity_did_it` alone unless the data does move.
 
 **Settings** (`app_settings`): `followup_max_asks` = 2, `followup_grace_days` = 14, `followup_verified_bonus` = 5.
 
 **View `user_activity_followups_due`** (security_invoker, so RLS binds): committed rows with `due_at <= now()`,
 `asks < followup_max_asks`, `now() <= due_at + followup_grace_days`, on a published activity whose lesson and track
 aren't archived. Columns: `id, user_id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at,
-committed_at, created_at, lapses_at`. **Lapsed is derived** (asks exhausted, or grace passed), never stored; nothing
+committed_at, created_at, lapses_at, verify_mode`. **Lapsed is derived** (asks exhausted, or grace passed), never stored; nothing
 runs on a schedule.
 
 **Moosies** (ledger, §5): the activity's completion pays 0; **"Did it"** (end card or follow-up) pays `lessons.points`
@@ -2732,7 +2749,9 @@ auth user (§9), so these three routes accept it as that user — no separate de
 route it couldn't before. One persona can't see or answer another's follow-ups (`404 followup_not_found`).
 
 **Financial demo config (migration 114):** "Set a Statement-Date Reminder" (`d9f6e3b4-…`) has `followup_after_days =
-7` and is verified by `credit_utilization_band = low` (demo control: §9d).
+7` and is verified by `credit_utilization_band = low` (demo control: §9d). "Put Your Buffer on Autopilot"
+(`e7fc45b6-…`, migration 116) has 14 days and `has_emergency_buffer = true` — which Sam already carries, so his
+commitment is created `verify_mode = 'self'`; to demo a data verification on it, simulate `false` then `true` (§9d).
 
 ```
 POST /activities/:lessonId/finish        Body: { choice: "did_it" | "later" | "not_for_me" }
@@ -2741,8 +2760,8 @@ POST /activities/:lessonId/finish        Body: { choice: "did_it" | "later" | "n
 - First call for (user, activity): ensures the `completed_items` row exists (inserts it, or accepts one RN already
   wrote; never fails on 23505), upserts `user_lesson_progress {is_completed: true}` on (user_id, lesson_id) — parity
   with moosii-rn's own completion (migration 115, F42) — then writes the follow-up: `did_it` → `done` / `self` + the
-  `activity_did_it` award; `later` → `committed`, `due_at = now + followup_after_days`; `not_for_me` → `skipped`. All in
-  one transaction.
+  `activity_did_it` award; `later` → `committed`, `due_at = now + followup_after_days`; `not_for_me` → `skipped`.
+  `verify_mode` is decided here, in the same statement (above). All in one transaction.
 - **Repeat calls** (a row already exists; `created: false`):
   - `did_it` on a **`committed`** row resolves it exactly like `answer(did_it)`: `done` / `self`, `resolved_at` now,
     `activity_did_it` paid once (migration 115, F44). The updated row is returned with `awarded` = the payment.
@@ -2765,14 +2784,15 @@ POST /activity-followups/:id/answer      Body: { answer: "did_it" | "not_yet" }
 
 ```
 GET /activity-followups/due
-→ 200 { followups: [ { id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at, committed_at, lapses_at } ] }
+→ 200 { followups: [ { id, lesson_id, lesson_name, lesson_description, asks, max_asks, due_at, committed_at, lapses_at,
+                       verify_mode } ] }
 ```
 - The caller's rows from `user_activity_followups_due`, soonest first.
 
 ```
 GET /activity-followups/recent
 → 200 { followups: [ { id, lesson_id, lesson_name, status, asks, due_at, resolved_at, resolved_by, verified_at,
-                       verified_source } ] }
+                       verified_source, verify_mode } ] }
 ```
 - The caller's own follow-ups: every `committed` row (due or not) plus every row resolved (`done` or `skipped`) in the
   last **14 days**, newest first (by `resolved_at`, else `committed_at`, else `created_at`). For showing a follow-up that
@@ -2780,6 +2800,7 @@ GET /activity-followups/recent
 - `verified_source` = the provenance of the resolving fact row: `demo-simulated` (written by `POST /demo/simulate-fact`,
   §9d — label it Illustrative), `seeded` (any other seed row), `derived` (a real observation: derived / estimated from
   linked accounts, or partner-reported); `null` when the row isn't verified or its evidence row was deleted.
+- `verify_mode` = what the row is waiting for (above): `data` (we are watching the fact) or `self` (we will ask).
 - No amounts and no Moosies fields. Demo sessions are accepted as the persona's user, like the other two routes.
   `401 unauthorized` · `500 activity_failed`. Code: `src/activities/recent.ts` (pure).
 
@@ -2788,7 +2809,9 @@ GET /activity-followups/recent
 unchanged by D6 — but note an unchanged push now writes no row, so it adds no evidence and verifies nothing. The one
 case that changes: a commitment made while the fact was **already** at its target value used to be verified by the
 next re-push of that same value (a fresh row dated after the commitment); it no longer is, and needs the value to
-actually move (or a demo simulate of a different value, §9d). It looks at the user's
+actually move (or a demo simulate of a different value, §9d). **Migration 118 makes that visible instead of silent:**
+such a row is created with `verify_mode = 'self'`, so the client asks rather than waits (above). The resolver itself is
+unchanged and still ignores `verify_mode`. It looks at the user's
 `committed` rows and `done` rows not yet verified, on an activity with `verify_fact_key` / `verify_fact_value`. If the
 user's CURRENT value of that fact (`user_facts_latest`) is the target AND that observation is dated after the commitment
 (`committed_at`, or `created_at` for an end-card did_it), it sets `verified_at` + `verified_fact_id` (the resolving

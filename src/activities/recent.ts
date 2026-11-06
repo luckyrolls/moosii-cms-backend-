@@ -12,6 +12,14 @@ const DAY_MS = 86_400_000;
 // null when the follow-up isn't verified, or its evidence row is gone (ON DELETE SET NULL).
 export type VerifiedSource = "derived" | "seeded" | "demo-simulated";
 
+// How the follow-up is expected to resolve, decided once at creation (migration 118, §10):
+//   data — the activity has a verify rule and the member was NOT already at the target value, so a later
+//          observation can confirm it for them
+//   self — no verify rule, or they already carried the target value when they committed, so since D6 no new
+//          observation can arrive from a re-push: we ask them instead
+// Advisory, not a gate: if the fact really moves and comes back, that row still verifies (resolved_by 'data').
+export type VerifyMode = "data" | "self";
+
 export function verifiedSource(fact: { source: string; source_ref: string | null } | null): VerifiedSource | null {
   if (!fact) return null;
   if (fact.source === "seed") return fact.source_ref === "demo-simulate" ? "demo-simulated" : "seeded";
@@ -21,7 +29,7 @@ export function verifiedSource(fact: { source: string; source_ref: string | null
 export type RecentRaw = {
   id: string; lesson_id: string; status: string; asks: number;
   due_at: string | null; committed_at: string | null; resolved_at: string | null; resolved_by: string | null;
-  verified_at: string | null; created_at: string;
+  verified_at: string | null; created_at: string; verify_mode: VerifyMode;
   lesson: { lesson_name: string | null } | null;
   fact: { source: string; source_ref: string | null } | null;
 };
@@ -29,7 +37,7 @@ export type RecentRaw = {
 export type RecentFollowup = {
   id: string; lesson_id: string; lesson_name: string | null; status: string; asks: number;
   due_at: string | null; resolved_at: string | null; resolved_by: string | null;
-  verified_at: string | null; verified_source: VerifiedSource | null;
+  verified_at: string | null; verified_source: VerifiedSource | null; verify_mode: VerifyMode;
 };
 
 export function recentSince(now: Date): string {
@@ -48,5 +56,6 @@ export function toRecent(rows: RecentRaw[], now: Date): RecentFollowup[] {
       id: r.id, lesson_id: r.lesson_id, lesson_name: r.lesson?.lesson_name ?? null, status: r.status, asks: r.asks,
       due_at: r.due_at, resolved_at: r.resolved_at, resolved_by: r.resolved_by,
       verified_at: r.verified_at, verified_source: r.verified_at ? verifiedSource(r.fact) : null,
+      verify_mode: r.verify_mode === "self" ? "self" : "data",
     }));
 }

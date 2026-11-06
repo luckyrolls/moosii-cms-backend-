@@ -10,7 +10,7 @@ import { createActivitiesRouters, type ActivitiesDeps } from "../router";
 const NOW = new Date("2026-10-19T12:00:00.000Z");
 const days = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
 const base = { lesson_id: "L", asks: 0, due_at: null, committed_at: null, resolved_by: null, verified_at: null,
-               lesson: { lesson_name: "Set a Statement-Date Reminder" }, fact: null } as const;
+               verify_mode: "data", lesson: { lesson_name: "Set a Statement-Date Reminder" }, fact: null } as const;
 const row = (o: Partial<RecentRaw> & { id: string; status: string; created_at: string }): RecentRaw =>
   ({ ...base, resolved_at: null, ...o }) as RecentRaw;
 
@@ -35,11 +35,20 @@ test("committed rows (due or not) + rows resolved within 14 days, newest first; 
   assert.deepEqual(out.map((r) => r.id), ["data", "committed-new", "skipped", "edge-done", "committed-old"]);
   const data = out[0];
   assert.deepEqual(data, { id: "data", lesson_id: "L", lesson_name: "Set a Statement-Date Reminder", status: "done", asks: 0,
-    due_at: null, resolved_at: days(0.01), resolved_by: "data", verified_at: days(0.01), verified_source: "demo-simulated" });
+    due_at: null, resolved_at: days(0.01), resolved_by: "data", verified_at: days(0.01), verified_source: "demo-simulated",
+    verify_mode: "data" });
   // no amounts / Moosies fields in the shape
   assert.deepEqual(Object.keys(data).sort(), ["asks", "due_at", "id", "lesson_id", "lesson_name", "resolved_at", "resolved_by",
-    "status", "verified_at", "verified_source"]);
+    "status", "verified_at", "verified_source", "verify_mode"]);
   assert.equal(recentSince(NOW), days(14));
+});
+
+test("verify_mode passes through: a follow-up committed while the fact was already at target reads 'self' (118)", () => {
+  const out = toRecent([
+    row({ id: "self", status: "committed", created_at: days(1), committed_at: days(1), due_at: days(-13), verify_mode: "self" }),
+    row({ id: "data", status: "committed", created_at: days(2), committed_at: days(2), due_at: days(-12) }),
+  ], NOW);
+  assert.deepEqual(out.map((r) => [r.id, r.verify_mode]), [["self", "self"], ["data", "data"]]);
 });
 
 test("an unverified row reports verified_source null even if a fact is attached; a deleted evidence row → null", () => {
