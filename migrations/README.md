@@ -22,10 +22,11 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 117 · Moosii 117** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 118 · Moosii 117** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115 and 117; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
-(all APPLIED).
+(all APPLIED). **118 belongs to BOTH projects but is APPLIED on financial only (2026-11-07)** — Moosii
+pending Mark's second go; the code that reads `verify_mode` stays unpushed until both are applied.
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -730,6 +731,31 @@ Main track:
   to it; dry run (rolled back) → the row, md5 `83e45c89…`, then 0 rows; apply OK; verify: one row structure / activity_v1 /
   "Activity (v1)", active, md5 `83e45c890e58c2d1ca3dacdcd6affca0`, the Moosii text (no dollar sentence); other blocks'
   fingerprint identical; no prompts row refers to it.
+- **118 — follow-up `verify_mode` (a commitment already at target is a self-report)** — **APPLIED financial (2026-11-07) · PENDING Moosii.**
+  BOTH PROJECTS, schema + function + view. `user_activity_followups.verify_mode` text NOT NULL DEFAULT `'data'`,
+  CHECK (`data`|`self`); backfill flips to `self` every row whose activity has no verify rule or whose member already
+  carried the target value AT the commitment (`observed_at <= coalesce(committed_at, created_at)`); `activity_finish`
+  (113's body otherwise unchanged) decides it once at creation — `data` only when the activity HAS a verify rule AND
+  the member is not already at the target; `user_activity_followups_due` gains the column, appended last.
+  WHY: since D6 an unchanged facts push writes no row, so a follow-up committed while its fact was already at target
+  can never receive an observation dated after the commitment (`docs/api-contract.md` §8b, §10).
+  DELIBERATELY NOT CHANGED: `resolve_activity_followups` — `verify_mode` is ADVISORY and does not gate verification, so a
+  fact that genuinely moves away and back still verifies a `self` row (`resolved_by = 'data'`). Awards, asks/grace limits,
+  `mlp_item_pool`, `user_mlp` and RLS untouched (the column rides the table's existing policy).
+  ⚠ MIGRATION BEFORE CODE: the backend selects `verify_mode` in `GET /activity-followups` and `.../recent`, so commit
+  `1803e8d` must not be pushed until this is applied on BOTH projects (a push deploys both services).
+  Dry run 2026-11-06 on live financial inside `BEGIN … ROLLBACK`: compiles; column `is_nullable NO`, default `'data'::text`;
+  0 backfill disagreements; view column appended last; `activity_finish` → `data` for `d9f6e3b4…` (Sam `credit_utilization_band`
+  high, target low) and `self` for `e7fc45b6-1c6d…` (Sam `has_emergency_buffer` already true); nothing persisted.
+  Financial 2026-11-07: identity (conn role `postgres.gwxeaygksankbncptlle`, sysid 7678069749886157684, domain financial,
+  PG 17.6, client UTF8); pre-check: 113 live, no `verify_mode` column, 0 follow-up rows (so the backfill was a no-op —
+  `UPDATE 0`), `activity_finish` still 113's (no `verify_mode`, has `activity:no_followup_configured`); apply OK
+  (one transaction, the DROP CONSTRAINT IF EXISTS NOTICE is expected); verify: column text NOT NULL default `'data'::text`,
+  CHECK `uaf_verify_mode_valid` present and biting (23514 on `verify_mode = 'guess'`), 0 backfill disagreements, due view
+  columns end `… lapses_at, verify_mode` with `security_invoker=true`, `activity_finish` ACL `service_role=X` only
+  (no anon/authenticated), and in rolled-back transactions `activity_finish` returned `data` for the statement-date
+  reminder and `self` for the buffer activity. After rollback: 0 follow-up rows; Sam's only `completed_items` row is the
+  protected orientation seed (`06eef3f3…`, 2026-09-10).
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
