@@ -4988,6 +4988,7 @@ export type Database = {
           user_id: string
           verified_at: string | null
           verified_fact_id: string | null
+          verify_mode: string
         }
         Insert: {
           asks?: number
@@ -5003,6 +5004,7 @@ export type Database = {
           user_id: string
           verified_at?: string | null
           verified_fact_id?: string | null
+          verify_mode?: string
         }
         Update: {
           asks?: number
@@ -5018,6 +5020,7 @@ export type Database = {
           user_id?: string
           verified_at?: string | null
           verified_fact_id?: string | null
+          verify_mode?: string
         }
         Relationships: [
           {
@@ -7053,6 +7056,7 @@ export type Database = {
           lesson_name: string | null
           max_asks: number | null
           user_id: string | null
+          verify_mode: string | null
         }
         Relationships: [
           {
