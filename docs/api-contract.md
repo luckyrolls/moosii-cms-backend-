@@ -1909,8 +1909,18 @@ enqueues anyway). NOT in this pass: targeted rebuild-by-track (parked until rebu
 observably slow).
 
 Ordering inputs: item `priority`, track `priority`/`order`/`weight`,
-`age_track_weights`, global `consts`. `user_mlp_mods` (per-user manual overrides)
-— **not yet applied by the recompute** (BuildShip did; port pending).
+`age_track_weights`, global `consts`.
+
+**`user_mlp_mods` — the TRACK arm IS applied; only item-level ordering is unported**
+(corrected 2026-11-09, `docs/FINDINGS-plan-reasons.md` §4; this paragraph previously said the
+whole table was unapplied). `user_active_tracks_for_user`'s `latest_user_mod` CTE takes the LATEST
+`action` per (user, track): `add` unions the track in, `delete` EXCEPTs it out — so a per-user
+track override is a live input to the unchanged algorithm, and classify slice 2 ships on it
+(`apply_classification` writes `user_mlp_mods(action='add')` + a `user_track_activations` row,
+migrations 019–021). What BuildShip did and this backend does NOT is **item-level** ordering
+("put this lesson next"): `user_mlp_mods` has `track_id`/`tag_id` and no item column, so there is
+nothing to port a per-item override from. `GET /plan` reports the track arm as reason kind
+`insight` or `manual` (§11).
 
 ### 3c. Archival — parent-invisibility (migrations 045–046) — DELIVERED
 `tracks.archived_at` and `lessons.archived_at` (both nullable timestamptz; non-null =
