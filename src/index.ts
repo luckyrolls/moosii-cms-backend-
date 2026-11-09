@@ -25,6 +25,7 @@ import sourceDocumentsRouter from "./routes/sourceDocuments";
 import factsRouter from "./routes/facts";
 import demoRouter from "./routes/demo";
 import { activitiesRouter, activityFollowupsRouter } from "./routes/activities";
+import { planRouter } from "./routes/plan";
 import { checkFactsConfig } from "./facts/config";
 import { reapStaleJobs } from "./jobs/runner";
 import { validateImagePrompts } from "./prompts/assemble";
@@ -78,6 +79,10 @@ app.use("/mlp", mlpRouter);
 // A separate surface from the plan — never part of user_mlp.
 app.use("/activities", activitiesRouter);
 app.use("/activity-followups", activityFollowupsRouter);
+
+// The member's plan with reasons (api-contract.md §11): app-facing, end-user JWT verified in the route, the token's
+// own user only. READ-ONLY — it reads user_mlp as the rebuild left it and never recomputes (invariant 1).
+app.use("/plan", planRouter);
 
 // Facts (api-contract.md §8). Each route carries its own auth: POST is the partner intake
 // (FACTS_API_KEY, 404 unless DOMAIN=financial); GET /:user_id is the admin inspector.

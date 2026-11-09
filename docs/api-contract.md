@@ -2688,7 +2688,7 @@ The persona is the token's user — never a parameter. Both responses are `Cache
 ```
 POST /demo/simulate-fact
 Authorization: Bearer <demo session access_token>    // the session POST /demo/session minted (§9)
-Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer", value: string }
+Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer" | "new_subscription_recent", value: string }
 
 → 200 { persona, user_id, fact_key, value, observed_at, written, rebuild_enqueued, followups_verified }
 → 400 fact_not_allowed (any other key) · 400 invalid_request · 400 unknown_fact (value not in the vocabulary, or numeric)
@@ -2703,6 +2703,12 @@ Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer", value: str
 - **Simulating the value the persona ALREADY carries does nothing** (D6, §8b): `written: 0`,
   `rebuild_enqueued: false`, `followups_verified: 0`, and no row is added. To show a change in a demo,
   simulate a value that differs from the persona's current one.
+- **The allowlist** (`SIMULATE_FACT_KEYS`) is `credit_utilization_band`, `has_emergency_buffer` and
+  `new_subscription_recent` — the three keys a demo drives. Each one routes a track through `fact_track_rules`, so
+  simulating it changes the plan AND, via `GET /plan` (§11), the reason shown for that track:
+  `credit_utilization_band` high/moderate → Credit Health, `has_emergency_buffer=false` → Building a Buffer,
+  `new_subscription_recent=true` → Subscription Audit. A track whose lessons are all unpublished activates but adds
+  no item (the pool is published-only), so the member sees nothing — check `item_count` on `GET /plan`.
 - Provenance: `source = 'seed'`, `source_ref = 'demo-simulate'` — labelled seeded / Illustrative wherever facts are
   shown (§9b, §9c insights, `GET /facts`). Never presented as real.
 - `npm run demo:reset` deletes exactly these rows (`source = 'seed' AND source_ref = 'demo-simulate'`, personas only),
@@ -2833,3 +2839,85 @@ Not in this slice: email, RN / reader / CMS screens. Code: `src/activities/` (ro
 factory, db deps), `src/routes/activities.ts`, the `recordFacts` hook in `src/facts/service.ts`. SQL:
 `activity_finish`, `activity_followup_answer`, `resolve_activity_followups`, `activity_award` (EXECUTE service_role
 only); `activity_followup_limits()` (SECURITY DEFINER; max asks + grace days only, for the invoker view).
+
+---
+
+## 11. The member's plan, with reasons — DELIVERED (migration 119; both domains)
+
+Why an item is in the plan, for the member whose plan it is. The five UNION arms of
+`user_active_tracks_for_user` ARE the reasons; this surface reads them and attaches the AUTHORED sentence.
+Background and the rejected alternatives: `docs/FINDINGS-plan-reasons.md`.
+
+> **The frozen algorithm is not involved** (invariant 1). `GET /plan` reads `user_mlp` exactly as the rebuild
+> left it and calls a read-only sibling function. Nothing here recomputes, reorders or re-ranks anything, and a
+> reason can never add or remove a track or an item. `generateFullMLP`, `computeUserMlp`,
+> `user_active_tracks_for_user` and `mlp_item_pool` are untouched (migration 119's VERIFICATION compares
+> `md5(prosrc)` of `user_active_tracks_for_user` before and after).
+
+```
+GET /plan
+Authorization: Bearer <end-user Supabase JWT>    // the app session, or a demo-persona session (§9)
+
+→ 200 {
+    user_id,                        // ALWAYS the token's user; a ?user_id= param is ignored
+    generated_at,                   // newest user_mlp.updated_at, or null for an empty plan
+    items: [ {                      // position order; NULL position last, ties by item_id
+      position, item_id, item_type, item_name, item_description, with_quiz,
+      track_id, track_name,
+      why: { kind, label } | null   // the track's most specific LABELLED reason (see below)
+    } ],
+    tracks: [ {
+      track_id, track_name,
+      item_count,                   // how many plan items this track contributed (can be 0)
+      reasons: [ { kind, label, fact_key, value, observed_at, source, confidence, at } ]
+    } ]
+  }
+→ 401 unauthorized (missing/malformed header, invalid or expired token) · 500 plan_failed
+```
+
+**Auth and scope.** The user id comes from the verified token, never a parameter or body (invariant 7) — there
+is no way to ask for another member's plan, and no admin mode on this route (the CMS inspector is §3b). Mounted
+bare, like §10; a demo-persona session is an ordinary signed-in user and is accepted.
+
+**`kind`** — one per reason, the arms of `user_active_tracks_for_user`:
+
+| kind | meaning | extra fields |
+|---|---|---|
+| `default` | every member gets this track (`new_user_tracks`) | — |
+| `fact` | a `fact_track_rules` rule matched the member's CURRENT value | `fact_key`, `value`, `observed_at`, `source` |
+| `demographic` | a demographic answer routed it | — |
+| `questionnaire` | the latest questionnaire action for that track ADDS it | `at` (the action) |
+| `insight` | a `user_mlp_mods` 'add' WITH a backing `user_track_activations` row | `source`, `confidence`, `at` |
+| `manual` | a `user_mlp_mods` 'add' with NO activation row — a human put it there | `at` |
+
+A track can carry SEVERAL reasons and `reasons[]` returns all of them (Building a Buffer genuinely matches both
+`has_emergency_buffer=false` and `saving_for_home=true`). Reasons are reported only for tracks that are
+**actually active** — the function joins `user_active_tracks_for_user`, so a rule that still matches on a track
+a questionnaire or a manual `delete` removed reports nothing. An unknown `kind` is dropped, never guessed.
+
+**`label` is AUTHORED, never generated** (migration 119): `fact_track_rules.reason_label` (NOT NULL, so a
+routing rule cannot ship without copy) and `new_user_tracks.reason_label` (nullable). Both CHECK non-empty and
+**no digits** — the sentence that explains a banded fact must not carry a number either (invariant 12). A kind
+with no authored copy returns **`label: null`** and the client decides what to show; there is no fallback text
+in code, the same discipline as the grounding block. Today `demographic` and `questionnaire` have no label
+column, and Moosii's 12 `new_user_tracks` rows are deliberately NULL (their parenting copy is authored
+separately).
+
+**`why` on an item** is a convenience: the track's most specific reason by the fixed preference
+`fact > insight > questionnaire > demographic > manual > default`, choosing among LABELLED reasons when there
+is at least one (an unlabelled reason has nothing to display). `tracks[].reasons` always carries the full set,
+so a client can ignore `why` entirely.
+
+**`item_count` is the demo diagnostic.** A fact can activate a track whose lessons are all unpublished: the
+pool is published-only, so the track appears with `item_count: 0` and the member sees no new item. Without this
+field that is indistinguishable from "nothing happened".
+
+**Read-only, additive.** No writes, no rebuild, no job. A plan is only as fresh as the last recompute — this
+route never triggers one (`POST /mlp/recompute` does). An empty plan is a valid `200` with `items: []` and
+`tracks: []`; the commonest cause is a member with no `public."user"` row, since the default arm reads
+`user_mlp_data` (findings §1).
+
+**SQL.** `user_track_reasons_for_user(uuid)` — new in 119, SECURITY INVOKER, **EXECUTE service_role only** (the
+094 rule), so the reasons cannot be assembled client-side: `user_track_activations` is RLS-on with no policy.
+Code: `src/plan/shape.ts` (pure, golden-tested), `src/plan/router.ts` (factory), `src/plan/db.ts`,
+`src/routes/plan.ts`.

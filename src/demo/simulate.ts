@@ -10,7 +10,7 @@ import { recordFacts, type FactsDeps } from "../facts/service";
 // with source_ref 'demo-simulate' — distinct from the §8e seed ('demo-seed'), so demo:reset can delete exactly these
 // rows and the persona's real (derived) value becomes current again.
 
-export const SIMULATE_FACT_KEYS = ["credit_utilization_band", "has_emergency_buffer"] as const;
+export const SIMULATE_FACT_KEYS = ["credit_utilization_band", "has_emergency_buffer", "new_subscription_recent"] as const;
 export const SIMULATED_SOURCE_REF = "demo-simulate";
 
 export type SimulateOutcome =

@@ -1,7 +1,7 @@
 // POST /demo/simulate-fact — the pure core with fake facts deps (api-contract §9d). Run: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { simulateFact, SIMULATED_SOURCE_REF } from "../simulate";
+import { simulateFact, SIMULATED_SOURCE_REF, SIMULATE_FACT_KEYS } from "../simulate";
 import type { FactsDeps } from "../../facts/service";
 import type { FactRow } from "../../facts/validate";
 
@@ -13,7 +13,8 @@ function fake(resolved = 1, latest: { fact_key: string; value: string; source?: 
   const deps: FactsDeps = {
     async loadVocabulary() {
       return { values: new Map([["credit_utilization_band", new Set(["high", "moderate", "low"])], ["has_emergency_buffer", new Set(["true", "false"])],
-                                ["has_direct_deposit", new Set(["true", "false"])]]) };
+                                ["has_direct_deposit", new Set(["true", "false"])],
+                                ["new_subscription_recent", new Set(["true", "false"])]]) };
     },
     async findExisting() { return []; },
     async latestFacts() { return latest; },
@@ -37,16 +38,32 @@ test("records ONE seeded fact for the token's persona, through recordFacts: writ
   assert.deepEqual(calls.enqueue, [{ reason: "demo_simulate_fact" }]);
 });
 
-test("only the two allowlisted fact keys; anything else is refused before any write", async () => {
+test("only the three allowlisted fact keys; anything else is refused before any write", async () => {
   const { deps, calls } = fake();
+  assert.deepEqual([...SIMULATE_FACT_KEYS], ["credit_utilization_band", "has_emergency_buffer", "new_subscription_recent"]);
   for (const body of [{ fact_key: "has_direct_deposit", value: "true" }, { fact_key: "saving_for_home", value: "true" }, {}, null]) {
     const out = await simulateFact(SAM, body, { correlationId: "c", now: NOW }, deps);
     assert.equal(out.status, 400);
     assert.equal((out as { code: string }).code, "fact_not_allowed");
   }
   assert.equal(calls.insert.length, 0);
-  const ok = await simulateFact(SAM, { fact_key: "has_emergency_buffer", value: "false" }, { correlationId: "c", now: NOW }, deps);
-  assert.equal(ok.status, 200);
+  for (const body of [{ fact_key: "has_emergency_buffer", value: "false" }, { fact_key: "new_subscription_recent", value: "true" }]) {
+    const ok = await simulateFact(SAM, body, { correlationId: "c", now: NOW }, deps);
+    assert.equal(ok.status, 200, body.fact_key);
+  }
+});
+
+// F83: the key that routes Subscription Audit (fact_track_rules new_subscription_recent=true). Sam's derived value is
+// false, so simulating true is a real change — one seeded row, rebuild enqueued, follow-ups checked.
+test("new_subscription_recent=true writes one seeded observation and enqueues the rebuild", async () => {
+  const { deps, calls } = fake(0, [{ fact_key: "new_subscription_recent", value: "false", source: "derived" }]);
+  const out = await simulateFact(SAM, { fact_key: "new_subscription_recent", value: "true" }, { correlationId: "c", now: NOW }, deps);
+  assert.equal(out.status, 200);
+  if (out.status === 200) assert.deepEqual(out.body, { persona: "sam", user_id: SAM.user_id, fact_key: "new_subscription_recent",
+    value: "true", observed_at: NOW.toISOString(), written: 1, rebuild_enqueued: true, followups_verified: 0 });
+  assert.deepEqual(calls.insert, [[{ user_id: SAM.user_id, fact_key: "new_subscription_recent", value: "true",
+    observed_at: NOW.toISOString(), source: "seed", source_ref: SIMULATED_SOURCE_REF }]]);
+  assert.deepEqual(calls.order, ["insert", "resolve", "enqueue"]);
 });
 
 test("the value must be vocabulary (no amounts): unknown or numeric values are refused, nothing written", async () => {
