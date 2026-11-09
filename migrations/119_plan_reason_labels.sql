@@ -115,7 +115,7 @@ UPDATE public.fact_track_rules SET reason_label = 'Because a new subscription sh
  WHERE fact_key = 'new_subscription_recent' AND value = 'true';
 -- PROPOSED (not in Mark's list) — both are user-declared goals forwarded by the platform, so the
 -- sentence states the goal and claims nothing we did not hear.
-UPDATE public.fact_track_rules SET reason_label = 'Because you''re saving towards a home'
+UPDATE public.fact_track_rules SET reason_label = 'Because you''re saving toward a home'
  WHERE fact_key = 'saving_for_home' AND value = 'true';
 UPDATE public.fact_track_rules SET reason_label = 'Because you want a plan for paying down debt'
  WHERE fact_key = 'wants_debt_payoff_plan' AND value = 'true';

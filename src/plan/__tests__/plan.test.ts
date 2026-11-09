@@ -66,14 +66,14 @@ test("an active track that contributed NO item still appears, with item_count 0"
 });
 
 test("several reasons for one track: all are returned, and why picks the most specific LABELLED one", () => {
-  const savingForHome = reason({ track_id: CH, kind: "fact", label: "Because you're saving towards a home",
+  const savingForHome = reason({ track_id: CH, kind: "fact", label: "Because you're saving toward a home",
     fact_key: "saving_for_home", value: "true" });
   const asInsight = reason({ track_id: CH, kind: "insight", source: "mx", confidence: 0.8, action_at: STAMP });
   const out = toPlan(USER, [item({ item_id: "ch1", track_id: CH })], [DEFAULT_GO, savingForHome, asInsight,
     reason({ track_id: CH, kind: "default", label: "A starting point for everyone" })]);
   assert.equal(out.tracks.find((t) => t.track_id === CH)!.reasons.length, 3);
   // fact outranks default; the unlabelled insight is not shown as `why` because it has nothing to display
-  assert.deepEqual(out.items[0].why, { kind: "fact", label: "Because you're saving towards a home" });
+  assert.deepEqual(out.items[0].why, { kind: "fact", label: "Because you're saving toward a home" });
 
   assert.deepEqual([...WHY_PREFERENCE], ["fact", "insight", "questionnaire", "demographic", "manual", "default"]);
   assert.deepEqual([...REASON_KINDS].sort(), ["default", "demographic", "fact", "insight", "manual", "questionnaire"]);
