@@ -22,10 +22,11 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 118 · Moosii 118** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 119 · Moosii 118** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117 and 118; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
-(all APPLIED).
+(all APPLIED). **119 belongs to BOTH projects but is APPLIED on financial only (2026-11-09)** — Moosii
+pending Mark's second go; the code that reads `reason_label` stays unpushed until both are applied.
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -767,6 +768,45 @@ Main track:
   verify-configured activity (no activity lessons yet).
   `src/types/database.types.ts` regenerated from Moosii after the apply: exactly 4 added lines (`verify_mode` on the
   table's Row/Insert/Update and on the due view), nothing else drifted; no `(supabase as any)` bridge was needed.
+- **119 — authored reason labels + `user_track_reasons_for_user` (why an item is in the plan)** — **APPLIED financial (2026-11-09) · PENDING Moosii.**
+  BOTH PROJECTS, schema + data + one new function (F83; `docs/FINDINGS-plan-reasons.md`, `api-contract.md` §11).
+  `fact_track_rules.reason_label` text **NOT NULL** (populated first) and `new_user_tracks.reason_label` text
+  **NULLABLE**, both CHECK `btrim(...) <> '' AND ... !~ '[0-9]'` — a member-facing sentence that explains a banded
+  fact must not carry a number either (invariants 3, 12). `user_track_reasons_for_user(uuid)` returns ONE ROW PER
+  REASON (`default|fact|demographic|questionnaire|insight|manual`) for the tracks that are actually active; SECURITY
+  INVOKER, EXECUTE service_role only (the 094 rule), because `user_track_activations` is RLS-on with no policy and the
+  reasons cannot be assembled client-side.
+  WHY A COLUMN ON `new_user_tracks`, NOT A `kind → label` LOOKUP: the default arm's reason is per-TRACK. Moosii has 12
+  `new_user_tracks` rows, financial 1; a lookup keyed by kind could hold only one sentence for the whole arm. WHY
+  NULLABLE THERE: financial's single default track has authored copy, Moosii's 12 are parenting copy authored
+  separately (Michelle) — they stay NULL, `GET /plan` returns `label: null`, and there is NO fallback text in code.
+  ⚠ **THE FROZEN ALGORITHM IS NOT TOUCHED** (invariant 1): nothing here changes `generateFullMLP`, `computeUserMlp`,
+  `user_active_tracks_for_user` or `mlp_item_pool`. The new function CALLS the active-tracks function and joins to it,
+  so no reason row can add or remove a track. Both PRE-CHECK and VERIFICATION record `md5(prosrc)` of
+  `user_active_tracks_for_user` and the apply is only accepted if they MATCH.
+  MIGRATION BEFORE CODE: `GET /plan` reads `reason_label` and calls the new function, so the code commits stay
+  unpushed until BOTH projects are applied (a push deploys both services).
+  Labels (Mark 2026-11-09): credit high "Because your cards are close to their limits"; credit moderate "Because your
+  card balances are climbing"; buffer false "Because there isn't much set aside for surprises yet"; direct deposit
+  false "Because we don't see a regular paycheck coming in"; new subscription "Because a new subscription showed up";
+  `saving_for_home` "Because you're saving toward a home" and `wants_debt_payoff_plan` "Because you want a plan for
+  paying down debt" (both proposed by Claude, approved; US spelling fixed in `13c83fe`); default track Getting
+  Oriented "A starting point for everyone".
+  Dry run 2026-11-07 on live financial inside `BEGIN … ROLLBACK`: compiles; nullability as intended; 7 labels + the
+  default sentence; CHECK raised 23514 on a label containing `30%`; reasons for Sam and Sarah exactly as expected;
+  0 orphan reasons; `md5(prosrc)` of the active-tracks function unchanged; grants service_role only; and after the
+  rollback 0 `reason_label` columns and no function.
+  Financial 2026-11-09: identity (conn role `postgres.gwxeaygksankbncptlle`, sysid 7678069749886157684, domain
+  financial, PG 17.6, client UTF8); pre-check: both columns free, function free, 7 fact rules + 1 default track to
+  cover, `user_track_activations` and `user_mlp_data` present, `uat_md5` **fdcb7204…**; apply OK (one transaction,
+  `UPDATE 1` × 8, the two DROP CONSTRAINT IF EXISTS NOTICEs are expected); verify: `fact_track_rules.reason_label`
+  is_nullable NO / `new_user_tracks.reason_label` YES, both CHECKs present and BITING (23514 for `'...30% utilized'`
+  and for `'   '`, both rolled back), 0 rules without copy, all 8 labels read back verbatim, function ACL
+  `service_role=X` only, `uat_md5` **fdcb7204… — IDENTICAL to pre-check**; and against live rows:
+  Sam → Credit Health / fact / "Because your cards are close to their limits" / `credit_utilization_band=high`
+  (estimated) + Getting Oriented / default / "A starting point for everyone"; Sarah → Building a Buffer / fact /
+  "Because there isn't much set aside for surprises yet" / `has_emergency_buffer=false` (derived) + the same default;
+  0 orphan reasons and 0 unexplained active tracks for both; an unknown user returns 0 rows, not an error.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
