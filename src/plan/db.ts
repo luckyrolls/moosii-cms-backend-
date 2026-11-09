@@ -10,7 +10,7 @@ export const planDbDeps: PlanDeps = {
   async listPlan(userId: string): Promise<PlanItemRaw[]> {
     const { data, error } = await supabase
       .from("user_mlp")
-      .select("item_id, item_type, position, item_name, item_description, with_quiz, track_id, track_name, updated_at")
+      .select("item_id, item_type, position, item_name, item_description, with_quiz, track_id, track_name, updated_at, created_at")
       .eq("user_id", userId)
       .order("position", { ascending: true, nullsFirst: false });
     if (error) throw new Error(`user_mlp query failed: ${error.message}`);

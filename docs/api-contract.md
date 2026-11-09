@@ -2860,7 +2860,7 @@ Authorization: Bearer <end-user Supabase JWT>    // the app session, or a demo-p
 
 → 200 {
     user_id,                        // ALWAYS the token's user; a ?user_id= param is ignored
-    generated_at,                   // newest user_mlp.updated_at, or null for an empty plan
+    generated_at,                   // when the plan was built: newest user_mlp.updated_at ?? created_at, null if empty
     items: [ {                      // position order; NULL position last, ties by item_id
       position, item_id, item_type, item_name, item_description, with_quiz,
       track_id, track_name,
@@ -2913,7 +2913,9 @@ pool is published-only, so the track appears with `item_count: 0` and the member
 field that is indistinguishable from "nothing happened".
 
 **Read-only, additive.** No writes, no rebuild, no job. A plan is only as fresh as the last recompute — this
-route never triggers one (`POST /mlp/recompute` does). An empty plan is a valid `200` with `items: []` and
+route never triggers one (`POST /mlp/recompute` does). `generated_at` reads `updated_at ?? created_at`: the
+rebuild is derive-and-overwrite (delete + insert per user) and never populates `user_mlp.updated_at`, so
+`created_at` IS the build time. An empty plan is a valid `200` with `items: []` and
 `tracks: []`; the commonest cause is a member with no `public."user"` row, since the default arm reads
 `user_mlp_data` (findings §1).
 

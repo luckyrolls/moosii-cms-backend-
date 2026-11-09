@@ -24,7 +24,7 @@ export const WHY_PREFERENCE: readonly ReasonKind[] = ["fact", "insight", "questi
 export type PlanItemRaw = {
   item_id: string; item_type: string; position: number | null;
   item_name: string | null; item_description: string | null; with_quiz: boolean | null;
-  track_id: string; track_name: string | null; updated_at: string | null;
+  track_id: string; track_name: string | null; updated_at: string | null; created_at: string | null;
 };
 
 export type ReasonRaw = {
@@ -122,7 +122,9 @@ export function toPlan(userId: string, rows: PlanItemRaw[], reasonRows: ReasonRa
     }))
     .sort((a, b) => (b.item_count - a.item_count) || ((a.track_name ?? "") < (b.track_name ?? "") ? -1 : 1));
 
-  const stamps = rows.map((r) => r.updated_at).filter((t): t is string => !!t);
+  // When this plan was built. The rebuild is derive-and-overwrite (delete + insert per user), so a row's created_at
+  // IS its build time; `user_mlp.updated_at` is never populated by it, so updated_at alone would always be null.
+  const stamps = rows.map((r) => r.updated_at ?? r.created_at).filter((t): t is string => !!t);
   const generatedAt = stamps.length > 0 ? stamps.reduce((a, b) => (a > b ? a : b)) : null;
 
   return { user_id: userId, generated_at: generatedAt, items, tracks };

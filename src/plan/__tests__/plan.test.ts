@@ -16,7 +16,7 @@ const STAMP = "2026-11-09T12:00:00.000Z";
 const item = (o: Partial<PlanItemRaw> & { item_id: string; track_id: string }): PlanItemRaw => ({
   item_type: "lesson", position: 1, item_name: o.item_id, item_description: "", with_quiz: false,
   track_name: o.track_id === CH ? "Credit Health" : o.track_id === GO ? "Getting Oriented" : "Subscription Audit",
-  updated_at: STAMP, ...o,
+  updated_at: STAMP, created_at: STAMP, ...o,
 });
 const reason = (o: Partial<ReasonRaw> & { track_id: string; kind: string }): ReasonRaw => ({
   track_name: null, label: null, fact_key: null, value: null, observed_at: null,
@@ -90,6 +90,19 @@ test("an unknown reason kind is dropped, not guessed; an empty plan is a valid e
 
   const empty = toPlan(USER, [], []);
   assert.deepEqual(empty, { user_id: USER, generated_at: null, items: [], tracks: [] });
+});
+
+// The rebuild never populates user_mlp.updated_at (verified on live financial: 0 of 4 rows), and it is
+// delete+insert per user, so created_at IS the build time and has to be the fallback.
+test("generated_at falls back to created_at when updated_at is NULL, and takes the newest stamp", () => {
+  const out = toPlan(USER, [
+    item({ item_id: "a", track_id: CH, position: 1, updated_at: null, created_at: "2026-11-07T21:33:03.000Z" }),
+    item({ item_id: "b", track_id: CH, position: 2, updated_at: null, created_at: "2026-11-09T20:52:00.000Z" }),
+  ], []);
+  assert.equal(out.generated_at, "2026-11-09T20:52:00.000Z");
+  // updated_at still wins when it is there, and both NULL is still null
+  assert.equal(toPlan(USER, [item({ item_id: "a", track_id: CH, updated_at: STAMP, created_at: "2026-01-01T00:00:00.000Z" })], []).generated_at, STAMP);
+  assert.equal(toPlan(USER, [item({ item_id: "a", track_id: CH, updated_at: null, created_at: null })], []).generated_at, null);
 });
 
 test("a NULL position sorts last and ties break on item_id, so the order is total", () => {
