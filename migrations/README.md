@@ -22,11 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 119 · Moosii 118** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117 and 118; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 119 · Moosii 119** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118 and 119; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
-(all APPLIED). **119 belongs to BOTH projects but is APPLIED on financial only (2026-11-09)** — Moosii
-pending Mark's second go; the code that reads `reason_label` stays unpushed until both are applied.
+(all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -768,7 +767,7 @@ Main track:
   verify-configured activity (no activity lessons yet).
   `src/types/database.types.ts` regenerated from Moosii after the apply: exactly 4 added lines (`verify_mode` on the
   table's Row/Insert/Update and on the due view), nothing else drifted; no `(supabase as any)` bridge was needed.
-- **119 — authored reason labels + `user_track_reasons_for_user` (why an item is in the plan)** — **APPLIED financial (2026-11-09) · PENDING Moosii.**
+- **119 — authored reason labels + `user_track_reasons_for_user` (why an item is in the plan)** — **APPLIED financial (2026-11-09) · APPLIED Moosii (2026-11-09).**
   BOTH PROJECTS, schema + data + one new function (F83; `docs/FINDINGS-plan-reasons.md`, `api-contract.md` §11).
   `fact_track_rules.reason_label` text **NOT NULL** (populated first) and `new_user_tracks.reason_label` text
   **NULLABLE**, both CHECK `btrim(...) <> '' AND ... !~ '[0-9]'` — a member-facing sentence that explains a banded
@@ -784,8 +783,8 @@ Main track:
   `user_active_tracks_for_user` or `mlp_item_pool`. The new function CALLS the active-tracks function and joins to it,
   so no reason row can add or remove a track. Both PRE-CHECK and VERIFICATION record `md5(prosrc)` of
   `user_active_tracks_for_user` and the apply is only accepted if they MATCH.
-  MIGRATION BEFORE CODE: `GET /plan` reads `reason_label` and calls the new function, so the code commits stay
-  unpushed until BOTH projects are applied (a push deploys both services).
+  MIGRATION BEFORE CODE: `GET /plan` reads `reason_label` and calls the new function, so the code commits were
+  pushed only after BOTH projects were applied (a push deploys both services).
   Labels (Mark 2026-11-09): credit high "Because your cards are close to their limits"; credit moderate "Because your
   card balances are climbing"; buffer false "Because there isn't much set aside for surprises yet"; direct deposit
   false "Because we don't see a regular paycheck coming in"; new subscription "Because a new subscription showed up";
@@ -807,6 +806,20 @@ Main track:
   (estimated) + Getting Oriented / default / "A starting point for everyone"; Sarah → Building a Buffer / fact /
   "Because there isn't much set aside for surprises yet" / `has_emergency_buffer=false` (derived) + the same default;
   0 orphan reasons and 0 unexplained active tracks for both; an unknown user returns 0 rows, not an error.
+  Moosii 2026-11-09: identity (conn role `postgres.szhihepbqzbbmxybluql`, sysid 7481590244898220655, domain moosii,
+  PG 15.8, client UTF8); pre-check: both columns free, function free, **0 fact rules and 12 default tracks** (no
+  Getting Oriented track here, so every populate UPDATE is a no-op — `UPDATE 0` × 8), prerequisites present,
+  `uat_md5` **fdcb7204…** (identical to financial's — the fn + view pair of 037 is in sync across projects);
+  apply OK; verify: nullability NO / YES as on financial, both CHECKs present and the `new_user_tracks` one BITING
+  (23514 for `'Track number 2'` and for `'  '`, both rolled back — `fact_track_rules` is empty here so only that
+  half runs), **12 of 12 `new_user_tracks` rows `reason_label` NULL by design** (Moosii's parenting copy is a
+  separate content task), 0 fact rules without copy, function ACL `service_role=X` only, `uat_md5`
+  **fdcb7204… — IDENTICAL to pre-check**; and against a live user with a `"user"` row (`05184e2a…`): 12 active
+  tracks → 12 `default` reasons, every label NULL, 0 orphan reasons and 0 unexplained tracks; unknown user 0 rows.
+  NOTED, not caused by 119: Moosii has **13 users with `user_mlp` rows but only 6 with a `public."user"` row**, so
+  the other 7 resolve to 0 active tracks today — their stored plans are stale and a rebuild would empty them. That
+  is the empty-plan gap in `docs/FINDINGS-plan-reasons.md` §1 / item (i), now measured. For such a user `GET /plan`
+  returns the stale items with `why: null` and empty `reasons` — honest, and no error.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

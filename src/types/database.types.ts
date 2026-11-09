@@ -1435,6 +1435,7 @@ export type Database = {
           created_by: string | null
           fact_key: string
           id: string
+          reason_label: string
           track_id: string
           value: string
         }
@@ -1443,6 +1444,7 @@ export type Database = {
           created_by?: string | null
           fact_key: string
           id?: string
+          reason_label: string
           track_id: string
           value: string
         }
@@ -1451,6 +1453,7 @@ export type Database = {
           created_by?: string | null
           fact_key?: string
           id?: string
+          reason_label?: string
           track_id?: string
           value?: string
         }
@@ -2553,18 +2556,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          reason_label: string | null
           track_id: string
           updated_at: string | null
         }
         Insert: {
           created_at?: string
           id?: string
+          reason_label?: string | null
           track_id: string
           updated_at?: string | null
         }
         Update: {
           created_at?: string
           id?: string
+          reason_label?: string | null
           track_id?: string
           updated_at?: string | null
         }
@@ -7596,6 +7602,22 @@ export type Database = {
           track_name: string
           user_id: string
           weight: number
+        }[]
+      }
+      user_track_reasons_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          action_at: string
+          confidence: number
+          fact_key: string
+          kind: string
+          label: string
+          observed_at: string
+          source: string
+          source_ref: string
+          track_id: string
+          track_name: string
+          value: string
         }[]
       }
     }
