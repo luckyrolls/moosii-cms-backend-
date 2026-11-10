@@ -2764,13 +2764,16 @@ own rows only; each write is one transaction. `401 unauthorized` for a missing o
 auth user (§9), so these three routes accept it as that user — no separate demo auth, and a demo session reaches no
 route it couldn't before. One persona can't see or answer another's follow-ups (`404 followup_not_found`).
 
-> **Regression, live since 2026-11-07 — repaired by migration 120 (DRAFT, pending apply).** Migration 118 rebuilt
+> **Regression, live 2026-11-07 to 2026-11-10 — repaired by migration 120 (APPLIED on both projects).** Migration 118 rebuilt
 > `activity_finish` from **113's** body instead of the then-live **115's**, dropping F42 (the
 > `user_lesson_progress` upsert), F44 (`did_it` on a committed row resolving and paying) and the `FOR UPDATE`
 > row lock on both projects. This section documented 115's behaviour throughout, so the contract was right and
-> the database is wrong until 120 lands. Migration 120 re-bases on 115's exact body, re-applies 118's
+> the database was wrong for those three days. Migration 120 re-bases on 115's exact body, re-applies 118's
 > `verify_mode` on top and adds R15, and it is **hash-guarded on the exact live body and NAMES the version it
-> matched** — 118's weaker `LIKE` drift check is what let the rebase error through.
+> matched** — 118's weaker `LIKE` drift check is what let the rebase error through. **Rows created during the
+> window keep the damage:** F42 fires on the new-row path, so a follow-up written while the regression was live
+> has its `completed_items` row but no `user_lesson_progress` row, and needs a data repair rather than a
+> migration (2 such rows on Moosii, 0 on financial).
 
 **Financial demo config (migration 114):** "Set a Statement-Date Reminder" (`d9f6e3b4-…`) has `followup_after_days =
 7` and is verified by `credit_utilization_band = low` (demo control: §9d). "Put Your Buffer on Autopilot"
