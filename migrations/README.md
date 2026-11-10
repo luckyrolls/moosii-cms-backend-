@@ -22,10 +22,12 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 119 · Moosii 119** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 120 · Moosii 119** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118 and 119; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
-(all APPLIED).
+(all APPLIED). **120 belongs to BOTH projects but is APPLIED on financial only (2026-11-10)** — Moosii
+pending Mark's second go. It REPAIRS a regression 118 left on both projects, so Moosii carries the broken
+`activity_finish` until it lands.
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -820,6 +822,42 @@ Main track:
   the other 7 resolve to 0 active tracks today — their stored plans are stale and a rebuild would empty them. That
   is the empty-plan gap in `docs/FINDINGS-plan-reasons.md` §1 / item (i), now measured. For such a user `GET /plan`
   returns the stale items with `why: null` and empty `reasons` — honest, and no error.
+- **120 — `activity_finish`: "Not for me" abandons a committed row (R15), AND the migration-115 restore** — **APPLIED financial (2026-11-10) · PENDING Moosii.**
+  BOTH PROJECTS, one function. R15: `not_for_me` on an existing **committed** row sets `skipped`,
+  `resolved_at = now()`, pays nothing and returns the updated row (`created: false`, `awarded: 0`); it leaves the due
+  view at once. `resolved_by` stays **NULL**, not `'self'` — `uaf_done_iff_resolved_by CHECK ((status = 'done') =
+  (resolved_by IS NOT NULL))` permits it only on a `done` row (23514 otherwise), and a FIRST-call `not_for_me` writes
+  NULL too, so both paths produce an identical row (Mark approved keeping the constraint, 2026-11-10).
+  ⚠ **IT ALSO REPAIRS A REGRESSION MIGRATION 118 SHIPPED.** 118 rebuilt `activity_finish` from **113's** body
+  instead of the then-live **115's**, and 118's pre-check tested `prosrc LIKE '%activity:no_followup_configured%'` —
+  a string present in 115's body too — so the rebase error passed unnoticed. Live on BOTH projects from 2026-11-07
+  (md5 `f1808f31…`) this dropped: **F42** the `user_lesson_progress {is_completed:true}` upsert; **F44** `did_it` on a
+  committed row resolving to done/self and paying `activity_did_it` once (it became a no-op, `awarded: 0`); and the
+  **`FOR UPDATE`** row lock. `docs/api-contract.md` §10 documented 115 throughout, so the contract was right and the
+  database wrong. 120 re-bases on 115's EXACT body, re-applies 118's `verify_mode` on top and adds R15 — one
+  statement, so all four land together.
+  **LESSON (why 118's guard was not enough):** a `LIKE` drift check is not a version check. 115 guarded on an exact
+  md5; 120 does too, and its guard RAISEs a NOTICE NAMING the body it matched (`f1808f31…` = the regressed 118 body,
+  `a4676266…` = 115's, `686e0937…` = 113's → refuse). Any future replacement of this function must do the same.
+  UNCHANGED: awards, `resolve_activity_followups`, asks/grace limits, the due view, `mlp_item_pool`, `user_mlp`
+  (invariants 1, 8), RLS. No new objects → `database.types.ts` unchanged.
+  SECOND SURFACE: the reader never sends `not_for_me` on a committed row — `ActivityEndCard.tsx` returns early when a
+  row exists and renders only "I did it" for a `committed` one. R15 is a backend capability with no client surface
+  yet; exposing "changed my mind" is reader/RN work.
+  Dry run 2026-11-10 on live financial inside `BEGIN … ROLLBACK`: guard matched the regressed 118 body and said so;
+  all seven scenarios green; after the rollback 0 follow-ups for Sam and the body md5 back to `f1808f31…`.
+  Financial 2026-11-10: identity (conn role `postgres.gwxeaygksankbncptlle`, sysid 7678069749886157684, domain
+  financial, PG 17.6); pre-check: md5 `f1808f31…` with has_f42/has_f44/has_lock all `f` (the regression), EXECUTE
+  anon/authenticated false + service_role true, 0 follow-ups for Sam; apply OK (the guard NOTICE named the matched
+  body); verify: markers f42/f44/FOR UPDATE/R15/verify_mode all `t`, new md5 **`8274975e…`**, privileges unchanged
+  (anon/authenticated false, service_role true), and the behaviour suite on Sam + `d9f6e3b4…`, each scenario in its
+  own rolled-back transaction — (a) `later` → `not_for_me` gives `skipped` / `resolved_by` NULL / `resolved_at` set /
+  `created false` / `awarded 0` and **0 due rows**; (b) a repeat `not_for_me` is a no-op and a `did_it` AFTER the
+  abandon leaves it `skipped` / `awarded 0` (skipped is final); (c) **F44 restored** — `later` → `did_it` gives
+  `done` / `self` / `awarded 5` (= `lessons.points`) and a second `did_it` pays 0; (d) **F42 restored** —
+  `user_lesson_progress` goes from 0 rows to `is_completed true`; (e) `verify_mode` still `data` for the
+  statement-date reminder and `self` for the buffer activity; (f) a first-call `not_for_me` is unchanged
+  (`skipped` / NULL / `created true` / `awarded 0`). After every rollback Sam was back to 0 follow-ups.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
