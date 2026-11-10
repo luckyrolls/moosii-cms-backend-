@@ -2716,7 +2716,7 @@ Body: { fact_key: "credit_utilization_band" | "has_emergency_buffer" | "new_subs
   instead would mislabel it as seeded, and re-deriving can't win (its observation is older; latest wins). Real fact
   history is untouched. Cache-Control: no-store. Code: `src/demo/simulate.ts` (pure), `src/routes/demo.ts`.
 
-## 10. Activity follow-ups — DELIVERED (migrations 113, 118; both domains)
+## 10. Activity follow-ups — DELIVERED (migrations 113, 118, 120; both domains)
 
 An activity (`lessons.kind = 'activity'`) ends with three choices. **Follow-ups are their own surface: they are never
 part of `mlp_item_pool` or `user_mlp`** (invariants 1, 8). Every choice writes the ordinary completion, so the activity
@@ -2764,6 +2764,14 @@ own rows only; each write is one transaction. `401 unauthorized` for a missing o
 auth user (§9), so these three routes accept it as that user — no separate demo auth, and a demo session reaches no
 route it couldn't before. One persona can't see or answer another's follow-ups (`404 followup_not_found`).
 
+> **Regression, live since 2026-11-07 — repaired by migration 120 (DRAFT, pending apply).** Migration 118 rebuilt
+> `activity_finish` from **113's** body instead of the then-live **115's**, dropping F42 (the
+> `user_lesson_progress` upsert), F44 (`did_it` on a committed row resolving and paying) and the `FOR UPDATE`
+> row lock on both projects. This section documented 115's behaviour throughout, so the contract was right and
+> the database is wrong until 120 lands. Migration 120 re-bases on 115's exact body, re-applies 118's
+> `verify_mode` on top and adds R15, and it is **hash-guarded on the exact live body and NAMES the version it
+> matched** — 118's weaker `LIKE` drift check is what let the rebase error through.
+
 **Financial demo config (migration 114):** "Set a Statement-Date Reminder" (`d9f6e3b4-…`) has `followup_after_days =
 7` and is verified by `credit_utilization_band = low` (demo control: §9d). "Put Your Buffer on Autopilot"
 (`e7fc45b6-…`, migration 116) has 14 days and `has_emergency_buffer = true` — which Sam already carries, so his
@@ -2781,8 +2789,14 @@ POST /activities/:lessonId/finish        Body: { choice: "did_it" | "later" | "n
 - **Repeat calls** (a row already exists; `created: false`):
   - `did_it` on a **`committed`** row resolves it exactly like `answer(did_it)`: `done` / `self`, `resolved_at` now,
     `activity_did_it` paid once (migration 115, F44). The updated row is returned with `awarded` = the payment.
-  - **Everything else is a no-op** returning the existing row unchanged with `awarded: 0`: `later` or `not_for_me` on
-    any row; anything on a `done` or `skipped` row. **`skipped` is final in v1.** The progress row is not touched.
+  - `not_for_me` on a **`committed`** row **ABANDONS** it (migration 120, R15): `skipped`, `resolved_at` now,
+    `resolved_by` **NULL**, `awarded: 0`, the updated row returned. It leaves the due view immediately. Before 120
+    this was a no-op, so a member who committed and changed their mind could only wait for the follow-up to lapse.
+    `resolved_by` is NULL rather than `'self'` because `uaf_done_iff_resolved_by` allows `resolved_by` only on a
+    `done` row — and a FIRST-call `not_for_me` writes NULL too, so the two paths produce an identical row.
+  - **Everything else is a no-op** returning the existing row unchanged with `awarded: 0`: `later` on any row;
+    anything on a `done` or `skipped` row. **`skipped` is final in v1** — a `did_it` after an abandon does NOT
+    reopen it. The progress row is not touched.
 - The response always carries the row (`followup.status`, `due_at`, …), so a client reopening an activity can show its
   existing state.
 - `400 invalid_choice` · `400 invalid_request` (lessonId not a uuid) · `400 not_activity` · `400 no_followup_configured`
