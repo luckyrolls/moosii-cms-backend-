@@ -22,12 +22,10 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 120 · Moosii 119** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118 and 119; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 120 · Moosii 120** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119 and 120; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
-(all APPLIED). **120 belongs to BOTH projects but is APPLIED on financial only (2026-11-10)** — Moosii
-pending Mark's second go. It REPAIRS a regression 118 left on both projects, so Moosii carries the broken
-`activity_finish` until it lands.
+(all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
 but has no file in the repo (see its entry). The **financial** project was built from a schema
 dump of Moosii (confirmed 2026-09-12), so it carries the same schema through 068, and its
@@ -822,7 +820,7 @@ Main track:
   the other 7 resolve to 0 active tracks today — their stored plans are stale and a rebuild would empty them. That
   is the empty-plan gap in `docs/FINDINGS-plan-reasons.md` §1 / item (i), now measured. For such a user `GET /plan`
   returns the stale items with `why: null` and empty `reasons` — honest, and no error.
-- **120 — `activity_finish`: "Not for me" abandons a committed row (R15), AND the migration-115 restore** — **APPLIED financial (2026-11-10) · PENDING Moosii.**
+- **120 — `activity_finish`: "Not for me" abandons a committed row (R15), AND the migration-115 restore** — **APPLIED financial (2026-11-10) · APPLIED Moosii (2026-11-10).**
   BOTH PROJECTS, one function. R15: `not_for_me` on an existing **committed** row sets `skipped`,
   `resolved_at = now()`, pays nothing and returns the updated row (`created: false`, `awarded: 0`); it leaves the due
   view at once. `resolved_by` stays **NULL**, not `'self'` — `uaf_done_iff_resolved_by CHECK ((status = 'done') =
@@ -858,6 +856,26 @@ Main track:
   `user_lesson_progress` goes from 0 rows to `is_completed true`; (e) `verify_mode` still `data` for the
   statement-date reminder and `self` for the buffer activity; (f) a first-call `not_for_me` is unchanged
   (`skipped` / NULL / `created true` / `awarded 0`). After every rollback Sam was back to 0 follow-ups.
+  Moosii 2026-11-10: identity (conn role `postgres.szhihepbqzbbmxybluql`, sysid 7481590244898220655, domain
+  moosii, PG 15.8); pre-check: the SAME regressed body, md5 `f1808f31…` with has_f42/has_f44/has_lock all `f`,
+  EXECUTE anon/authenticated false + service_role true; apply OK (guard NOTICE named the matched body); verify:
+  markers all `t`, new md5 **`8274975e…`** — **byte-identical to financial's**, so the two projects match again
+  (invariant 4), privileges unchanged.
+  Moosii now HAS an activity (`eed6fa04…` "A short meditation", published, `followup_after_days` 1, no verify
+  rule, 5 points) and 2 follow-ups, created SINCE the 119 apply — so the behaviour suite ran here too, against
+  real rows, each scenario in its own rolled-back transaction: (a) `not_for_me` on the real `committed` row gives
+  `skipped` / `resolved_by` NULL / `resolved_at` set / `created false` / `awarded 0` and **0 due rows**; a repeat
+  is a no-op and a `did_it` after it stays `skipped` / 0; (c) **F44** — `did_it` on that row gives `done` / `self`
+  / `awarded 5` and a second pays 0; (d) **F42** — on the new-row path for a user with no follow-up,
+  `user_lesson_progress` goes 0 rows → `is_completed true`, and `verify_mode` is `self` (the activity has no
+  verify rule, per 118's rule). After the rollbacks both original follow-ups were untouched and the test user had
+  0 progress rows.
+  ⚠ **RESIDUAL DAMAGE, NOT repaired by 120** (120 only fixes the function; F42 fires on the NEW-row path):
+  BOTH Moosii follow-ups were created while the regressed body was live, so both have a `completed_items` row but
+  **NO `user_lesson_progress` row** — 2 real users whose "A short meditation" will not read as completed on the
+  progress surface. The fix is a 2-row data repair (insert `user_lesson_progress {is_completed:true}` for those
+  (user, lesson) pairs); it writes live user data, so it waits for its own go. Financial has no such rows: its
+  only follow-up from the window was reset away.
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.
