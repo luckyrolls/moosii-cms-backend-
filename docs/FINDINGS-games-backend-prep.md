@@ -117,7 +117,7 @@ Constraints that shape it:
 
 Design:
 
-1. **RPC `delete_lesson(p_lesson_id)`, one transaction** (migration 119, below). It locks the lesson, collects every
+1. **RPC `delete_lesson(p_lesson_id)`, one transaction** (migration 121, below). It locks the lesson, collects every
    storage path the subtree owns (card, segment and lesson-level `content_images`, plus the files behind the live
    `sub_segments.image` pointers), and then deletes the row. **Any RESTRICT raises 23503 here and the whole call rolls
    back: rows, images and files are all untouched.** If the delete succeeds, the same transaction writes the paths that
@@ -147,10 +147,10 @@ fix, RESTRICT on its own is safe.
 regen paths (`generateSegmentContent.ts:315`, `regenSegmentContent.ts:218,277`) also purge before a write that can fail,
 and the financial guard can reject them the same way. They could reuse the queue later. That needs its own brief.
 
-### 1.5 Draft SQL: migration 119 (both projects; DRAFT, not applied)
+### 1.5 Draft SQL: migration 121 (both projects; DRAFT, not applied)
 
 ```sql
--- MIGRATION 119: delete_lesson — the row delete decides; storage is purged from a durable queue
+-- MIGRATION 121: delete_lesson — the row delete decides; storage is purged from a durable queue
 -- DRAFT (pending apply) · both projects · financial first
 BEGIN;
 
@@ -268,7 +268,7 @@ so the "nothing else points at it" filter guards the future rather than any curr
 
 ### 2.2 Proposed: filled in the same statement as the insert
 
-1. **Migration 120**: nullable `width`/`height` on `image_assets`, a CHECK that they are positive and set together, and a
+1. **Migration 122**: nullable `width`/`height` on `image_assets`, a CHECK that they are positive and set together, and a
    **BEFORE INSERT OR UPDATE trigger on `image_assets`** that copies `width`/`height` from the storage object's
    `user_metadata` when they're present. The storage trigger's upsert goes through it, so the row is born with its size
    in the same statement. The per-project URL function is untouched.
@@ -276,7 +276,7 @@ so the "nothing else points at it" filter guards the future rather than any curr
    (storage-js 2.106.2 supports `FileOptions.metadata` → `storage.objects.user_metadata`). It then reads the asset row
    back and, if the size is still null, writes it with a plain UPDATE. **This fallback exists because I haven't verified
    that the Storage API sets `user_metadata` in the INSERT rather than in a later UPDATE.** Either way the trigger catches
-   it, since it also fires on UPDATE. The first upload after 120 settles this on financial. `generateSubSegmentImage` needs
+   it, since it also fires on UPDATE. The first upload after 122 settles this on financial. `generateSubSegmentImage` needs
    no other change. No response shape changes (the upload route already returns `width`/`height`).
 3. **Backfill script** `src/scripts/backfillImageDimensions.ts` (`npm run images:dims -- --project financial|moosii
    [--apply]`). It connects with `FINANCIAL_DB_URL`/`MOOSII_DB_URL` and checks `app_settings.domain` against `--project`
@@ -285,7 +285,7 @@ so the "nothing else points at it" filter guards the future rather than any curr
    legacy JPGs (swapping `width`/`height` for orientations 5–8). **Dry-run is the default**: it writes nothing and reports
    total / measured / unparseable / fetch-failed, with the failing paths listed. `--apply` writes in one transaction
    (`UPDATE … WHERE width IS NULL`, so a rerun is a no-op).
-4. **Migration 121**: `SET NOT NULL` on both, guarded to RAISE with the count if any row is still unmeasured. **What NOT NULL
+4. **Migration 123**: `SET NOT NULL` on both, guarded to RAISE with the count if any row is still unmeasured. **What NOT NULL
    enforces:** any upload to bucket `lessons` that doesn't send `width`/`height` metadata will fail, because the trigger's
    insert breaks the constraint. That covers Supabase-dashboard uploads. Nothing else uploads there today (§2.5), so I read
    this as the intended structural guarantee, but it does change what the dashboard can do.
@@ -293,7 +293,7 @@ so the "nothing else points at it" filter guards the future rather than any curr
 ### 2.3 Draft SQL (DRAFT, not applied)
 
 ```sql
--- MIGRATION 120: image_assets width/height (nullable) + fill from storage user_metadata
+-- MIGRATION 122: image_assets width/height (nullable) + fill from storage user_metadata
 -- DRAFT (pending apply) · both projects · financial first
 BEGIN;
 
@@ -337,7 +337,7 @@ COMMIT;
 ```
 
 ```sql
--- MIGRATION 121: image_assets width/height NOT NULL (after the backfill)
+-- MIGRATION 123: image_assets width/height NOT NULL (after the backfill)
 -- DRAFT (pending apply) · both projects · financial first · only after the backfill reports 0 unmeasured
 BEGIN;
 
@@ -346,7 +346,7 @@ DECLARE n integer;
 BEGIN
   SELECT count(*) INTO n FROM public.image_assets WHERE width IS NULL OR height IS NULL;
   IF n > 0 THEN
-    RAISE EXCEPTION '121: % image_assets row(s) have no size; run the backfill (--apply) first', n;
+    RAISE EXCEPTION '123: % image_assets row(s) have no size; run the backfill (--apply) first', n;
   END IF;
 END $$;
 
@@ -359,16 +359,19 @@ COMMIT;
 
 ### 2.4 Apply order (each step only after your go)
 
-1. **119**: financial (pre-check, apply, verify), report, then Moosii.
-2. **120**: financial, then Moosii.
-3. Push the item 1 and item 2 code (it tolerates the old schema: without 120 the fallback UPDATE fails softly and
-   logs; without 119 the route returns a clear 500 naming the missing function).
+1. **121**: financial (pre-check, apply, verify), report, then Moosii.
+2. **122**: financial, then Moosii.
+3. Push the item 1 and item 2 code (it tolerates the old schema: without 122 the fallback UPDATE fails softly and
+   logs; without 121 the route returns a clear 500 naming the missing function).
 4. One generated or uploaded image on **financial** to see whether `user_metadata` reaches the INSERT (§2.2 step 2).
 5. Backfill **dry-run** on financial and Moosii, with the counts reported to you. Then `--apply` on both after your go
    (it writes Moosii data, 406 rows of `image_assets`).
-6. **121**: financial, then Moosii.
+6. **123**: financial, then Moosii.
 
-Numbering: both high-waters are 118 (`migrations/README.md`), so these are 119/120/121 on both projects.
+Numbering: **RENUMBERED 2026-11-10** from 119/120/121 to **121/122/123**. When this report was written both
+high-waters were 118; since then 119 (plan reason labels) and 120 (activity_finish R15 + the 115 restore) have
+taken those numbers. Both high-waters are 119 at the time of the renumber, with 120 applied on financial only -
+check `migrations/README.md` for the current figure before creating these files.
 
 ### 2.5 Not in this slice, but it affects Jigsaw
 
@@ -388,6 +391,6 @@ out at exactly 1200 wide and close to 16:9. Once the backfill runs, the actual d
 
 **Follow-ups for the CMS seat** (flagged, not done): show 409 `delete_blocked` in `DeleteContentModal` as its own
 state, like `unpurgeable_images`, and treat the `unpurgeable_images` state as dead once item 1 ships. Regenerate its
-types after 120 if it ever reads the columns. **For the games seat:** use `image_assets.width/height` through
+types after 122 if it ever reads the columns. **For the games seat:** use `image_assets.width/height` through
 `sub_segments.image → image_assets.url`, not `content_images`; the `has_game_puzzles` pre-check isn't needed once item 1
 ships.
