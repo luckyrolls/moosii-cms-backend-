@@ -1,5 +1,12 @@
 import { supabase } from "../supabase";
 import { getHandler } from "./registry";
+import {
+  enqueueRebuildIfIdle,
+  type EnqueueResult,
+  type RebuildJobRow,
+  type RebuildScope,
+  type RebuildTriggerDeps,
+} from "./rebuildTrigger";
 
 // Insert a queued job row and return its id — does NOT start execution.
 // Used by batch endpoints that want to collect all IDs before running.
@@ -30,92 +37,46 @@ export async function createAndStartJob(
   return id;
 }
 
-// Enqueue a `rebuild_mlp scope:all` UNLESS one is already queued/running (coalescing —
-// ONE check, not a debounce). Used by the publish-state triggers (questionnaire routes +
-// POST /mlp/rebuild-all). NEVER throws — safe to fire-and-forget from a request handler;
-// a publish must never be blocked or failed by this. `reason` + `correlationId` are stamped
-// into the job input so "why did this rebuild run" is answerable from the jobs row.
+// Enqueue a `rebuild_mlp scope:all` unless one is already QUEUED (coalescing — ONE check, not a
+// debounce). Used by the publish-state triggers (lesson + questionnaire publish/unpublish/delete,
+// POST /mlp/rebuild-all). NEVER throws — safe to await from a request handler; a publish must never
+// be blocked or failed by this. `reason` + `correlationId` are stamped into the job input so "why did
+// this rebuild run" is answerable from the `jobs` row.
 //
-// The coalesced race is CORRECTNESS-SAFE: two concurrent scope:all runs are harmless
-// because rebuild_user_mlp is derive-and-overwrite (atomic per-user delete+insert, no
-// non-idempotent step), so they converge — a rare double-enqueue is wasted work, never
-// wrong data. Accordingly we fail TOWARD triggering: if the coalescing check itself errors,
-// we enqueue anyway (a missed rebuild is worse than a harmless duplicate).
+// It does NOT fold into a RUNNING rebuild: that run may already have passed the users this change
+// affects. The rule, and why a duplicate is harmless while a miss is not, lives in rebuildTrigger.ts.
 export async function enqueueRebuildAllIfIdle(
   ctx: { reason: string; correlationId?: string }
-): Promise<{ enqueued: boolean; jobId?: string; coalescedInto?: string }> {
-  try {
-    const { data: existing, error } = await supabase
+): Promise<EnqueueResult> {
+  return enqueueRebuildIfIdle({ kind: "all" }, ctx, supabaseRebuildDeps);
+}
+
+// Enqueue a single-user `rebuild_mlp { user_id }` unless one for that user is already QUEUED.
+// Used by POST /facts. Same contract and same guard as the scope:all trigger above.
+export async function enqueueRebuildUserIfIdle(
+  userId: string,
+  ctx: { reason: string; correlationId?: string }
+): Promise<EnqueueResult> {
+  return enqueueRebuildIfIdle({ kind: "user", userId }, ctx, supabaseRebuildDeps);
+}
+
+// The real deps: open rebuilds of this scope (queued AND running — rebuildTrigger decides), and
+// create+start. A scope filter uses `contains` on the jsonb input, so `{scope:"all"}` and a
+// per-user job never match each other.
+const supabaseRebuildDeps: RebuildTriggerDeps = {
+  async listOpenRebuilds(scope: RebuildScope): Promise<RebuildJobRow[]> {
+    const { data, error } = await supabase
       .from("jobs")
       .select("id, status")
       .eq("type", "rebuild_mlp")
       .in("status", ["queued", "running"])
-      .contains("input", { scope: "all" })
-      .limit(1);
-
-    if (!error && existing && existing.length > 0) {
-      const into = existing[0].id as string;
-      console.log(`[rebuild-trigger] coalesced into ${into} (${existing[0].status}) — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
-      return { enqueued: false, coalescedInto: into };
-    }
-    if (error) {
-      console.warn(`[rebuild-trigger] coalescing check failed (${ctx.reason}); enqueuing anyway (harmless dup): ${error.message}`);
-    }
-
-    const jobId = await createAndStartJob("rebuild_mlp", {
-      scope: "all",
-      triggered_by: ctx.reason,
-      correlation_id: ctx.correlationId ?? null,
-    });
-    console.log(`[rebuild-trigger] enqueued ${jobId} scope:all — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
-    return { enqueued: true, jobId };
-  } catch (e) {
-    console.error(`[rebuild-trigger] enqueue errored (${ctx.reason}), non-fatal: ${e instanceof Error ? e.message : String(e)}`);
-    return { enqueued: false };
-  }
-}
-
-// Enqueue a single-user `rebuild_mlp { user_id }` unless one for that user is still QUEUED.
-// Used by POST /facts. NEVER throws (same contract as enqueueRebuildAllIfIdle).
-//
-// Coalesces into QUEUED only, never RUNNING: a running rebuild may already have read the
-// user's facts before the caller's write committed, so folding into it could miss that write.
-// A duplicate rebuild is harmless (derive-and-overwrite); a missed one is not. Fails toward
-// enqueuing when the check itself errors.
-export async function enqueueRebuildUserIfIdle(
-  userId: string,
-  ctx: { reason: string; correlationId?: string }
-): Promise<{ enqueued: boolean; jobId?: string; coalescedInto?: string }> {
-  try {
-    const { data: existing, error } = await supabase
-      .from("jobs")
-      .select("id")
-      .eq("type", "rebuild_mlp")
-      .eq("status", "queued")
-      .contains("input", { user_id: userId })
-      .limit(1);
-
-    if (!error && existing && existing.length > 0) {
-      const into = existing[0].id as string;
-      console.log(`[rebuild-trigger] user ${userId} coalesced into queued ${into} — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
-      return { enqueued: false, coalescedInto: into };
-    }
-    if (error) {
-      console.warn(`[rebuild-trigger] user coalescing check failed (${ctx.reason}); enqueuing anyway (harmless dup): ${error.message}`);
-    }
-
-    const jobId = await createAndStartJob("rebuild_mlp", {
-      user_id: userId,
-      triggered_by: ctx.reason,
-      correlation_id: ctx.correlationId ?? null,
-    });
-    console.log(`[rebuild-trigger] enqueued ${jobId} user ${userId} — reason=${ctx.reason} corr=${ctx.correlationId ?? "-"}`);
-    return { enqueued: true, jobId };
-  } catch (e) {
-    console.error(`[rebuild-trigger] user enqueue errored (${ctx.reason}), non-fatal: ${e instanceof Error ? e.message : String(e)}`);
-    return { enqueued: false };
-  }
-}
+      .contains("input", scope.kind === "all" ? { scope: "all" } : { user_id: scope.userId })
+      .limit(10);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Array<{ id: string; status: string }>).map((r) => ({ id: r.id, status: r.status }));
+  },
+  createAndStart: (input) => createAndStartJob("rebuild_mlp", input),
+};
 
 // Run a list of job IDs through a worker pool capped at `concurrency`.
 // Spawns min(concurrency, n) workers; each drains the shared queue until empty.

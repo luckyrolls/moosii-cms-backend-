@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { createAndStartJob, enqueueRebuildAllIfIdle } from "../jobs/runner";
+import { describeRebuild } from "../jobs/rebuildTrigger";
 import { apiError } from "../lib/errors";
 import { summarizeLessonCreate, type LessonCreateRow } from "../lib/lessonCreateResult";
 import { logApproval } from "../lib/approvalLog";
@@ -229,8 +230,8 @@ async function setLessonPublished(req: Request, res: Response, published: boolea
     if (upErr) { apiError(res, 500, "db_error", upErr.message); return; }
     if (!rows || rows.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
     await logApproval("lesson", id, action, req);
-    void enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
-    res.json({ ok: true, lesson_id: id, is_published: published });
+    const fallbackRebuild = await enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
+    res.json({ ok: true, lesson_id: id, is_published: published, ...describeRebuild(fallbackRebuild) });
     return;
   }
 
@@ -245,8 +246,11 @@ async function setLessonPublished(req: Request, res: Response, published: boolea
   const result = interpretPublishResult(data);
   if (!result.found) { apiError(res, 404, "not_found", "lesson not found"); return; }
 
-  void enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
-  res.json({ ok: true, lesson_id: id, is_published: result.isPublished });
+  // Awaited, not fire-and-forget: the caller needs to know whether its own rebuild was queued or
+  // folded into one already waiting. This waits for the job INSERT only — the rebuild itself runs
+  // in-process after the response (createAndStartJob -> startJob), and the helper never throws.
+  const rebuild = await enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
+  res.json({ ok: true, lesson_id: id, is_published: result.isPublished, ...describeRebuild(rebuild) });
 }
 
 router.post("/:id/publish", async (req: Request, res: Response): Promise<void> => {

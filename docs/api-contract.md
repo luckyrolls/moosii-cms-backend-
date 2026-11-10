@@ -1888,24 +1888,30 @@ scope:all`. Triggers: questionnaire **publish/unpublish** hook it **server-side*
 (`/questionnaires/:id/publish|unpublish`, fire-and-forget — never blocks the publish);
 lesson **publish/unpublish** backend routes **`POST /lessons/:id/publish|unpublish`**
 (migration 043) exist, and flip `is_published` + `published_by`, log the approval, AND enqueue
-the coalesced rebuild.
-> ⚠ **CORRECTION (verified 2026-09-10): the CMS has NOT repointed to them.** This paragraph
-> previously claimed it had. `moosii-cms/src/data/cards.ts` (`useTogglePublish`) still flips
-> `lessons.is_published` **Supabase-direct**, and the CMS has no `publishLesson` wrapper at all
-> (`src/lib/api.ts` exports the questionnaire pair only — questionnaires *did* repoint, and
-> their data layer even carries a "never flip is_published" comment). So a lesson
-> publish/unpublish today writes **no `content_approvals` row** and enqueues **no rebuild** —
-> a newly published lesson reaches nobody until an unrelated rebuild runs. Repointing the CMS
-> toggle is a small change in that repo; tracked in `FINDINGS-published-edit.md` §A.4. Body (optional): `{ reason?,
+the coalesced rebuild. **The CMS calls these routes** (confirmed by the CMS seat, 2026-11-10); it no
+longer flips `lessons.is_published` Supabase-direct.
+
+**`POST /lessons/:id/publish|unpublish` report their rebuild** (added 2026-11-10):
+`200 { ok: true, lesson_id, is_published, rebuild: "queued" | "coalesced" | "failed", rebuild_job_id }`
+— `rebuild_job_id` is the new job when `queued`, the job it folded into when `coalesced`, and `null`
+when the trigger itself failed (which never fails the publish: the flip and its audit row are already
+committed, and `"failed"` says "rebuild this by hand"). The enqueue is now **awaited** so the caller
+can be told; that waits for the job INSERT only, not for the rebuild.
+
+Body (optional): `{ reason?,
 correlation_id? }` → stamped into the job's `input` (`triggered_by`, `correlation_id`) so
 **"why did a rebuild run"** is answerable from the `jobs` row. Returns `202 { enqueued,
-job_id, coalesced_into }`. **Coalescing guard:** if a `rebuild_mlp scope:all` job is
-already `queued`/`running`, no second is enqueued (one check, not a debounce). The
-resulting race is **correctness-safe** — two concurrent `scope:all` runs are harmless
-because `rebuild_user_mlp` is derive-and-overwrite (atomic per-user delete+insert, no
-non-idempotent step), so they converge; a rare double-enqueue is wasted work, never wrong
-data. Accordingly the trigger fails **toward** rebuilding (a coalescing-check error
-enqueues anyway). NOT in this pass: targeted rebuild-by-track (parked until rebuild-all is
+job_id, coalesced_into }`. **Coalescing guard (narrowed 2026-11-10):** a trigger folds into a
+`rebuild_mlp` job that is **`queued`** only — **never one that is `running`** (one check, not a
+debounce). A running rebuild reads the candidate pool as it walks the user base, so a publish that
+commits mid-run is invisible to every user that run has already written; folding into it reported
+`coalesced` and dropped the change until some later rebuild happened to run. A queued job has read
+nothing yet, so it is safe to join. **Both** triggers — `scope:all` and the single-user one behind
+`POST /facts` — now share ONE rule in `src/jobs/rebuildTrigger.ts` (they had drifted; the scope:all
+copy was the one that folded into `running`). A duplicate rebuild is **correctness-safe**: two
+concurrent runs are harmless because `rebuild_user_mlp` is derive-and-overwrite (atomic per-user
+delete+insert, no non-idempotent step), so they converge — wasted work, never wrong data.
+Accordingly the trigger fails **toward** rebuilding (a coalescing-check error enqueues anyway). NOT in this pass: targeted rebuild-by-track (parked until rebuild-all is
 observably slow).
 
 Ordering inputs: item `priority`, track `priority`/`order`/`weight`,
