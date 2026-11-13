@@ -40,8 +40,11 @@ generation have been ported and are delivered.
 - **Base URL:** Render service URL — frontend `VITE_API_BASE_URL`.
 - **Auth — DELIVERED: JWT.** Browser calls send the Supabase access token
   (`Authorization: Bearer <jwt>`, from `supabase.auth.getSession()`). Backend
-  verifies the token and checks `users_internal` for CMS access. No
-  `INTERNAL_API_KEY` browser path. Keep `INTERNAL_API_KEY` only for any
+  verifies the token (`supabase.auth.getUser`) and requires
+  `public."user".role IN ('admin','super_admin')` — `src/middleware/jwtAuth.ts:85-95`. It does NOT
+  read `users_internal` (`jwtAuth.ts:7`; that table is empty on both projects —
+  `docs/FINDINGS-roles.md` §1). `admin` and `super_admin` are indistinguishable to every route; the
+  split exists only in RLS (§3 of that report). No `INTERNAL_API_KEY` browser path. Keep `INTERNAL_API_KEY` only for any
   server-to-server/cron path.
 - **Content type:** `application/json`.
 - **Async pattern (delivered):** AI/long work returns a `job_id` immediately

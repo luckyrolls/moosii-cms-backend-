@@ -45,10 +45,11 @@ for internal/authoring/licensed data.
     alter table public.screen_help enable row level security;
     create policy screen_help_admin_all on public.screen_help
       for all to authenticated
-      using (exists (select 1 from users_internal ui where ui.id = auth.uid()))
-      with check (exists (select 1 from users_internal ui where ui.id = auth.uid()));
+      using (is_admin()) with check (is_admin());
     ```
-    (Adjust the `users_internal` match to how that table keys to the auth user.)
+    (Corrected 2026-11-13: this block previously gated on `users_internal`, which is **empty on both
+    projects and read by nothing** — the policy would have denied everyone. `is_admin()` is the real
+    check, and it is what every other policy here uses. `docs/FINDINGS-roles.md` §1.)
 
 ## Anon reader — published content, FINANCIAL ONLY (migration 096, 2026-09-26)
 
@@ -136,6 +137,18 @@ user (RN parent, demo reader session) can now insert and read **only their own**
 role keep full access; `is_admin()` still reads every `completed_items` row (CMS views over it). A plain admin reads
 only their own `user_lesson_progress` rows (no CMS caller reads it).
 
+### Still open: blanket policies 105 did not reach (audited 2026-11-13, both projects)
+
+105 cleaned `completed_items` and `user_lesson_progress`; 112 fixed `user`'s INSERT check. **18 other
+tables still carry `"Enable insert for authenticated users only"` `INSERT … TO authenticated
+WITH CHECK (true)`**: `children`, `prompts`, `user_questionnaire_progress`, `user_segement_track`,
+`invitees`, `posts`, `comments`, `chat`, `friends`, `group_chat`, `group_chat_user_last_seen`,
+`group_message`, `groups_data`, `message`, `replies`, `starred_items`, `questionnaire_response`,
+`quiz_response`. **Policies OR together**, so these defeat the `is_super_admin()` INSERT gates on the
+same tables: any signed-in user can insert arbitrary rows. `user_questionnaire_progress`,
+`user_segement_track` and `user_track_weights` also still carry `"Enable read access for all users"`
+`USING (true)`. Not scheduled; `docs/FINDINGS-roles.md` §3.
+
 ## Moosies ledger — read own, write none (migration 111, both projects)
 
 | Table | Posture | Note |
@@ -179,7 +192,13 @@ now actually binds every client read of them. `is_admin()` / `is_super_admin()` 
 | `fact_track_rules` | + any authenticated (config) | was no policy |
 
 Admin widening (a plain `admin`, not only `super_admin`, reads all of the above) accepted 2026-09-14.
-Write policies are unchanged. Known app gap: moosii-rn `app/(onboarding)/verify.tsx:78-82` looks up
+Write policies are unchanged — which means, spelled out (audited 2026-11-13, identical on both
+projects, `docs/FINDINGS-roles.md` §2): **admins READ, super_admins WRITE.** INSERT/UPDATE/DELETE on
+`user`, `children`, `completed_items`, `user_mlp` and `user_mlp_mods` are `is_super_admin()`, and
+`user_lesson_progress` + `user_tracks` are `is_super_admin()` even for SELECT. Totals: 136 `is_admin`
+policies over 55 tables, 88 `is_super_admin` over 23. The catch-all `user_or_super_admin_access`
+(cmd `ALL`, `is_super_admin`) still exists on `user_mlp`, `user_mlp_mods`, `user_lesson_progress`,
+`user_questionnaire_progress` and `notifications` — 113 dropped it on `completed_items` only. Known app gap: moosii-rn `app/(onboarding)/verify.tsx:78-82` looks up
 another user's row by email; after 078 that lookup returns nothing (see migration 079).
 
 ## Child health (migrations 080–081, 2026-09-15)
