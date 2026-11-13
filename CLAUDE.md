@@ -99,7 +99,11 @@ Edge Functions, so it lives in this service. The pattern:
 - Jobs are WHOLE-UNIT: a job succeeds or fails atomically. On failure, retry the
   whole job. NO partial-resume / step-checkpoint machinery.
 - MLP rebuilds are COALESCED: `enqueueRebuildAllIfIdle` / `enqueueRebuildUserIfIdle`
-  (`src/jobs/runner.ts`) join an existing QUEUED job rather than stacking duplicates.
+  (`src/jobs/runner.ts`) join an existing QUEUED job rather than stacking duplicates — and NEVER a
+  RUNNING one, which may already have passed the users a just-committed change affects. ONE shared
+  rule for both triggers (`src/jobs/rebuildTrigger.ts`, 2026-11-11); they had drifted, and the
+  scope:all copy folded into `running`, so a publish mid-rebuild reported "coalesced" and reached
+  nobody. Publish/unpublish report the outcome as `rebuild: queued | coalesced | failed`.
 
 ## Job granularity
 ONE JOB PER IMAGE. "Generate all images for a lesson" is a FRONTEND concern that fans
@@ -204,13 +208,15 @@ API, not direct Supabase writes. Sanctioned CMS-direct write paths are listed in
 - **CMS admin routes**: Supabase **JWT** (`Authorization: Bearer <jwt>`) verified via
   `supabase.auth.getUser()`, role and review capabilities from `public."user"` (`role`,
   `can_review_editorial`, `can_approve_clinical`; `users_internal` is NOT read —
-  `src/middleware/jwtAuth.ts:6-27`). The route
+  `src/middleware/jwtAuth.ts:6-27`). **Capability gates lesson/segment approve + reject ONLY** (5
+  checks, `lessons.ts:71,159` / `segments.ts:190,204,232`): publish/unpublish, quiz approve and image
+  approve need the admin role and nothing else. The route
   set lives in `src/index.ts`; per-route detail in `docs/api-contract.md`.
 - **App-facing** (`/classify-update`, `/mlp`): verify the END-USER's Supabase JWT themselves and
   scope to that user; admin callers get the wider mode. Mounted without the admin gate.
 - **`/jobs`**: `INTERNAL_API_KEY` shared secret (server-to-server) OR a CMS admin JWT.
-- **Partner intake** (`POST /facts`, financial only — 404 elsewhere, checked BEFORE auth):
-  `FACTS_API_KEY`, its OWN key scoped to that one route — `INTERNAL_API_KEY` is rejected; compared
+- **Partner intake** (`POST /facts` and `POST /facts/batch`, financial only — 404 elsewhere, checked
+  BEFORE auth): `FACTS_API_KEY`, its OWN key scoped to those two routes — `INTERNAL_API_KEY` is rejected; compared
   constant-time. Required at boot when `DOMAIN=financial` (≥32 chars, no surrounding whitespace,
   distinct from `INTERNAL_API_KEY`). `GET /facts/:user_id` is admin JWT. See `api-contract.md` §8.
 - **Demo sign-in** (`POST /demo/session`, financial only — 404 elsewhere): `DEMO_ACCESS_CODE` + a user whose
@@ -223,14 +229,22 @@ The backend bypasses RLS (service role); RLS governs the app's and CMS's direct 
 - **Every `public` table has RLS on** (102). Backend-only tables carry no policy. Content tables: admins
   read everything; any other signed-in user reads published, unarchived content only (103, the same rule
   as the anon reader). A new table must enable RLS in the migration that creates it.
-- Per-user tables (`user`, `children`, `completed_items`, `user_facts`, …): own row, or
-  `is_admin()` (plain admin, not only super_admin), or service; anon none. Blanket
-  `USING (true)` reads are gone.
+- Per-user tables: **admins READ, super_admins WRITE.** `user`, `children`, `completed_items`,
+  `user_mlp`, `user_mlp_mods`, `user_facts` are own row / `is_admin()` / service for SELECT, but
+  INSERT/UPDATE/DELETE are `is_super_admin()`; `user_lesson_progress` and `user_tracks` are
+  `is_super_admin()` even for SELECT. `is_admin()` is `role IN ('admin','super_admin')`, so the sets
+  nest. Anon none. Blanket `USING (true)` SELECTs are gone from the tables 078 covered but NOT
+  everywhere — `user_questionnaire_progress`, `user_segement_track` and `user_track_weights` still
+  carry `Enable read access for all users`. (Both catalogs, 2026-11-13: 136 `is_admin` policies /
+  55 tables, 88 `is_super_admin` / 23 tables; identical on financial and Moosii.)
 - Views over them are `security_invoker`, so the base-table policies bind. `is_admin()` /
   `is_super_admin()` are SECURITY DEFINER (required, or policies recurse).
 - Audit tables (`distress_detections`, `health_detections`) are RLS-on with NO policy —
   backend-only. Reference config (health rules, fact vocabulary) is signed-in read, admin write.
-- **Traps:** a plain (non-invoker) view runs as its owner and bypasses RLS — including when nested
+- **Traps:** policies **OR** together, so a strict policy does not remove a permissive sibling — 18
+  legacy `INSERT … TO authenticated WITH CHECK (true)` policies (`children`, `prompts`,
+  `user_questionnaire_progress`, `user_segement_track`, …) still defeat the `is_super_admin()` INSERT
+  gates on the same tables. A plain (non-invoker) view runs as its owner and bypasses RLS — including when nested
   inside an invoker view. A policy that calls a function reading another RLS table recurses unless
   that function is SECURITY DEFINER. The `postgres` role has BYPASSRLS, so a policy is only tested
   under `SET LOCAL ROLE authenticated` + `request.jwt.claims`.
@@ -297,6 +311,11 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
 - **Prompt-rewrite migrations are hash-guarded.** They RAISE unless the live `system_message` md5
   is exactly the expected prior text, and they preserve the row's line endings (live rows may be
   CRLF — compare and write after normalizing). Worked example: 083.
+- **A migration that REPLACES a function body guards on an EXACT md5 of the live body, never a
+  substring**, and names which known version it matched. 118 rebuilt `activity_finish` from 113's
+  body behind a `prosrc LIKE '%…%'` check that 115's body ALSO satisfied: it silently reverted 115 on
+  both projects for three days (lost `FOR UPDATE`, F42, F44). 120 repaired it with a three-way md5
+  guard — compare after stripping CR: `md5(replace(prosrc, chr(13), ''))`.
 - **Migration first, then code; code tolerates the old schema.** Push = deploy, so a feature must
   degrade cleanly if its migration isn't live yet (e.g. classify's child health is `null` unless
   the health tables load AND the prompt's `output_schema` requires `child_health`,
