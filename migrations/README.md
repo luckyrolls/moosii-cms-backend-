@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 120 · Moosii 120** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119 and 120; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 125 · Moosii 120** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119 and 120; **125 is applied on financial only so far** (Moosii pending its go); **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -876,6 +876,41 @@ Main track:
   progress surface. The fix is a 2-row data repair (insert `user_lesson_progress {is_completed:true}` for those
   (user, lesson) pairs); it writes live user data, so it waits for its own go. Financial has no such rows: its
   only follow-up from the window was reset away.
+- **125 — prompts lockdown: the open INSERT policy goes, one ACTIVE row per `prompt_type`** — **APPLIED financial (2026-11-13) · DRAFT Moosii (pending apply).**
+  BOTH PROJECTS, same policy and same data shape. `public.prompts` carried a legacy
+  `"Enable insert for authenticated users only"` INSERT TO authenticated **WITH CHECK (true)**. There is no UPDATE
+  and no DELETE policy, so a client could never change an existing row — but ANY signed-in user could INSERT one,
+  and six generation paths pick their row by `prompt_type` + `is_active` + `.single()`
+  (`generateLessons.ts:50-54`, `generateQuiz.ts:51-55`, `generateQuestionnaire.ts:62-66`, `reviewLesson.ts:115-119`,
+  `coverageAudit.ts:65-69`, `classifyUpdate.ts:49-53`). PostgREST `.single()` errors on zero OR >1 rows, so a second
+  active row of a type is never silently substituted — it makes the query FAIL, i.e. one INSERT of
+  `{prompt_type:'classify_update', is_active:true}` takes `/classify-update` down for every app user, and the same
+  trick kills lesson/quiz/questionnaire generation, the reviewer or the coverage audit. Source: `docs/FINDINGS-roles.md` §6.
+  125 drops that policy (no `IF EXISTS` — the pre-check asserts exactly one INSERT policy and that its name is the
+  expected one, so a rename or a prior drop stops the file), and adds
+  `prompts_one_active_per_type UNIQUE (prompt_type) WHERE is_active AND prompt_type <> 'segment'` so the invariant
+  those six calls depend on is structural. **Segment rows are exempt on purpose**: segment content selects by explicit
+  `prompts.id` (`generateSegmentContent.ts:50-55`), so many active segment rows are correct — that is the tone library
+  (financial 1 of 1 active, Moosii 9 of 10). A NULL `prompt_type` is excluded by the predicate (0 such rows on either
+  project).
+  UNCHANGED, deliberately: both SELECT policies (`prompts_sel` is still `USING (true)` TO public, so anon can read
+  every `system_message` — a separate decision), the other 17 tables carrying `INSERT … WITH CHECK (true)`
+  (`docs/rls-sweep.md`), the missing `is_active` filter on `GET /tones` (`src/routes/tones.ts:64-67`), and all code.
+  The backend writes `prompts` with the SERVICE ROLE (`/tones`, `/questionnaire-prompt`), which bypasses RLS, so no
+  backend or CMS path loses a write it had. No new objects in `database.types.ts` (a policy and an index are not typed).
+  Dry run 2026-11-13 on live financial inside `BEGIN … ROLLBACK`: pre-check, DROP POLICY, CREATE INDEX and VERIFY all
+  green, then rolled back.
+  Financial 2026-11-13: identity (host `aws-0-ca-central-1.pooler.supabase.com`, conn role
+  `postgres.gwxeaygksankbncptlle`, sysid 7678069749886157684, domain financial); pre-check printed the policy name
+  `'Enable insert for authenticated users only'` and **7 active non-segment rows, all unique per type**
+  (`coverage_audit`, `lesson`, `questionnaire`, `quiz`, `review_best_practices`, `review_doc_grounded`,
+  `review_factual_smell` — financial has no `classify_update` row); apply OK; verify in a FRESH session: `pg_policies`
+  shows **no INSERT policy** and the 2 SELECT policies intact, `pg_indexes` shows
+  `CREATE UNIQUE INDEX prompts_one_active_per_type ON public.prompts USING btree (prompt_type) WHERE (is_active AND (prompt_type <> 'segment'::text))`,
+  8 prompt rows unchanged.
+  Moosii: **not applied** — awaiting its own go. Its pre-check numbers (read-only, 2026-11-13) are 8 active
+  non-segment rows, all unique per type (the 7 above plus `classify_update`), same policy name, 0 NULL `prompt_type`.
+
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
   from a file-based prompt to a DB-composed one.

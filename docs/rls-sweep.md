@@ -141,13 +141,33 @@ only their own `user_lesson_progress` rows (no CMS caller reads it).
 
 105 cleaned `completed_items` and `user_lesson_progress`; 112 fixed `user`'s INSERT check. **18 other
 tables still carry `"Enable insert for authenticated users only"` `INSERT … TO authenticated
-WITH CHECK (true)`**: `children`, `prompts`, `user_questionnaire_progress`, `user_segement_track`,
+WITH CHECK (true)`**: `children`, ~~`prompts`~~ (closed by **125**, see below),
+`user_questionnaire_progress`, `user_segement_track`,
 `invitees`, `posts`, `comments`, `chat`, `friends`, `group_chat`, `group_chat_user_last_seen`,
 `group_message`, `groups_data`, `message`, `replies`, `starred_items`, `questionnaire_response`,
 `quiz_response`. **Policies OR together**, so these defeat the `is_super_admin()` INSERT gates on the
 same tables: any signed-in user can insert arbitrary rows. `user_questionnaire_progress`,
 `user_segement_track` and `user_track_weights` also still carry `"Enable read access for all users"`
 `USING (true)`. Not scheduled; `docs/FINDINGS-roles.md` §3.
+
+### `prompts` — no client writes, one active row per type (migration 125)
+
+| Object | Posture | Note |
+|---|---|---|
+| `prompts` | RLS on. **No INSERT policy** (125 dropped `"Enable insert for authenticated users only"`, which was `WITH CHECK (true)` TO authenticated); no UPDATE and no DELETE policy either, so **no client can write this table at all**. SELECT stays open: `prompts_sel` `USING (true)` TO **public** and `"Enable read access for all users"` TO authenticated | written only by the backend with the SERVICE ROLE — `/tones` (`src/routes/tones.ts`) and `/questionnaire-prompt` (`src/routes/questionnairePrompt.ts`). **Not** a sanctioned CMS-direct write path |
+| `prompts_one_active_per_type` | UNIQUE `(prompt_type) WHERE is_active AND prompt_type <> 'segment'` | six generation paths select by `prompt_type` + `is_active` + `.single()`, which ERRORS on >1 row; the index makes that invariant structural. Segment rows are exempt — segment content selects by explicit `prompts.id`, so the tone library is many-active by design |
+| `prompt_blocks`, `content_size_profiles`, `voice_lint_rules` | RLS on, **no policy** — backend-only (default-deny) | unchanged by 125; already closed |
+
+**Why**: any signed-in user could insert a prompt row, and one such row of an existing
+`prompt_type` made `.single()` fail — taking down `/classify-update` for every app user, or lesson /
+quiz / questionnaire generation, the reviewer, or the coverage audit. It could not substitute a
+prompt silently (PostgREST errors rather than picking), but it was a one-request denial of service
+from the anon key plus a sign-up. `docs/FINDINGS-roles.md` §6.
+
+**Still open here**: `prompts_sel` is `USING (true)` TO `public`, and `anon` holds SELECT — so the
+whole prompt library, every `system_message`, is readable with the anon key. 125 deliberately did not
+touch it; that is a separate decision. Likewise `GET /tones` still lists segment rows with no
+`is_active` filter (`src/routes/tones.ts:64-67`).
 
 ## Moosies ledger — read own, write none (migration 111, both projects)
 
