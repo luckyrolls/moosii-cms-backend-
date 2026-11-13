@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 125 · Moosii 120** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119 and 120; **125 is applied on financial only so far** (Moosii pending its go); **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 125 · Moosii 125** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120 and 125; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -876,7 +876,7 @@ Main track:
   progress surface. The fix is a 2-row data repair (insert `user_lesson_progress {is_completed:true}` for those
   (user, lesson) pairs); it writes live user data, so it waits for its own go. Financial has no such rows: its
   only follow-up from the window was reset away.
-- **125 — prompts lockdown: the open INSERT policy goes, one ACTIVE row per `prompt_type`** — **APPLIED financial (2026-11-13) · DRAFT Moosii (pending apply).**
+- **125 — prompts lockdown: the open INSERT policy goes, one ACTIVE row per `prompt_type`** — **APPLIED financial (2026-11-13) · APPLIED Moosii (2026-11-13).**
   BOTH PROJECTS, same policy and same data shape. `public.prompts` carried a legacy
   `"Enable insert for authenticated users only"` INSERT TO authenticated **WITH CHECK (true)**. There is no UPDATE
   and no DELETE policy, so a client could never change an existing row — but ANY signed-in user could INSERT one,
@@ -908,8 +908,13 @@ Main track:
   shows **no INSERT policy** and the 2 SELECT policies intact, `pg_indexes` shows
   `CREATE UNIQUE INDEX prompts_one_active_per_type ON public.prompts USING btree (prompt_type) WHERE (is_active AND (prompt_type <> 'segment'::text))`,
   8 prompt rows unchanged.
-  Moosii: **not applied** — awaiting its own go. Its pre-check numbers (read-only, 2026-11-13) are 8 active
-  non-segment rows, all unique per type (the 7 above plus `classify_update`), same policy name, 0 NULL `prompt_type`.
+  Moosii 2026-11-13: dry run with ROLLBACK green first; identity (host `aws-0-us-east-1.pooler.supabase.com`, conn
+  role `postgres.szhihepbqzbbmxybluql`, sysid 7481590244898220655, domain moosii); pre-check printed the SAME policy
+  name and **8 active non-segment rows, all unique per type** (the 7 financial ones plus `classify_update`, which
+  financial has no row for); apply OK; verify in a FRESH session: no INSERT policy, the 2 SELECT policies intact, the
+  index definition **byte-identical to financial's**, 18 prompt rows / 17 active / **9 active segment rows** — the
+  tone library, exempt by the predicate and the reason `prompt_type <> 'segment'` is in it. The two projects match
+  again (invariant 4).
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
