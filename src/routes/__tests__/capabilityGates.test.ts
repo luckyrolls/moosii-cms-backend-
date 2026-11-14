@@ -21,6 +21,7 @@ import lessons from "../lessons";
 import quiz from "../quiz";
 import images from "../images";
 import questionnaires from "../questionnaires";
+import tones, { wantsActiveOnly } from "../tones";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 
@@ -125,6 +126,18 @@ test("toApprovalFields keeps approval_reset a BOOLEAN and puts the breakdown bes
   assert.ok(!("approval_reset" in f.approval_reset_detail));
 });
 
+// GET /tones keeps its original default (every tone, so the CMS Tone Management screen still
+// shows the inactive ones it is the only place to re-activate); the PICKER narrows explicitly.
+test("wantsActiveOnly narrows ONLY on the explicit param, and defaults to every tone", () => {
+  assert.equal(wantsActiveOnly({}), false, "bare /tones must stay unfiltered");
+  assert.equal(wantsActiveOnly({ active_only: "true" }), true);
+  assert.equal(wantsActiveOnly({ active_only: "false" }), false);
+  assert.equal(wantsActiveOnly({ active_only: "1" }), false, "only the exact string 'true' counts");
+  assert.equal(wantsActiveOnly({ active_only: "TRUE" }), false);
+  assert.equal(wantsActiveOnly({ active_only: ["true"] }), false, "a repeated param is an array, not 'true'");
+  assert.equal(wantsActiveOnly({ include_inactive: "true" }), false, "the retired param has no effect");
+});
+
 // ---------------------------------------------------------------- the real routers
 
 const app = express();
@@ -142,6 +155,7 @@ app.use("/lessons", lessons);
 app.use("/quiz", quiz);
 app.use("/content-images", images);
 app.use("/questionnaires", questionnaires);
+app.use("/tones", tones);
 
 const server = app.listen(0);
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -202,6 +216,16 @@ test("gate: every capable caller gets through to the (unreachable) database", as
     assert.ok(r.status >= 400, "no database is reachable here, so it cannot be a 2xx");
   }
   assert.equal(results.length, 16, "every allowed capability set was exercised");
+});
+
+// GET /tones is NOT capability-gated (reading the library is not a sign-off), so a
+// capability-less admin must still reach it — it fails on the unreachable database, not on 403.
+test("GET /tones is not capability-gated", async () => {
+  current = user({});
+  for (const path of ["/tones", "/tones?active_only=true"]) {
+    const r = await fetch(base + path);
+    assert.notEqual(r.status, 403, `${path} must not be capability-gated`);
+  }
 });
 
 // A user with NO capabilities is refused everywhere — the fail-closed default that matters

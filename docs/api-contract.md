@@ -1030,15 +1030,18 @@ changes `type` still must satisfy the new type's requirements. Errors:
 ---
 
 ### 2g. Manage tones (admin CRUD) — DELIVERED
-**`GET /tones` lists ACTIVE tones only (changed 2026-11-14, slice 2.)** This list is the tone
-PICKER for content generation, and an inactive tone must not be offerable —
-`loadSegmentPromptRowById` requires `is_active = true` (`generateSegmentContent.ts:50-55`), so
-choosing one fails at generation time. It was also the surface that made the old open INSERT
-policy on `prompts` dangerous: an injected row appeared here under an attacker-chosen name
-(`docs/FINDINGS-roles.md` §6; migration 125 closed that). **`?include_inactive=true` returns every
-row** — the CMS Tone Management screen needs it, because it renders inactive tones dimmed with a
-re-activate toggle. ⚠ **That screen must add the param (slice 4) or inactive tones disappear from
-it.** The response echoes `include_inactive` so a caller can tell which list it got.
+**`GET /tones` returns EVERY segment tone (active + inactive) — the default is unchanged — and
+`?active_only=true` narrows it (added 2026-11-14, slice 2).** The narrowing exists because this
+list is also the tone PICKER for content generation, where an inactive tone must not be
+offerable: `loadSegmentPromptRowById` requires `is_active = true`
+(`generateSegmentContent.ts:50-55`), so choosing one can only fail at generation time. It was
+likewise the surface that made the old open INSERT policy on `prompts` dangerous — an injected row
+appeared here under an attacker-chosen name (`docs/FINDINGS-roles.md` §6; migration 125 closed
+that). **The default stays "all" deliberately** (Mark, 2026-11-14): the CMS Tone Management screen
+renders inactive tones dimmed with a re-activate toggle and is the only place to re-activate one,
+so narrowing the default would have hidden them there until the CMS caught up. **The picker passes
+`active_only=true`; the management screen keeps calling it bare.** Only the exact string `"true"`
+narrows; the response echoes `active_only` so a caller can tell which list it got.
 
 JWT-protected CRUD over **segment tones**. A tone = one segment `prompts` row +
 its 1:1 voice block (`prompt_blocks`, `block_type='tone'`). Everything selects a
@@ -1046,8 +1049,8 @@ tone by its stable **`id`** (= `prompts.id`); `tone` is just the editable displa
 name. The "technical" layers (`system_message`, `scope`, `output_schema`,
 structure/length blocks) are **not** editable here — only the voice + name/params.
 ```
-GET    /tones            → 200 { tones: Tone[], include_inactive }   // ACTIVE tones only
-GET    /tones?include_inactive=true  → 200 { tones: Tone[], include_inactive: true }  // + inactive
+GET    /tones            → 200 { tones: Tone[], active_only: false }  // ALL segment tones (default)
+GET    /tones?active_only=true  → 200 { tones: Tone[], active_only: true }   // active ones only
 GET    /tones/:id        → 200 { tone: Tone }
 POST   /tones            → 201 { tone: Tone }       // create from template
 PATCH  /tones/:id        → 200 { tone: Tone }       // update voice / name / model / params / is_active

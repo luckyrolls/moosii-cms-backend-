@@ -58,25 +58,31 @@ async function assembleTones(rows: any[]): Promise<any[]> {
 const TONE_SELECT =
   "id, tone, is_active, model, temperature, max_tokens, system_message, scope, tone_block_id, structure_block_id, length_block_id, size_profile_id";
 
-// GET /tones — ACTIVE segment tones by default; `?include_inactive=true` returns every row.
+// GET /tones — every segment tone (active + inactive), UNCHANGED default.
+// `?active_only=true` narrows it to the active ones.
 //
-// WHY the default changed (slice 2): this list is the tone PICKER for content generation, and
-// an inactive tone must not be offerable — `loadSegmentPromptRowById` requires
-// `is_active = true` (generateSegmentContent.ts:50-55), so picking one fails at generation
-// time. It was also the surface that made the old open INSERT policy on `prompts` dangerous:
-// an injected row appeared here under an attacker-chosen name (`docs/FINDINGS-roles.md` §6;
-// migration 125 closed the insert).
+// WHY the narrowing exists (slice 2): this list is also the tone PICKER for content
+// generation, and an inactive tone must not be offerable — `loadSegmentPromptRowById`
+// requires `is_active = true` (generateSegmentContent.ts:50-55), so choosing one can only
+// fail at generation time. It was likewise the surface that made the old open INSERT policy
+// on `prompts` dangerous: an injected row appeared here under an attacker-chosen name
+// (`docs/FINDINGS-roles.md` §6; migration 125 closed the insert).
 //
-// `include_inactive=true` exists because the CMS Tone Management screen legitimately needs
-// them — it renders inactive tones dimmed with a re-activate toggle. That screen must pass
-// the param (slice 4) or inactive tones disappear from it.
+// WHY the DEFAULT stays "all" (Mark, 2026-11-14): the CMS Tone Management screen renders
+// inactive tones dimmed with a re-activate toggle, and it is the only place to re-activate
+// one. Narrowing the default would have hidden them there until the CMS was updated. The
+// PICKER passes `active_only=true`; the management screen keeps calling it bare.
+export function wantsActiveOnly(query: Record<string, unknown>): boolean {
+  return query.active_only === "true";
+}
+
 router.get("/", async (req: Request, res: Response): Promise<void> => {
-  const includeInactive = req.query.include_inactive === "true";
+  const activeOnly = wantsActiveOnly(req.query as Record<string, unknown>);
   let q = db.from("prompts").select(TONE_SELECT).eq("prompt_type", "segment");
-  if (!includeInactive) q = q.eq("is_active", true);
+  if (activeOnly) q = q.eq("is_active", true);
   const { data, error } = await q.order("tone", { ascending: true });
   if (error) { apiError(res, 500, "db_error", error.message); return; }
-  res.json({ tones: await assembleTones(data ?? []), include_inactive: includeInactive });
+  res.json({ tones: await assembleTones(data ?? []), active_only: activeOnly });
 });
 
 // GET /tones/:id — one tone
