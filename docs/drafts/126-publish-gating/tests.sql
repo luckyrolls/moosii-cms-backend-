@@ -177,6 +177,26 @@ BEGIN
         RAISE NOTICE 'E8 ordinary INSERT (default false)  -> OK (creates unaffected)';
   EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS h = PG_EXCEPTION_HINT, st = RETURNED_SQLSTATE;
         RAISE NOTICE 'E8 ordinary INSERT (default false)  -> UNEXPECTED REFUSAL % / %', st, h; END;
+
+  -- UNPUBLISH via the direct path (true->false with a real JWT). L7 is published and carries a
+  -- pending quiz, so these also show that unpublish never re-checks content at the trigger either.
+  BEGIN EXECUTE 'SET LOCAL ROLE authenticated';
+        PERFORM set_config('request.jwt.claims','{"sub":"aaaaaaaa-0000-4000-8000-000000000002","role":"authenticated"}',true);
+        UPDATE public.lessons SET is_published = false WHERE id='cccccccc-0000-4000-8000-000000000007';
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+        RAISE NOTICE 'E9 direct UNpublish L7, plain admin -> NOT REFUSED (BUG)';
+  EXCEPTION WHEN others THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+        GET STACKED DIAGNOSTICS h = PG_EXCEPTION_HINT, st = RETURNED_SQLSTATE;
+        RAISE NOTICE 'E9 direct UNpublish L7, plain admin -> refused % / %', st, h; END;
+
+  BEGIN EXECUTE 'SET LOCAL ROLE authenticated';
+        PERFORM set_config('request.jwt.claims','{"sub":"aaaaaaaa-0000-4000-8000-000000000003","role":"authenticated"}',true);
+        UPDATE public.lessons SET is_published = false WHERE id='cccccccc-0000-4000-8000-000000000007';
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+        RAISE NOTICE 'E10 direct UNpublish L7, clinical   -> OK (allowed, content not re-checked)';
+  EXCEPTION WHEN others THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+        GET STACKED DIAGNOSTICS h = PG_EXCEPTION_HINT, st = RETURNED_SQLSTATE;
+        RAISE NOTICE 'E10 direct UNpublish L7, clinical   -> UNEXPECTED REFUSAL % / %', st, h; END;
 END $$;
 ROLLBACK;
 
