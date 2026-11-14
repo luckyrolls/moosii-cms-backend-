@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 125 · Moosii 125** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120 and 125; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 126 · Moosii 125** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120 and 125; **126 is applied on financial only so far** (Moosii pending its go); **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -915,6 +915,58 @@ Main track:
   index definition **byte-identical to financial's**, 18 prompt rows / 17 active / **9 active segment rows** — the
   tone library, exempt by the predicate and the reason `prompt_type <> 'segment'` is in it. The two projects match
   again (invariant 4).
+
+- **126 — approvals gating slice 1: `can_publish`, a structural publish precondition, super_admin-only archival** — **APPLIED financial (2026-11-14) · DRAFT Moosii (pending apply).**
+  BOTH PROJECTS. Seven changes in one transaction: (1) `"user".can_publish` boolean NOT NULL DEFAULT false,
+  set true for `role='super_admin'`, plus `CHECK (role IN ('user','admin','super_admin'))`;
+  (2) `DROP TYPE public.role` — orphaned (no column, no code) and MISLABELLED (`'super'`, not `'super_admin'`,
+  so anything adopting it would have broken the admin gate); (3) `DROP TABLE users_internal` — empty on both
+  projects and read by nothing (`jwtAuth.ts:7`); the local checkouts name it ONLY in their generated
+  `database.types.ts`, and `moosii-cms/TODO.md:47` already asked for the drop; (4) `quiz_questions.answer_status`
+  DEFAULT `'approved'` → `'pending'`, no backfill; (5) `set_lesson_published` re-based on 068's body behind an
+  EXACT md5 guard; (6) a `lessons` BEFORE INSERT OR UPDATE OF `is_published` trigger; (7) `tracks` + `lessons`
+  BEFORE UPDATE OF `archived_at` triggers that gate on super_admin and audit into `content_approvals`.
+  **ONE definition of "publishable"** — `lesson_publish_blocker(uuid)` returns NULL or the HINT — shared by the
+  RPC and the trigger, because 118/115 and the 2026-11-11 rebuild-trigger defect were both two copies of one
+  rule drifting apart.
+  **Publish** now needs `can_publish` AND ≥1 segment AND every segment `seg_status='complete'` AND no
+  `quiz_questions` on those segments with `answer_status <> 'approved'` AND neither the lesson nor its track
+  archived. **Unpublish** needs `can_publish` OR `can_approve_clinical`, and re-checks no content.
+  HINTs, all ERRCODE `check_violation` (23514), the `content_edit_policy_guard` pattern: `publish_not_permitted`,
+  `unpublish_not_permitted`, `publish_not_approved`, `publish_quiz_pending`, `publish_archived`,
+  `archive_not_permitted`.
+  **Capability is checked by exactly ONE of the two points, never both**: the backend calls the RPC under the
+  service role where `auth.uid()` is NULL and the actor is `p_actor_id`, so the RPC checks it and the trigger
+  skips it; a Supabase-direct UPDATE has a real `auth.uid()` and no `p_actor_id`, so the trigger checks it. The
+  CONTENT rules are checked by both, but the RPC checks them BEFORE its UPDATE, so the trigger is a no-op on
+  that path, not a second refusal.
+  `content_approvals`: `action` gains `archive`/`unarchive`, `entity_type` gains `track`, and `actor_id` is
+  relaxed to nullable with `CHECK (actor_id IS NOT NULL OR action IN ('archive','unarchive'))` — invariant 7's
+  guarantee is preserved exactly where it already applied, and a no-JWT archive (psql, SQL editor) is admitted
+  explicitly with `actor_role='service'`.
+  NOTHING IS REWRITTEN but `"user".can_publish`: every check runs only on a `false→true` transition, so the
+  5 Moosii published lessons with pending quiz questions and the 4 published under archived tracks stay
+  published. VERIFY asserts the counts before and after.
+  **Local harness `docs/drafts/126-publish-gating/`** (PG 17 cluster from a read-only Moosii schema dump;
+  restored schema verified identical to live — `set_lesson_published` `d418d1eb…`, `user_active_tracks_for_user`
+  `fdcb7204…`, 355 policies). 32 cases green: every refusal HINT, both happy paths, publish/unpublish through
+  BOTH the RPC and the direct path, an unknown id still `{found:false}`, a NULL actor still 22004, a lesson
+  cannot be INSERTed already published, super_admin archive OK + audited, plain-admin and clinical-admin archive
+  refused, no-JWT archive allowed and audited with a NULL actor, and a re-apply refused by the md5 guard.
+  The suite caught a real defect in the first draft: `SELECT true INTO v_found` is NULL when no row matches, so
+  an unknown lesson was reported `publish_not_approved` instead of `not_found` — fixed with `IF NOT FOUND`.
+  Financial 2026-11-14: dry run with ROLLBACK green first; identity (host `aws-0-ca-central-1.pooler.supabase.com`,
+  conn role `postgres.gwxeaygksankbncptlle`, sysid 7678069749886157684, domain financial); pre-check matched
+  md5 `d418d1eb…`, 1 super_admin, 10 published+unarchived lessons of which 0 with a pending quiz; apply OK;
+  verify in a FRESH session — `super_admin` 1/1 with `can_publish`, `users_internal` and `public.role` gone, quiz
+  default `'pending'`, all three triggers present, `content_approvals` carrying the new `content_approvals_actor_required`
+  CHECK, 10 published lessons unchanged, and the new body md5 **`4476a4ba64abf655b01a812b71d3f269`** —
+  byte-identical to the harness. **Any future replacement of this function must guard on `4476a4ba…`.**
+  Moosii: **not applied** — awaiting its own go. Read-only pre-check numbers (2026-11-13/14): 2 super_admins and
+  2 plain admins, same md5 `d418d1eb…`, `users_internal` empty, `public.role` with 0 dependents, 11
+  published+unarchived lessons of which **5 carry a pending quiz question** (they stay published).
+  FOLLOW-UPS, not in this slice: the routes still surface a refusal as **500 `db_error`** until slice 2 maps the
+  HINT to 403/409; `database.types.ts` is regenerated after the MOOSII apply (it is generated from that project).
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`

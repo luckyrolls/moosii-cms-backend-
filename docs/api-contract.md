@@ -1894,6 +1894,20 @@ lesson **publish/unpublish** backend routes **`POST /lessons/:id/publish|unpubli
 the coalesced rebuild. **The CMS calls these routes** (confirmed by the CMS seat, 2026-11-10); it no
 longer flips `lessons.is_published` Supabase-direct.
 
+> ⚠ **PUBLISH IS GATED IN THE DATABASE from migration 126** (applied financial 2026-11-14; Moosii
+> pending). `set_lesson_published` refuses a publish unless the actor has the new `can_publish`
+> capability AND the lesson has ≥1 segment, every segment `seg_status='complete'`, no
+> `quiz_questions` on those segments with `answer_status <> 'approved'`, and neither the lesson nor
+> its track is archived. Unpublish requires `can_publish` OR `can_approve_clinical`, and re-checks no
+> content. A `BEFORE INSERT OR UPDATE OF is_published` trigger on `lessons` enforces the same content
+> rules for the Supabase-direct path, and the capability rules whenever `auth.uid()` is present — so
+> the two points never both check capability, and never both refuse. Refusals are ERRCODE
+> `check_violation` with a distinct HINT: `publish_not_permitted`, `unpublish_not_permitted`,
+> `publish_not_approved`, `publish_quiz_pending`, `publish_archived`. **Until slice 2 the route does
+> NOT map these** — `src/routes/lessons.ts` takes its generic `if (error)` branch and returns
+> **500 `db_error`** carrying the message. Slice 2 maps HINT → 403 / 409. Existing published lessons
+> are never re-validated: every check runs only on a `false→true` transition.
+
 **`POST /lessons/:id/publish|unpublish` report their rebuild** (added 2026-11-10):
 `200 { ok: true, lesson_id, is_published, rebuild: "queued" | "coalesced" | "failed", rebuild_job_id }`
 — `rebuild_job_id` is the new job when `queued`, the job it folded into when `coalesced`, and `null`
