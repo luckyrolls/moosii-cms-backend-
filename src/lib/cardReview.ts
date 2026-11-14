@@ -59,3 +59,79 @@ export async function resetCardsAndReport(
   const r = await resetCardsToDraft(segId, cardIds);
   return { seg_status: r.seg_status, approval_reset: before?.seg_status === "complete" && r.seg_status !== "complete" };
 }
+
+// ---------------------------------------------------------------------------
+// APPROVAL-RESET REPORTING (slice 2)
+//
+// Several edit paths invalidate review in the DATABASE, not in the route: the 066 triggers
+// reset a card (text edit) or a WHOLE segment (insert/delete/reorder — card_positions roles
+// are position-derived, invariant 2), and sub_segments_image_swap_review demotes a
+// clinically_approved card to editorial_reviewed when its picture changes. A route that only
+// reported its own writes would under-report. So every such route snapshots the segment's
+// review state BEFORE its work and diffs afterwards, which catches trigger effects too.
+export type ReviewSnapshot = {
+  seg_status: string | null;
+  draft: number;
+  editorial_reviewed: number;
+  clinically_approved: number;
+  quiz_pending: number;
+};
+
+export type ResetSummary = {
+  approval_reset: boolean;
+  scope: "none" | "card" | "segment";
+  seg_status: string | null;
+  cards_reset_to_draft: number;
+  cards_demoted_to_editorial: number;
+  quiz_questions_reset: number;
+};
+
+export async function captureReview(segId: string): Promise<ReviewSnapshot> {
+  const { data: seg } = await db.from("segments").select("seg_status").eq("id", segId).maybeSingle();
+  const { data: cards } = await db.from("sub_segments").select("review_state").eq("seg_id", segId);
+  const { data: quiz } = await db.from("quiz_questions").select("answer_status").eq("segment_id", segId);
+  const rows = (cards ?? []) as Array<{ review_state: string | null }>;
+  const count = (s: string) => rows.filter((r) => r.review_state === s).length;
+  return {
+    seg_status: (seg?.seg_status as string | null) ?? null,
+    draft: count("draft"),
+    editorial_reviewed: count("editorial_reviewed"),
+    clinically_approved: count("clinically_approved"),
+    quiz_pending: ((quiz ?? []) as Array<{ answer_status: string | null }>)
+      .filter((q) => q.answer_status !== "approved").length,
+  };
+}
+
+// PURE. `scope` is declared by the caller because only the caller knows what it did: a text
+// edit touches one card, a structural change (add/delete/reorder) re-gates the whole segment.
+// It is reported as "none" when nothing actually moved, whatever the caller intended.
+export function diffReview(
+  before: ReviewSnapshot,
+  after: ReviewSnapshot,
+  scope: "card" | "segment"
+): ResetSummary {
+  const cards_reset_to_draft = Math.max(0, after.draft - before.draft);
+  const cards_demoted_to_editorial = Math.max(0, after.editorial_reviewed - before.editorial_reviewed);
+  const quiz_questions_reset = Math.max(0, after.quiz_pending - before.quiz_pending);
+  const gate_lost = before.seg_status === "complete" && after.seg_status !== "complete";
+  const moved = cards_reset_to_draft > 0 || cards_demoted_to_editorial > 0 || quiz_questions_reset > 0 || gate_lost;
+  return {
+    approval_reset: moved,
+    scope: moved ? scope : "none",
+    seg_status: after.seg_status,
+    cards_reset_to_draft,
+    cards_demoted_to_editorial,
+    quiz_questions_reset,
+  };
+}
+
+// Response shape, shared by every edit route. `approval_reset` stays the BOOLEAN that
+// PATCH /sub-segments/:id has always returned, so a CMS doing `if (approval_reset)` keeps
+// working; the breakdown is ADDITIVE under `approval_reset_detail` (an object is always
+// truthy, so widening the existing field would have silently reported a reset on every call).
+export function toApprovalFields(
+  summary: ResetSummary
+): { approval_reset: boolean; approval_reset_detail: Omit<ResetSummary, "approval_reset"> } {
+  const { approval_reset, ...detail } = summary;
+  return { approval_reset, approval_reset_detail: detail };
+}

@@ -58,15 +58,25 @@ async function assembleTones(rows: any[]): Promise<any[]> {
 const TONE_SELECT =
   "id, tone, is_active, model, temperature, max_tokens, system_message, scope, tone_block_id, structure_block_id, length_block_id, size_profile_id";
 
-// GET /tones — all segment tones (active + inactive) with their voice block
-router.get("/", async (_req: Request, res: Response): Promise<void> => {
-  const { data, error } = await db
-    .from("prompts")
-    .select(TONE_SELECT)
-    .eq("prompt_type", "segment")
-    .order("tone", { ascending: true });
+// GET /tones — ACTIVE segment tones by default; `?include_inactive=true` returns every row.
+//
+// WHY the default changed (slice 2): this list is the tone PICKER for content generation, and
+// an inactive tone must not be offerable — `loadSegmentPromptRowById` requires
+// `is_active = true` (generateSegmentContent.ts:50-55), so picking one fails at generation
+// time. It was also the surface that made the old open INSERT policy on `prompts` dangerous:
+// an injected row appeared here under an attacker-chosen name (`docs/FINDINGS-roles.md` §6;
+// migration 125 closed the insert).
+//
+// `include_inactive=true` exists because the CMS Tone Management screen legitimately needs
+// them — it renders inactive tones dimmed with a re-activate toggle. That screen must pass
+// the param (slice 4) or inactive tones disappear from it.
+router.get("/", async (req: Request, res: Response): Promise<void> => {
+  const includeInactive = req.query.include_inactive === "true";
+  let q = db.from("prompts").select(TONE_SELECT).eq("prompt_type", "segment");
+  if (!includeInactive) q = q.eq("is_active", true);
+  const { data, error } = await q.order("tone", { ascending: true });
   if (error) { apiError(res, 500, "db_error", error.message); return; }
-  res.json({ tones: await assembleTones(data ?? []) });
+  res.json({ tones: await assembleTones(data ?? []), include_inactive: includeInactive });
 });
 
 // GET /tones/:id — one tone

@@ -7,11 +7,11 @@ import { summarizeLessonCreate, type LessonCreateRow } from "../lib/lessonCreate
 import { logApproval } from "../lib/approvalLog";
 import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { planLessonDelete } from "../lib/contentTeardown";
-import { hasCapability } from "../middleware/jwtAuth";
+import { hasCapability, hasAnyCapability } from "../middleware/jwtAuth";
 import { setCardsReviewState } from "../lib/cardReview";
 import { listLessonSourceDocuments } from "../lib/sourceDocuments";
 import {
-  isMissingFunctionError,
+  mapPublishError,
   interpretPublishResult,
   resolvePublishActor,
 } from "../lib/lessonPublish";
@@ -175,6 +175,10 @@ router.post("/:id/editorial-approve", async (req: Request, res: Response): Promi
 // images all flip back (seg_status→'pending', answer_status→'pending', approved images→
 // 'candidate', sub_segments.image cleared). Nothing is regenerated; fully reversible.
 router.post("/:id/unapprove", async (req: Request, res: Response): Promise<void> => {
+  // Undoing a sign-off needs EITHER capability: whoever can grant one half can take it back.
+  if (!hasAnyCapability(req.user, ["editorial", "clinical"])) {
+    apiError(res, 403, "forbidden", "Requires editorial or clinical capability"); return;
+  }
   const lessonId = req.params.id;
   const { data: segs, error: segErr } = await supabase
     .from("segments").select("id").eq("lesson_id", lessonId);
@@ -205,6 +209,19 @@ async function setLessonPublished(req: Request, res: Response, published: boolea
   const id = req.params.id;
   const action = published ? "publish" : "unpublish";
 
+  // CAPABILITY (126). The DATABASE is the authority — set_lesson_published checks can_publish
+  // against p_actor_id and refuses there too. This check exists only so the common case is a
+  // clean 403 with a plain message instead of a round trip that comes back as a mapped
+  // database refusal. Publish needs `publish`; unpublish needs `publish` OR `clinical`, so a
+  // clinical reviewer can always pull something back without being able to ship it.
+  if (published) {
+    if (!hasCapability(req.user, "publish")) {
+      apiError(res, 403, "publish_not_permitted", "You do not have permission to publish lessons."); return;
+    }
+  } else if (!hasAnyCapability(req.user, ["publish", "clinical"])) {
+    apiError(res, 403, "unpublish_not_permitted", "You do not have permission to unpublish lessons."); return;
+  }
+
   // Actor from the verified JWT only (invariant 9). The RPC refuses a null actor too; this
   // just turns it into a clean 403 rather than a database exception.
   const actor = resolvePublishActor(req.user);
@@ -217,27 +234,20 @@ async function setLessonPublished(req: Request, res: Response, published: boolea
     p_actor_role: actor.role,
   });
 
-  // Pre-068 fallback. The code deploys before the migration is applied by hand, and in that
-  // window the RPC does not exist — failing here would take publishing down entirely. ONLY
-  // "no such function" falls back; every other error is a real error.
-  if (error && isMissingFunctionError(error)) {
-    console.warn(`[lesson-${action}] set_lesson_published is absent (migration 068 not applied yet); falling back to the NON-ATOMIC two-step path for ${id}`);
-    const { data: rows, error: upErr } = await supabase
-      .from("lessons")
-      .update({ is_published: published, published_by: published ? actor.id : null, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .select("id");
-    if (upErr) { apiError(res, 500, "db_error", upErr.message); return; }
-    if (!rows || rows.length === 0) { apiError(res, 404, "not_found", "lesson not found"); return; }
-    await logApproval("lesson", id, action, req);
-    const fallbackRebuild = await enqueueRebuildAllIfIdle({ reason: `lesson_${action}`, correlationId: id });
-    res.json({ ok: true, lesson_id: id, is_published: published, ...describeRebuild(fallbackRebuild) });
-    return;
-  }
-
   if (error) {
-    // Includes the atomic failure case: if the audit insert fails, the flip rolls back with
-    // it and we report the failure rather than a silent partial success.
+    // 126's refusals carry a stable HINT: capability → 403, state → 409, and the HINT is the
+    // error code so the CMS switches on a string rather than prose.
+    const refusal = mapPublishError(error);
+    if (refusal) {
+      console.warn(`[lesson-${action}] refused for ${id}: ${refusal.code}`);
+      apiError(res, refusal.status, refusal.code, refusal.message);
+      return;
+    }
+    // Anything else is a real error, including the atomic failure case: if the audit insert
+    // fails, the flip rolls back with it and we report the failure rather than a silent
+    // partial success. (The pre-068 fallback that used to live here is gone — 068 is applied
+    // on both projects, so the RPC is the ONLY publish path and a missing function is a
+    // genuine fault, not a version skew to tolerate.)
     console.error(`[lesson-${action}] set_lesson_published failed for ${id}: ${error.message}`);
     apiError(res, 500, "db_error", error.message);
     return;

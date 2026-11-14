@@ -4,6 +4,7 @@ import { apiError } from "../lib/errors";
 import { enqueueRebuildAllIfIdle } from "../jobs/runner";
 import { logApproval } from "../lib/approvalLog";
 import { planQuestionnaireDelete } from "../lib/contentTeardown";
+import { hasCapability, hasAnyCapability } from "../middleware/jwtAuth";
 
 // questionnaire tables aren't in database.types.ts. Untyped bridge.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -14,6 +15,13 @@ const router = Router();
 // POST /questionnaires/:id/publish — the human approve step. Flips
 // is_published=true and marks the questions approved. Requires >=1 question.
 router.post("/:id/publish", async (req: Request, res: Response): Promise<void> => {
+  // CAPABILITY (slice 2): same gate as a lesson publish. NOTE the asymmetry that remains
+  // until slice 3 — a questionnaire has NO review ladder, so there is no approval
+  // precondition to enforce here and no database-side guard: publishing one still approves
+  // every question wholesale. The capability is the only gate today.
+  if (!hasCapability(req.user, "publish")) {
+    apiError(res, 403, "publish_not_permitted", "You do not have permission to publish questionnaires."); return;
+  }
   const id = req.params.id;
 
   const { data: q, error: fErr } = await db
@@ -48,6 +56,9 @@ router.post("/:id/publish", async (req: Request, res: Response): Promise<void> =
 // POST /questionnaires/:id/unpublish — pull a published questionnaire back to draft
 // (e.g. to edit it). Flips is_published=false; questions revert to pending.
 router.post("/:id/unpublish", async (req: Request, res: Response): Promise<void> => {
+  if (!hasAnyCapability(req.user, ["publish", "clinical"])) {
+    apiError(res, 403, "unpublish_not_permitted", "You do not have permission to unpublish questionnaires."); return;
+  }
   const id = req.params.id;
 
   const { data: q, error: fErr } = await db

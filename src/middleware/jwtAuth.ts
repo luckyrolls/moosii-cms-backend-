@@ -10,20 +10,31 @@ export function isAdminRole(role: string | null | undefined): boolean {
   return !!role && ADMIN_ROLES.includes(role);
 }
 
-// Capabilities (migration 056) are SEPARATE from role: role controls what you SEE, capability
-// controls what you can SIGN. They ride on req.user so routes can gate without an extra query.
+// Capabilities (migrations 056, 126) are SEPARATE from role: role controls what you SEE,
+// capability controls what you can SIGN or SHIP. They ride on req.user so routes can gate
+// without an extra query.
 export type CmsUser = Pick<Tables<"user">, "id" | "email" | "role"> & {
   can_review_editorial: boolean;
   can_approve_clinical: boolean;
+  can_publish: boolean;
 };
 
-export type Capability = "editorial" | "clinical";
+export type Capability = "editorial" | "clinical" | "publish";
 
 // Capability check for a route. Fail-closed: no user / missing capability → false. The actor
 // is ALWAYS req.user (the verified token), never the body — so a client cannot self-grant.
+// `publish` (126) is checked HERE for a clean 403; set_lesson_published checks it again
+// against p_actor_id, which is the authority. The route check is a courtesy, not the gate.
 export function hasCapability(user: CmsUser | undefined, cap: Capability): boolean {
   if (!user) return false;
-  return cap === "editorial" ? user.can_review_editorial : user.can_approve_clinical;
+  if (cap === "editorial") return user.can_review_editorial;
+  if (cap === "clinical") return user.can_approve_clinical;
+  return user.can_publish;
+}
+
+// "either of these" gates (unapprove, unpublish, reject). Fail-closed like hasCapability.
+export function hasAnyCapability(user: CmsUser | undefined, caps: readonly Capability[]): boolean {
+  return caps.some((c) => hasCapability(user, c));
 }
 
 // Any authenticated Supabase user (app parent OR admin). Identity is the auth uid;
@@ -94,23 +105,25 @@ export async function verifyAdminJwt(token: string): Promise<AdminAuthResult> {
     return { ok: false, status: 403, code: "forbidden", message: "Requires admin role" };
   }
 
-  // Capabilities (migration 056). Best-effort + FAIL CLOSED: if the columns aren't live yet
-  // (pre-apply) or the lookup errors, both default false — nobody can sign, the safe
-  // direction. Collapse into the profile SELECT above once types are regenerated post-056.
+  // Capabilities (056, + can_publish in 126). Best-effort + FAIL CLOSED: if a column isn't
+  // live yet (pre-apply) or the lookup errors, every capability defaults false — nobody can
+  // sign or ship, the safe direction.
   let can_review_editorial = false;
   let can_approve_clinical = false;
+  let can_publish = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: caps, error: capErr } = await (supabase as any)
     .from("user")
-    .select("can_review_editorial, can_approve_clinical")
+    .select("can_review_editorial, can_approve_clinical, can_publish")
     .eq("id", authUser.id)
     .single();
   if (!capErr && caps) {
     can_review_editorial = !!caps.can_review_editorial;
     can_approve_clinical = !!caps.can_approve_clinical;
+    can_publish = !!caps.can_publish;
   }
 
-  return { ok: true, user: { ...profile, can_review_editorial, can_approve_clinical } };
+  return { ok: true, user: { ...profile, can_review_editorial, can_approve_clinical, can_publish } };
 }
 
 export async function jwtAuthMiddleware(

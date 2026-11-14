@@ -1,12 +1,22 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { logApproval } from "../lib/approvalLog";
+import { apiError } from "../lib/errors";
+import { hasCapability, hasAnyCapability } from "../middleware/jwtAuth";
+import { captureReview, diffReview, toApprovalFields } from "../lib/cardReview";
 
 const router = Router();
 const BUCKET = "lessons";
 
-// POST /images/:id/approve
+// POST /images/:id/approve — cap: EDITORIAL. A picture is an editorial choice; the clinical
+// consequence is handled by the database, which DEMOTES an already clinically_approved card to
+// editorial_reviewed when its picture changes (sub_segments_image_swap_review, migration 092/093).
+// That demotion happens in a TRIGGER, so this route reports it by snapshotting the segment's
+// review state before the approve and diffing after — see `approval_reset` in the response.
 router.post("/:id/approve", async (req: Request, res: Response): Promise<void> => {
+  if (!hasCapability(req.user, "editorial")) {
+    apiError(res, 403, "forbidden", "Requires editorial capability"); return;
+  }
   const { id } = req.params;
 
   // Load the row — need storage_path to derive the public URL before calling the RPC
@@ -28,6 +38,16 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
     return;
   }
 
+  // Snapshot the owning segment's review state BEFORE the approve, so the trigger's demotion
+  // is visible in the response. A lesson/segment-level image has no sub_segment, hence the null.
+  let segId: string | null = null;
+  if (image.sub_segment_id) {
+    const { data: card } = await supabase
+      .from("sub_segments").select("seg_id").eq("id", image.sub_segment_id).maybeSingle();
+    segId = (card?.seg_id as string | null) ?? null;
+  }
+  const before = segId ? await captureReview(segId) : null;
+
   const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(image.storage_path);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,11 +66,21 @@ router.post("/:id/approve", async (req: Request, res: Response): Promise<void> =
   }
 
   await logApproval("image", id, "approve", req);
-  res.json({ ok: true, ...(result as object) });
+  const after = segId ? await captureReview(segId) : null;
+  res.json({
+    ok: true,
+    ...(result as object),
+    ...(before && after ? toApprovalFields(diffReview(before, after, "card")) : {}),
+  });
 });
 
-// POST /images/:id/reject
+// POST /images/:id/reject — cap: EDITORIAL or CLINICAL. Either reviewer may discard a
+// candidate. It never touches sub_segments.image (the approved pointer is guarded below), so
+// no review state moves and there is no approval_reset to report.
 router.post("/:id/reject", async (req: Request, res: Response): Promise<void> => {
+  if (!hasAnyCapability(req.user, ["editorial", "clinical"])) {
+    apiError(res, 403, "forbidden", "Requires editorial or clinical capability"); return;
+  }
   const { id } = req.params;
 
   const { data: image, error: loadErr } = await supabase

@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { apiError } from "../lib/errors";
 import { logApproval } from "../lib/approvalLog";
+import { hasCapability, hasAnyCapability } from "../middleware/jwtAuth";
 
 const router = Router();
 
@@ -31,10 +32,23 @@ async function setQuizStatus(req: Request, res: Response, segmentId: string, sta
   res.json({ ok: true, segment_id: segmentId, status, questions_updated: count });
 }
 
-router.post("/:segment_id/approve", (req: Request, res: Response) =>
-  setQuizStatus(req, res, req.params.segment_id, "approved"));
+// CAPABILITY (slice 2). Approving a quiz is a CLINICAL act: answer_status='approved' is what
+// derives lessons.with_quiz (invariant 10), i.e. it is what makes the app show the questions.
+// The same flip happens inside approve_segment_bundle behind the clinical gate, so leaving
+// this route open was a way round that gate.
+router.post("/:segment_id/approve", (req: Request, res: Response) => {
+  if (!hasCapability(req.user, "clinical")) {
+    apiError(res, 403, "forbidden", "Requires clinical capability"); return;
+  }
+  return setQuizStatus(req, res, req.params.segment_id, "approved");
+});
 
-router.post("/:segment_id/unapprove", (req: Request, res: Response) =>
-  setQuizStatus(req, res, req.params.segment_id, "pending"));
+// Taking an approval back needs EITHER capability — the same rule as a segment reject.
+router.post("/:segment_id/unapprove", (req: Request, res: Response) => {
+  if (!hasAnyCapability(req.user, ["editorial", "clinical"])) {
+    apiError(res, 403, "forbidden", "Requires editorial or clinical capability"); return;
+  }
+  return setQuizStatus(req, res, req.params.segment_id, "pending");
+});
 
 export default router;

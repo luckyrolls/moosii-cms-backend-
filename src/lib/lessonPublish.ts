@@ -39,6 +39,32 @@ export function interpretPublishResult(data: unknown): PublishResult {
   return { found: true, isPublished: d.is_published };
 }
 
+// MIGRATION 126 refusals. set_lesson_published raises ERRCODE check_violation (23514) with a
+// distinct HINT per reason; PostgREST passes the hint through on the error object. Map each to
+// an HTTP status and use the HINT ITSELF as the error code, so the CMS switches on a stable
+// string rather than parsing prose (the same contract as content_edit_policy_guard's
+// `published_content_locked`). Anything without a known hint returns null and the caller
+// keeps its existing 500 — an unrecognised database error must not be dressed up as a 403.
+const PUBLISH_REFUSALS: Record<string, { status: number; message: string }> = {
+  // capability: the actor may not do this at all
+  publish_not_permitted:   { status: 403, message: "You do not have permission to publish lessons." },
+  unpublish_not_permitted: { status: 403, message: "You do not have permission to unpublish lessons." },
+  // state: the lesson is not in a publishable condition
+  publish_not_approved: { status: 409, message: "This lesson is not fully approved. Every segment must be clinically approved, and the lesson needs at least one segment." },
+  publish_quiz_pending: { status: 409, message: "This lesson has a quiz question that has not been approved yet. Approve or remove it first." },
+  publish_archived:     { status: 409, message: "This lesson, or its track, is archived. Unarchive it before publishing." },
+};
+
+export function mapPublishError(
+  error: { hint?: string | null; code?: string | null; message?: string | null } | null | undefined
+): { status: number; code: string; message: string } | null {
+  const hint = error?.hint ?? null;
+  if (!hint) return null;
+  const hit = PUBLISH_REFUSALS[hint];
+  if (!hit) return null;
+  return { status: hit.status, code: hint, message: hit.message };
+}
+
 // Actor for the audit row, from the verified JWT only (invariant 9). The RPC also refuses a
 // null actor, but checking here turns it into a clean 403 instead of a database exception.
 export type PublishActor = { id: string; role: string | null };

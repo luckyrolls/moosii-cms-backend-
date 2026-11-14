@@ -5,7 +5,7 @@ import { supabase } from "../supabase";
 import { createAndStartJob } from "../jobs/runner";
 import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { uploadImage } from "../storage/upload";
-import { resetCardsAndReport, recomputeSegStatus } from "../lib/cardReview";
+import { resetCardsAndReport, recomputeSegStatus, captureReview, diffReview, toApprovalFields } from "../lib/cardReview";
 import { apiError } from "../lib/errors";
 
 // content_images.source / uploaded_by postdate database.types.ts (migration applied, types
@@ -95,9 +95,15 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
     }
   }
   if (changed.length === 0) {
-    res.json({ ok: true, sub_segment_id: id, changed: [], approval_reset: false, noop: true });
+    res.json({
+      ok: true, sub_segment_id: id, changed: [], approval_reset: false, noop: true,
+      approval_reset_detail: { scope: "none", seg_status: null, cards_reset_to_draft: 0, cards_demoted_to_editorial: 0, quiz_questions_reset: 0 },
+    });
     return;
   }
+
+  // Snapshot before the write, so the 066 trigger's effect is in the response too.
+  const beforePatch = card.seg_id ? await captureReview(card.seg_id) : null;
 
   // 1. Stamp the edit. updated_at / updated_by are migration-055 columns not yet in the
   //    generated types → written via the untyped bridge (drop after a types regen).
@@ -120,7 +126,15 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
     ? await resetCardsAndReport(card.seg_id, [id])
     : { approval_reset: false };
 
-  res.json({ ok: true, sub_segment_id: id, changed, approval_reset });
+  // Same breakdown as every other edit route (slice 2); `approval_reset` keeps its original
+  // boolean meaning, so this is purely additive.
+  const afterPatch = card.seg_id ? await captureReview(card.seg_id) : null;
+  res.json({
+    ok: true, sub_segment_id: id, changed, approval_reset,
+    ...(beforePatch && afterPatch
+      ? { approval_reset_detail: toApprovalFields(diffReview(beforePatch, afterPatch, "card")).approval_reset_detail }
+      : {}),
+  });
 });
 
 // DELETE /sub-segments/:id — delete a card. NOT a direct CMS write: image cleanup has a
@@ -141,6 +155,12 @@ router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   if (cardErr) { apiError(res, 500, "db_error", cardErr.message); return; }
   if (!card) { apiError(res, 404, "not_found", `sub_segment ${id} not found`); return; }
   const segId = card.seg_id;
+
+  // 0. Snapshot the segment's review state. Deleting a card fires sub_segments_reset_review,
+  //    which resets the WHOLE segment to 'draft' (roles are position-derived — invariant 2),
+  //    and the renumbering below changes `sequence` on the survivors, which fires it again.
+  //    Both happen in TRIGGERS, so the only honest way to report them is before/after.
+  const beforeReview = segId ? await captureReview(segId) : null;
 
   // 1. Purge images first (ordered storage/image_assets/content_images cleanup; best-effort
   //    on storage — never throws on a file-removal failure).
@@ -172,11 +192,14 @@ router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
     await recomputeSegStatus(segId!);
   } catch (e) { apiError(res, 500, "regate_failed", e instanceof Error ? e.message : String(e)); return; }
 
+  const afterReview = segId ? await captureReview(segId) : null;
   res.json({
     ok: true,
     seg_id: segId,
     deleted_id: id,
     cards: cards.map((c, i) => ({ id: c.id, sequence: i + 1 })),
+    // scope is 'segment': a delete re-gates every remaining card, not just the one removed.
+    ...(beforeReview && afterReview ? toApprovalFields(diffReview(beforeReview, afterReview, "segment")) : {}),
   });
 });
 

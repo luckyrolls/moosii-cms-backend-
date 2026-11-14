@@ -123,11 +123,36 @@ changed — same posture as content regen. Returns the renumbered survivor list.
 PATCH /sub-segments/:id
 Authorization: Bearer <jwt>            // admin
 Body: { title?: string, content?: string }        // the ONLY editable fields
-→ 200 { ok, sub_segment_id, changed: string[], approval_reset }        // fields that changed
-→ 200 { ok, sub_segment_id, changed: [], approval_reset: false, noop: true }   // nothing changed
+→ 200 { ok, sub_segment_id, changed: string[], approval_reset, approval_reset_detail }
+→ 200 { ok, sub_segment_id, changed: [], approval_reset: false, noop: true, approval_reset_detail }
 → 400 no_fields | invalid_field     // no editable field given / non-string value
 → 404 not_found
 ```
+**`approval_reset_detail` (added 2026-11-14, slice 2)** — every content-edit route now returns the
+same breakdown of what the edit invalidated, because most of the invalidation happens in TRIGGERS
+rather than in the route, and a route reporting only its own writes under-reports:
+```
+approval_reset: boolean                 // UNCHANGED meaning; still the simple "was approval lost"
+approval_reset_detail: {
+  scope: 'none' | 'card' | 'segment',   // 'segment' = the whole segment was re-gated
+  seg_status: 'complete' | 'pending' | null,
+  cards_reset_to_draft: number,         // 066 reset (text edit, add/delete/reorder)
+  cards_demoted_to_editorial: number,   // image swap (092/093): clinically_approved → editorial_reviewed
+  quiz_questions_reset: number          // a question knocked back to 'pending'
+}
+```
+It is measured by snapshotting the segment's review state BEFORE the write and diffing after, so
+trigger effects are included. `approval_reset` stays a **boolean** — widening it to the object
+would have made `if (approval_reset)` true on every call. Routes returning it: `PATCH
+/sub-segments/:id`, `DELETE /sub-segments/:id` (scope `segment` — a delete re-gates every
+remaining card, invariant 2), `POST /content-images/:id/approve` (scope `card`).
+**Paths that do NOT return it, and why:** `POST /sub-segments/:id/upload-image` and
+`POST /content-images/:id/reject` change no review state (an upload lands a *candidate*; a reject
+never touches `sub_segments.image`); the quiz routes move `answer_status` deliberately rather than
+resetting anything; and **`generate_segment_content` / `regen_segment_content` are JOBS, not
+routes** — they delete and re-insert every card, so the whole segment resets, and they report it
+as `jobs.result.approval_reset` (asserted `true` by construction, not measured).
+
 The **approval-integrity path** for human card edits. It replaces the CMS's old
 Supabase-direct `sub_segments` text write, which stamped/logged/re-gated **nothing** — so an
 approved segment stayed `seg_status='complete'` after its content changed, with no timestamp
@@ -1005,13 +1030,24 @@ changes `type` still must satisfy the new type's requirements. Errors:
 ---
 
 ### 2g. Manage tones (admin CRUD) — DELIVERED
+**`GET /tones` lists ACTIVE tones only (changed 2026-11-14, slice 2.)** This list is the tone
+PICKER for content generation, and an inactive tone must not be offerable —
+`loadSegmentPromptRowById` requires `is_active = true` (`generateSegmentContent.ts:50-55`), so
+choosing one fails at generation time. It was also the surface that made the old open INSERT
+policy on `prompts` dangerous: an injected row appeared here under an attacker-chosen name
+(`docs/FINDINGS-roles.md` §6; migration 125 closed that). **`?include_inactive=true` returns every
+row** — the CMS Tone Management screen needs it, because it renders inactive tones dimmed with a
+re-activate toggle. ⚠ **That screen must add the param (slice 4) or inactive tones disappear from
+it.** The response echoes `include_inactive` so a caller can tell which list it got.
+
 JWT-protected CRUD over **segment tones**. A tone = one segment `prompts` row +
 its 1:1 voice block (`prompt_blocks`, `block_type='tone'`). Everything selects a
 tone by its stable **`id`** (= `prompts.id`); `tone` is just the editable display
 name. The "technical" layers (`system_message`, `scope`, `output_schema`,
 structure/length blocks) are **not** editable here — only the voice + name/params.
 ```
-GET    /tones            → 200 { tones: Tone[] }   // all segment tones (active + inactive)
+GET    /tones            → 200 { tones: Tone[], include_inactive }   // ACTIVE tones only
+GET    /tones?include_inactive=true  → 200 { tones: Tone[], include_inactive: true }  // + inactive
 GET    /tones/:id        → 200 { tone: Tone }
 POST   /tones            → 201 { tone: Tone }       // create from template
 PATCH  /tones/:id        → 200 { tone: Tone }       // update voice / name / model / params / is_active
@@ -1903,10 +1939,26 @@ longer flips `lessons.is_published` Supabase-direct.
 > rules for the Supabase-direct path, and the capability rules whenever `auth.uid()` is present — so
 > the two points never both check capability, and never both refuse. Refusals are ERRCODE
 > `check_violation` with a distinct HINT: `publish_not_permitted`, `unpublish_not_permitted`,
-> `publish_not_approved`, `publish_quiz_pending`, `publish_archived`. **Until slice 2 the route does
-> NOT map these** — `src/routes/lessons.ts` takes its generic `if (error)` branch and returns
-> **500 `db_error`** carrying the message. Slice 2 maps HINT → 403 / 409. Existing published lessons
+> `publish_not_approved`, `publish_quiz_pending`, `publish_archived`. Existing published lessons
 > are never re-validated: every check runs only on a `false→true` transition.
+>
+> **The route maps those HINTs (slice 2).** `POST /lessons/:id/publish|unpublish` return the HINT
+> as the error CODE, so the CMS switches on a stable string rather than parsing prose — the same
+> contract as `published_content_locked`:
+>
+> | HINT / error code | status | meaning |
+> |---|---|---|
+> | `publish_not_permitted` | **403** | the actor has no `can_publish` |
+> | `unpublish_not_permitted` | **403** | the actor has neither `can_publish` nor `can_approve_clinical` |
+> | `publish_not_approved` | **409** | no segment, or a segment is not `complete` |
+> | `publish_quiz_pending` | **409** | a quiz question on the lesson is not approved |
+> | `publish_archived` | **409** | the lesson or its track is archived |
+>
+> The capability is ALSO checked in the route before the RPC, so the common refusal is a 403 with
+> no round trip; the database remains the authority. Any database error WITHOUT a known hint still
+> returns **500 `db_error`** — an unrecognised fault is never dressed up as a 403.
+> The **pre-068 fallback is gone** (slice 2): 068 is applied on both projects, so
+> `set_lesson_published` is the ONLY publish path and a missing function is a genuine fault.
 
 **`POST /lessons/:id/publish|unpublish` report their rebuild** (added 2026-11-10):
 `200 { ok: true, lesson_id, is_published, rebuild: "queued" | "coalesced" | "failed", rebuild_job_id }`
@@ -2214,11 +2266,41 @@ backend must preserve and the frontend leans on:
   > to the `GRANT UPDATE (...)` list in migration 057 (or a follow-up), or backend writes to it
   > will fail with "permission denied".** Never `GRANT ALL`/`GRANT UPDATE` table-wide on
   > `segments` — it silently undoes the guard.
-- **Capabilities (migration 056) — separate from role.** `user.can_review_editorial` /
-  `user.can_approve_clinical` (booleans). Role controls what you SEE; capability controls what
-  you can SIGN. They ride on `req.user` (verifyAdminJwt select). Enforced in the route, actor
-  always from the JWT — so someone with `super_admin` role but no clinical capability is
-  structurally 403 on a clinical approval and can never appear on a clinical sign-off.
+- **Capabilities (migrations 056 + 126) — separate from role.** `user.can_review_editorial` /
+  `user.can_approve_clinical` / `user.can_publish` (booleans). Role controls what you SEE;
+  capability controls what you can SIGN or SHIP. They ride on `req.user` (verifyAdminJwt select),
+  read **fail-closed** — a missing column or a failed lookup leaves all three false. Enforced in
+  the route, actor always from the JWT — so someone with `super_admin` role but no clinical
+  capability is structurally 403 on a clinical approval and can never appear on a clinical
+  sign-off. `can_publish` is granted to every `super_admin` by migration 126 and to nobody else.
+
+  **The full matrix (slice 2, 2026-11-14).** Every route below is also behind the admin gate
+  (`role ∈ {admin, super_admin}`); the capability is the SECOND gate. "either" = editorial OR
+  clinical.
+
+  | route | capability |
+  |---|---|
+  | `POST /lessons/:id/approve` (bulk clinical) | clinical |
+  | `POST /lessons/:id/editorial-approve` | editorial |
+  | `POST /lessons/:id/unapprove` | **either** |
+  | `POST /lessons/:id/publish` | **publish** |
+  | `POST /lessons/:id/unpublish` | **publish OR clinical** |
+  | `POST /segments/:id/editorial-approve` | editorial |
+  | `POST /segments/:id/clinical-approve` | clinical |
+  | `POST /segments/:id/reject` | the stage's own (editorial or clinical) |
+  | `POST /segments/:id/recompute-status` | none (derived only) |
+  | `POST /quiz/:segment_id/approve` | **clinical** |
+  | `POST /quiz/:segment_id/unapprove` | **either** |
+  | `POST /content-images/:id/approve` | **editorial** |
+  | `POST /content-images/:id/reject` | **either** |
+  | `POST /questionnaires/:id/publish` | **publish** |
+  | `POST /questionnaires/:id/unpublish` | **publish OR clinical** |
+
+  Quiz approve is clinical because `answer_status='approved'` is what derives
+  `lessons.with_quiz` and puts questions in front of a parent; the same flip inside
+  `approve_segment_bundle` was already behind the clinical gate, so an open route was a way
+  round it. Archive / unarchive is **not** in this table: it is gated in the database at
+  super_admin (migration 126), not by a capability, and has no backend route.
 - **`lessons.with_quiz` is DERIVED and READ-ONLY (migration 063).** It is **not** an authored
   flag — do not set it, from the CMS, the backend, or the SQL editor. A `BEFORE INSERT OR
   UPDATE` trigger overwrites any supplied value with the derived one, so a manual write is
