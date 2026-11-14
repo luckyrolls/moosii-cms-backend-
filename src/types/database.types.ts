@@ -654,7 +654,7 @@ export type Database = {
       content_approvals: {
         Row: {
           action: string
-          actor_id: string
+          actor_id: string | null
           actor_role: string | null
           created_at: string
           entity_id: string
@@ -664,7 +664,7 @@ export type Database = {
         }
         Insert: {
           action: string
-          actor_id: string
+          actor_id?: string | null
           actor_role?: string | null
           created_at?: string
           entity_id: string
@@ -674,7 +674,7 @@ export type Database = {
         }
         Update: {
           action?: string
-          actor_id?: string
+          actor_id?: string | null
           actor_role?: string | null
           created_at?: string
           entity_id?: string
@@ -4844,6 +4844,7 @@ export type Database = {
           birth_month: number | null
           birth_year: number | null
           can_approve_clinical: boolean
+          can_publish: boolean
           can_review_editorial: boolean
           chats_in_app_notifications: boolean
           chats_push_notifications: boolean
@@ -4892,6 +4893,7 @@ export type Database = {
           birth_month?: number | null
           birth_year?: number | null
           can_approve_clinical?: boolean
+          can_publish?: boolean
           can_review_editorial?: boolean
           chats_in_app_notifications?: boolean
           chats_push_notifications?: boolean
@@ -4940,6 +4942,7 @@ export type Database = {
           birth_month?: number | null
           birth_year?: number | null
           can_approve_clinical?: boolean
+          can_publish?: boolean
           can_review_editorial?: boolean
           chats_in_app_notifications?: boolean
           chats_push_notifications?: boolean
@@ -6193,30 +6196,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      users_internal: {
-        Row: {
-          created_at: string
-          id: string
-          role: string
-          updated_at: string | null
-          user_id_auth: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          role: string
-          updated_at?: string | null
-          user_id_auth?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          role?: string
-          updated_at?: string | null
-          user_id_auth?: string | null
-        }
-        Relationships: []
       }
       voice_lint_rules: {
         Row: {
@@ -7555,6 +7534,7 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      lesson_publish_blocker: { Args: { p_lesson_id: string }; Returns: string }
       lesson_with_quiz_derive: {
         Args: { p_lesson_id: string }
         Returns: boolean
@@ -7604,6 +7584,8 @@ export type Database = {
           weight: number
         }[]
       }
+      user_can_publish: { Args: { p_user_id: string }; Returns: boolean }
+      user_can_unpublish: { Args: { p_user_id: string }; Returns: boolean }
       user_track_reasons_for_user: {
         Args: { p_user_id: string }
         Returns: {
@@ -7629,7 +7611,6 @@ export type Database = {
         | "customers"
         | "suppliers"
         | "due_invoices"
-      role: "user" | "admin" | "super"
       subscription_status: "active" | "expired" | "cancelled" | "trial"
       transaction_type:
         | "debt_given"
@@ -7773,7 +7754,6 @@ export const Constants = {
         "suppliers",
         "due_invoices",
       ],
-      role: ["user", "admin", "super"],
       subscription_status: ["active", "expired", "cancelled", "trial"],
       transaction_type: [
         "debt_given",

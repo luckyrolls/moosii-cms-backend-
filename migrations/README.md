@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 126 · Moosii 125** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120 and 125; **126 is applied on financial only so far** (Moosii pending its go); **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 126 · Moosii 126** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125 and 126; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -916,7 +916,7 @@ Main track:
   tone library, exempt by the predicate and the reason `prompt_type <> 'segment'` is in it. The two projects match
   again (invariant 4).
 
-- **126 — approvals gating slice 1: `can_publish`, a structural publish precondition, super_admin-only archival** — **APPLIED financial (2026-11-14) · DRAFT Moosii (pending apply).**
+- **126 — approvals gating slice 1: `can_publish`, a structural publish precondition, super_admin-only archival** — **APPLIED financial (2026-11-14) · APPLIED Moosii (2026-11-14).**
   BOTH PROJECTS. Seven changes in one transaction: (1) `"user".can_publish` boolean NOT NULL DEFAULT false,
   set true for `role='super_admin'`, plus `CHECK (role IN ('user','admin','super_admin'))`;
   (2) `DROP TYPE public.role` — orphaned (no column, no code) and MISLABELLED (`'super'`, not `'super_admin'`,
@@ -962,11 +962,23 @@ Main track:
   default `'pending'`, all three triggers present, `content_approvals` carrying the new `content_approvals_actor_required`
   CHECK, 10 published lessons unchanged, and the new body md5 **`4476a4ba64abf655b01a812b71d3f269`** —
   byte-identical to the harness. **Any future replacement of this function must guard on `4476a4ba…`.**
-  Moosii: **not applied** — awaiting its own go. Read-only pre-check numbers (2026-11-13/14): 2 super_admins and
-  2 plain admins, same md5 `d418d1eb…`, `users_internal` empty, `public.role` with 0 dependents, 11
-  published+unarchived lessons of which **5 carry a pending quiz question** (they stay published).
-  FOLLOW-UPS, not in this slice: the routes still surface a refusal as **500 `db_error`** until slice 2 maps the
-  HINT to 403/409; `database.types.ts` is regenerated after the MOOSII apply (it is generated from that project).
+  Moosii 2026-11-14: dry run with ROLLBACK green first; identity (host `aws-0-us-east-1.pooler.supabase.com`,
+  conn role `postgres.szhihepbqzbbmxybluql`, sysid 7481590244898220655, domain moosii); pre-check matched the
+  SAME md5 `d418d1eb…`, **2 super_admins**, 11 published+unarchived lessons of which **5 carry a pending quiz
+  question**; apply OK; verify in a FRESH session — 2/2 super_admins have `can_publish` and the **2 plain admins
+  have none**, `users_internal` and `public.role` gone, quiz default `'pending'`, all 3 triggers present, the 11
+  published lessons unchanged WITH their 5 pending quizzes, and body md5 **`4476a4ba…`** — byte-identical to
+  financial's and to the harness, so the two projects match (invariant 4).
+  ⚠ **Those 5 Moosii lessons are now one-way**: they stay published, but unpublishing any of them means it
+  cannot be re-published until its quiz question is approved (`publish_quiz_pending`). Same for the 4 published
+  lessons under archived tracks (`publish_archived`). Mark accepted this on 2026-11-13/14.
+  ⚠ **The 2 plain admins lost publish and archive** on Moosii. Granting `can_publish` is a one-row UPDATE per
+  user; archival is super_admin only by decision.
+  `database.types.ts` regenerated from Moosii after this apply: `can_publish` on `user`, `users_internal` and the
+  `role` enum gone, `lesson_publish_blocker` / `user_can_publish` / `user_can_unpublish` added
+  (9 insertions, 29 deletions; `npx tsc --noEmit` clean, `npm test` 321/283 pass/0 fail/38 skipped).
+  FOLLOW-UP, not in this slice: the routes still surface a refusal as **500 `db_error`** until slice 2 maps the
+  HINT to 403/409.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
