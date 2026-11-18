@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 127 · Moosii 126** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125 and 126 (**127 is on financial only so far**); **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 127 · Moosii 127** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126 and 127; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -980,7 +980,7 @@ Main track:
   FOLLOW-UP, not in this slice: the routes still surface a refusal as **500 `db_error`** until slice 2 maps the
   HINT to 403/409.
 
-- **127 — test accounts: `is_test_account`, a two-depth reset, and an audit of both** — **APPLIED financial (2026-11-18).**
+- **127 — test accounts: `is_test_account`, a two-depth reset, and an audit of both** — **APPLIED financial (2026-11-18) · APPLIED Moosii (2026-11-18).**
   BOTH PROJECTS. Seven parts in one transaction: (a) `"user".is_test_account` boolean NOT NULL DEFAULT false,
   deliberately **UNGRANTED** — 112 revoked table-level INSERT/UPDATE from anon/authenticated and granted exactly
   4 INSERT / 10 UPDATE columns, so a NEW column is unwritable by a client and a self-write is refused 42501
@@ -1025,6 +1025,16 @@ Main track:
   **0 reset events** — nothing was reset by the apply.
   ⚠ **`public."user"` is shared infra** (invariant 4): CMS login reads `role`, app onboarding reads the profile.
   Both surfaces are checked after each apply.
+  Moosii 2026-11-18: identity confirmed read-only first (sysid 7481590244898220655, domain moosii, **PG 15.8** —
+  the harness is PG 17, so the file was re-checked for anything newer than 15; it uses none); pre-check 10 users /
+  0 NULLs / **7 true** / 3 false, **2 of the 2** seed accounts present, 0 missing an `auth.users` row, 354
+  policies; apply OK, `127 SEED: flagged 2`, `127 VERIFY OK`; verify-live.sql green on all 7 sections, identical
+  in shape to financial's — 2 flagged, 2 `flag`/`migration` events, none outside the seed list, 0 reset events,
+  and the live data untouched (14 `completed_items`, 358 `children`, 96 moosies). The two projects now match
+  (invariant 4).
+  ⚠ The `SET NOT NULL` rewrote no row on either project: both had 0 `onboarding_complete` NULLs already. On
+  Moosii 7 of the 10 users are onboarded, so a cold start there exercises the RESUMED path; financial's 3 are
+  all `false`, so it exercises fresh onboarding.
   FOLLOW-UP, not in this file: the routes (`GET /users/test-accounts`, `PATCH /users/:id/test-account`,
   `POST /users/:id/reset`), `api-contract.md` §12 and the route tests are a separate commit, held; and
   moosii-rn's `onboarding_complete ?? true` coercion is a separate prompt in the app repo.
