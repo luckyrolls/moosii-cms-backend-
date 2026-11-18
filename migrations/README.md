@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 126 · Moosii 126** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125 and 126; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 127 · Moosii 126** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125 and 126 (**127 is on financial only so far**); **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -979,6 +979,55 @@ Main track:
   (9 insertions, 29 deletions; `npx tsc --noEmit` clean, `npm test` 321/283 pass/0 fail/38 skipped).
   FOLLOW-UP, not in this slice: the routes still surface a refusal as **500 `db_error`** until slice 2 maps the
   HINT to 403/409.
+
+- **127 — test accounts: `is_test_account`, a two-depth reset, and an audit of both** — **APPLIED financial (2026-11-18).**
+  BOTH PROJECTS. Seven parts in one transaction: (a) `"user".is_test_account` boolean NOT NULL DEFAULT false,
+  deliberately **UNGRANTED** — 112 revoked table-level INSERT/UPDATE from anon/authenticated and granted exactly
+  4 INSERT / 10 UPDATE columns, so a NEW column is unwritable by a client and a self-write is refused 42501
+  before any policy runs; (b) `test_account_flag_guard()` + a BEFORE UPDATE **OF is_test_account** trigger that
+  raises `test_account_not_permitted` (23514) when `auth.uid()` is non-NULL and not super_admin; (c)
+  `test_account_events` — append-only audit (`flag`/`unflag`/`reset_activity`/`reset_full`, actor, jsonb detail),
+  RLS on, no client write grant, one super_admin SELECT policy; (d) `set_test_account(p_user, p_flag, p_actor)`
+  and (e) `reset_test_account(p_user, p_depth, p_actor)`, both SECURITY DEFINER with a pinned `search_path` and
+  EXECUTE for `service_role` only (094); (f) `onboarding_complete` SET NOT NULL; (g) a seed step flagging the two
+  known CMS accounts, `actor_role='migration'`.
+  **RLS is NOT one of the three guards.** The live UPDATE policy on `"user"` is a single `user_self_update` whose
+  qual is `(id = auth.uid()) OR is_super_admin() OR (auth.role() = 'service_role')`, and policies OR together — so
+  RLS alone permits an account to write its own row. The guards are PRIVILEGE (no column grant), TRIGGER, and the
+  TS route check; the migration header records this.
+  **`reset_test_account` depths**: `activity` wipes what the parent DID (the classify subtree by user_id and by
+  child_id, `child_milestones`, the activity tables via a `to_regclass` + `format()` loop that handles
+  `starred_items."user id"` and reports `quiz_user_progress` as `skipped_no_user_column`, `user_facts` where
+  `source IN ('derived','manual')`, and zeroes `moosies` — 111's award trigger fires on INSERT only and nothing
+  reverses it on DELETE); `full` additionally wipes onboarding, `user_facts` where `source IN ('platform_api',
+  'estimated')`, `children`, and resets the profile columns. **Never touched at either depth:** the user row's
+  identity, `role`, capabilities, or `user_facts` where `source='seed'` (the demo outcome story).
+  **RE-RUNNABLE**, unlike 126 — every step is IF NOT EXISTS / DROP IF EXISTS + CREATE, the seed is idempotent
+  (`changed:false`, no second audit row), and VERIFY passes on a second run.
+  **Local harness `docs/drafts/127-test-accounts/`** (PG 17 cluster from a read-only Moosii schema dump; the
+  fidelity gate is the grants on `"user"` — `authenticated` table UPDATE/INSERT `f`/`f`, column INSERT 4 /
+  UPDATE 10 — plus 354 policies). The behaviour suite is a node test file
+  (`src/lib/__tests__/testAccounts.db.test.ts`, skips without `MOOSIE_TEST_DB_URL`), 14 cases green.
+  **It caught a real defect in the first draft**: the full reset set `birth_date = NULL`, but `"user".birth_date`
+  is NOT NULL DEFAULT `now()` on both projects, so a full reset would have raised **23502 on every real account**.
+  Fixed with `SET col = DEFAULT` for the columns that have one. An empty table would have hidden it.
+  Two harness defects of my own, now encoded in its README: Supabase's `ALTER DEFAULT PRIVILEGES` must be applied
+  AFTER the restore (before it they grant ALL on every restored table and destroy fidelity), and every expected
+  failure needs a SAVEPOINT — a raised exception aborts the transaction and the next statement returns 25P02,
+  which carries no HINT, making five *correct* refusals look broken.
+  Financial 2026-11-18: identity confirmed read-only first (sysid 7678069749886157684, domain financial, PG 17.6);
+  pre-check 3 users / 0 `onboarding_complete` NULLs / 0 true / 3 false, **1 of the 2** seed accounts present, 0
+  missing an `auth.users` row, 360 policies; apply OK, `127 SEED: flagged 1`, `127 VERIFY OK`; post-apply
+  verification (`docs/drafts/127-test-accounts/verify-live.sql`, read-only) green on all 7 sections — flag
+  ungranted f/f/f, 112's grants still 4/10 with no table grant, the trigger column-scoped, the audit table RLS-on
+  and write-closed with exactly 1 policy, all 3 functions SECURITY DEFINER + service_role-only,
+  `onboarding_complete` NOT NULL, 1 flagged with 1 `flag`/`migration` event and none outside the seed list, and
+  **0 reset events** — nothing was reset by the apply.
+  ⚠ **`public."user"` is shared infra** (invariant 4): CMS login reads `role`, app onboarding reads the profile.
+  Both surfaces are checked after each apply.
+  FOLLOW-UP, not in this file: the routes (`GET /users/test-accounts`, `PATCH /users/:id/test-account`,
+  `POST /users/:id/reset`), `api-contract.md` §12 and the route tests are a separate commit, held; and
+  moosii-rn's `onboarding_complete ?? true` coercion is a separate prompt in the app repo.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
