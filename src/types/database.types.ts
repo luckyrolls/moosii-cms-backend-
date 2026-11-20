@@ -4634,6 +4634,36 @@ export type Database = {
         }
         Relationships: []
       }
+      test_account_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_role: string
+          created_at: string
+          detail: Json | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_role: string
+          created_at?: string
+          detail?: Json | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_role?: string
+          created_at?: string
+          detail?: Json | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       topics: {
         Row: {
           color: string | null
@@ -4865,6 +4895,7 @@ export type Database = {
           id: string
           image_blur_hash: string | null
           image_url: string | null
+          is_test_account: boolean
           is_verified: boolean
           likes_in_app_notifications: boolean
           likes_push_notifications: boolean
@@ -4872,7 +4903,7 @@ export type Database = {
           mentions_push_notifications: boolean
           moosies: number
           name: string | null
-          onboarding_complete: boolean | null
+          onboarding_complete: boolean
           parenting_status: string | null
           phone: string | null
           region: string | null
@@ -4914,6 +4945,7 @@ export type Database = {
           id: string
           image_blur_hash?: string | null
           image_url?: string | null
+          is_test_account?: boolean
           is_verified?: boolean
           likes_in_app_notifications?: boolean
           likes_push_notifications?: boolean
@@ -4921,7 +4953,7 @@ export type Database = {
           mentions_push_notifications?: boolean
           moosies?: number
           name?: string | null
-          onboarding_complete?: boolean | null
+          onboarding_complete?: boolean
           parenting_status?: string | null
           phone?: string | null
           region?: string | null
@@ -4963,6 +4995,7 @@ export type Database = {
           id?: string
           image_blur_hash?: string | null
           image_url?: string | null
+          is_test_account?: boolean
           is_verified?: boolean
           likes_in_app_notifications?: boolean
           likes_push_notifications?: boolean
@@ -4970,7 +5003,7 @@ export type Database = {
           mentions_push_notifications?: boolean
           moosies?: number
           name?: string | null
-          onboarding_complete?: boolean | null
+          onboarding_complete?: boolean
           parenting_status?: string | null
           phone?: string | null
           region?: string | null
@@ -7553,6 +7586,10 @@ export type Database = {
         Args: { p_ordered_ids: string[] }
         Returns: undefined
       }
+      reset_test_account: {
+        Args: { p_actor: string; p_depth: string; p_user: string }
+        Returns: Json
+      }
       resolve_activity_followups: { Args: { p_user: string }; Returns: Json }
       set_card_review_state: {
         Args: {
@@ -7571,6 +7608,10 @@ export type Database = {
           p_lesson_id: string
           p_published: boolean
         }
+        Returns: Json
+      }
+      set_test_account: {
+        Args: { p_actor: string; p_flag: boolean; p_user: string }
         Returns: Json
       }
       unapprove_segment_bundle: { Args: { p_seg_id: string }; Returns: Json }

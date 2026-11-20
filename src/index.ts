@@ -22,6 +22,7 @@ import classifyUpdateRouter from "./routes/classifyUpdate";
 import quizRouter from "./routes/quiz";
 import mlpRouter from "./routes/mlp";
 import sourceDocumentsRouter from "./routes/sourceDocuments";
+import usersRouter from "./routes/users";
 import factsRouter from "./routes/facts";
 import demoRouter from "./routes/demo";
 import { activitiesRouter, activityFollowupsRouter } from "./routes/activities";
@@ -67,6 +68,9 @@ app.use("/questionnaires", jwtAuthMiddleware, questionnairesRouter);
 app.use("/questionnaire-prompt", jwtAuthMiddleware, questionnairePromptRouter);
 app.use("/quiz", jwtAuthMiddleware, quizRouter);
 app.use("/source-documents", jwtAuthMiddleware, sourceDocumentsRouter);
+// Test accounts (api-contract.md §12, migration 127): admin JWT to reach the router, and every
+// route then requires the super_admin ROLE in TS. The database checks it again against p_actor.
+app.use("/users", jwtAuthMiddleware, usersRouter);
 
 // App-facing (mobile) AND admin console: /classify-update and /mlp verify the
 // end-user's Supabase JWT themselves (NOT the admin-only gate). classify-update has
