@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 128 · Moosii 127** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126 and 127; **128 is applied on financial only** (Moosii awaits a separate go); **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 128 · Moosii 128** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126, 127 and 128; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -1039,7 +1039,7 @@ Main track:
   `POST /users/:id/reset`), `api-contract.md` §12 and the route tests are a separate commit, held; and
   moosii-rn's `onboarding_complete ?? true` coercion is a separate prompt in the app repo.
 
-- **128 — catalog modes: one global mode over a grouped track catalog** — **APPLIED financial (2026-11-19) · Moosii PENDING (awaiting Mark's go).**
+- **128 — catalog modes: one global mode over a grouped track catalog** — **APPLIED financial (2026-11-19) · APPLIED Moosii (2026-11-20).**
   BOTH PROJECTS, DIFFERENT BACKFILL (branched on `app_settings.domain`). `tracks` gains `test_group`
   (`live` | `mem` | `mdm` | `legacy`, NOT NULL) and `mode_archived`; an append-only
   `catalog_mode_switches` log whose latest row **by `seq`** IS the current mode; a BEFORE INSERT
@@ -1087,14 +1087,37 @@ Main track:
   failed. Enqueued through `POST /jobs` with `FINANCIAL_INTERNAL_API_KEY`; the coalesced
   `enqueueRebuildAllIfIdle` route (`POST /mlp/rebuild-all`) needs an admin JWT, and with no rebuild
   in flight the two produce the same single job.
-  Moosii, measured read-only and NOT applied: 69 tracks → 30 `live` (all already archived, now
-  switcher-owned), 2 `mem`, 37 `legacy`; **15 active tracks get archived** (one carrying a published
-  lesson, "Single parent challenges" — accepted, Mark 2026-11-19), writing 15 `track`/`archive`
-  `content_approvals` rows; and the join-in "Baby Is Crawling" is retagged to `mem` and **unarchived**
-  (1 `unarchive` row), which is what resolves the one pre-existing cross-group link so the same-group
-  rule can be turned on at all. Initial Moosii mode is `mem`.
+  Moosii 2026-11-20: identity confirmed read-only first (sysid 7481590244898220655, domain moosii,
+  **PG 15.8** — the harness is PG 17, so the file was re-checked for anything newer than 15; it uses
+  none); pre-apply 70 tracks / 16 active / 30 `mooselist` (0 of them active), 126's guard present,
+  128 absent, `content_approvals` 75 rows (5 `track`). Apply OK —
+  `128 VERIFY OK: domain=moosii mode=mem — groups live 30, mem 2, mdm 0, legacy 38 (15 archived,
+  1 unarchived by the backfill); cross-group links 0`.
+  ⚠ **DEVIATION from the measurement, approved (Mark, 2026-11-20): `legacy` is 38, not the measured
+  37.** Cause: `test1120` (`b8147f76-12bb-4012-8a87-e18d715ae013`), created and archived through the
+  CMS on 2026-11-20 12:12 between the measurement and the apply — one `archive` row with
+  `actor_role='authenticated'`, i.e. 126's guard on the CMS path. Being already archived and not
+  `mooselist`, the backfill only LABELLED it: no `archived_at` change, no audit row, no effect on any
+  plan. It also explains the two other pre-apply deltas (70 tracks not 69, `content_approvals` 75 not
+  74). Everything else matched exactly.
+  Post-apply read-only verification: **30 `live`** (0 active, all 30 `mode_archived` — the switcher
+  owns their pre-existing archival), **2 `mem`** (both visible: `New Parents` and the join-in),
+  **38 `legacy`** (0 active, 0 `mode_archived`); active tracks **16 → 2**; mode `mem`;
+  `content_approvals` **75 → 91 (+16)** = 15 `archive` + 1 `unarchive`, every one actor NULL /
+  `actor_role='service'`; the seed log row's `backfill_archived_ids` holds 15 ids and **matches the
+  rows that actually got an `archive` audit row exactly (0 mismatch)**, `backfill_unarchived_ids` is
+  the join-in alone; the join-in is `mem` + visible + `mode_archived=false`; all 7 functions
+  SECURITY DEFINER with anon/authenticated `f` and service_role `t`; and the five `tracks` triggers in
+  the required alphabetical order.
+  The 15 archived, with lesson counts: `Baby Sleep  - mm` (8), `Fine Motor | Typical Dev` (16),
+  `Parental Sleep Problems` (5), **`Single parent challenges` (1 lesson, 1 PUBLISHED — accepted,
+  Mark 2026-11-19)**, `test` (0), and 10 empty `… | Typical Dev` / `… | Standard` shells.
+  ⚠ **STALE-PLAN WINDOW:** the apply changes which tracks are selectable but rewrites no plan, so
+  `user_mlp` still held items from the 15 archived tracks until the `scope:all` rebuild ran. On Moosii
+  that rebuild was triggered by Mark from the CMS MLP management screen, not by this seat — there is
+  no local key for the Moosii service's `/jobs` and `POST /mlp/rebuild-all` needs an admin JWT.
   FOLLOW-UP, not in this file: the three routes, `api-contract.md` §13 and the route/unit tests are a
-  separate commit, held until both applies are verified.
+  separate commit.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
