@@ -341,6 +341,49 @@ export type Database = {
         };
         Relationships: [];
       };
+      catalog_mode_switches: {
+        Row: {
+          actor_id: string | null;
+          actor_role: string;
+          backfill_archived_ids: Json | null;
+          backfill_unarchived_ids: Json | null;
+          id: string;
+          mode: string;
+          previous_mode: string | null;
+          seq: number;
+          switched_at: string;
+          tracks_archived: number;
+          tracks_unarchived: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          actor_id?: string | null;
+          actor_role: string;
+          backfill_archived_ids?: Json | null;
+          backfill_unarchived_ids?: Json | null;
+          id?: string;
+          mode: string;
+          previous_mode?: string | null;
+          seq?: number;
+          switched_at?: string;
+          tracks_archived?: number;
+          tracks_unarchived?: number;
+        };
+        Update: {
+          actor_id?: string | null;
+          actor_role?: string;
+          backfill_archived_ids?: Json | null;
+          backfill_unarchived_ids?: Json | null;
+          id?: string;
+          mode?: string;
+          previous_mode?: string | null;
+          seq?: number;
+          switched_at?: string;
+          tracks_archived?: number;
+          tracks_unarchived?: number;
+        };
+        Relationships: [];
+      };
       chat: {
         Row: {
           a_last_seen_message_id: string | null;
@@ -4827,8 +4870,10 @@ export type Database = {
           description: string | null;
           id: string;
           last_updated: string | null;
+          mode_archived: boolean;
           order: number | null;
           priority: number | null;
+          test_group: string;
           track_name: string | null;
           track_type: string | null;
           updated_at: string | null;
@@ -4842,8 +4887,10 @@ export type Database = {
           description?: string | null;
           id?: string;
           last_updated?: string | null;
+          mode_archived?: boolean;
           order?: number | null;
           priority?: number | null;
+          test_group: string;
           track_name?: string | null;
           track_type?: string | null;
           updated_at?: string | null;
@@ -4856,8 +4903,10 @@ export type Database = {
           description?: string | null;
           id?: string;
           last_updated?: string | null;
+          mode_archived?: boolean;
           order?: number | null;
           priority?: number | null;
+          test_group?: string;
           track_name?: string | null;
           track_type?: string | null;
           updated_at?: string | null;
@@ -7681,6 +7730,7 @@ export type Database = {
         Args: { p_approved_by: string; p_images: Json; p_seg_id: string };
         Returns: Json;
       };
+      assert_no_cross_group_links: { Args: Record<PropertyKey, never>; Returns: undefined };
       create_lessons_with_segments: {
         Args: { p_lessons: Json };
         Returns: {
@@ -7690,6 +7740,7 @@ export type Database = {
           lesson_name: string;
         }[];
       };
+      current_catalog_mode: { Args: Record<PropertyKey, never>; Returns: string };
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_super_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       lesson_publish_blocker: { Args: { p_lesson_id: string }; Returns: string };
@@ -7730,6 +7781,11 @@ export type Database = {
         Args: { p_actor: string; p_flag: boolean; p_user: string };
         Returns: Json;
       };
+      set_track_group: {
+        Args: { p_actor: string; p_group: string; p_track: string };
+        Returns: Json;
+      };
+      switch_catalog_mode: { Args: { p_actor: string; p_mode: string }; Returns: Json };
       unapprove_segment_bundle: { Args: { p_seg_id: string }; Returns: Json };
       user_active_tracks_for_user: {
         Args: { p_user_id: string };
