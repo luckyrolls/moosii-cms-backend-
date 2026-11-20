@@ -65,9 +65,14 @@ is code the developer owns and can read, version, and debug. This is non-negotia
   financial service `/jobs` (moosii-financial-backend.onrender.com); there is no local key for the Moosii
   service's `/jobs`; `MOOSII_DB_URL` / `FINANCIAL_DB_URL` → each project's Postgres.
 - **Verify against live Moosii without writing data**: dry runs (`persist=false, apply=false` on
-  `/classify-update`), SQL checks wrapped in a rolled-back transaction, read-only sessions. Do not
+  `/classify-update`), and SQL wrapped in `BEGIN TRANSACTION READ ONLY; … ROLLBACK;`. Do not
   create test rows in Moosii to exercise a path; if the needed data doesn't exist, say so and use
   another method (e.g. re-run the pure function with the missing input).
+- **`PGOPTIONS='-c default_transaction_read_only=on'` does NOT work** — the Supabase pooler
+  silently drops it and the session comes back writable (`transaction_read_only = off`, proven
+  2026-11-17). The connection is `postgres`, which has BYPASSRLS, so nothing else stops a stray
+  write. Read-only means the explicit `BEGIN TRANSACTION READ ONLY` above, which is
+  transaction-scoped and cannot leak onto a pooled connection.
 - Unscheduled work goes in `docs/backlog.md` (P1–P3); investigation reports in `docs/FINDINGS-*.md`.
 
 ## Stack
@@ -294,6 +299,10 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
   report. Each project's apply is recorded in its reconciliation entry + high-water, in its own
   commit. If Mark applies by hand in the SQL editor, the entry flips only on his confirmation.
   Never apply without a go; never assume an apply from a file existing.
+- **An apply is the ONLY sanctioned write to a live database** (Mark, 2026-11-18). What runs is the
+  migration file exactly as committed — no ad-hoc DDL/DML, no fix-ups, no "while I'm in there".
+  Commit the file first, so what was applied is what is in git. Everything else, diagnostics
+  included, is read-only.
 - **Confirm the project before trusting a connection.** psql is
   `C:/Program Files/PostgreSQL/17/bin/psql.exe`; check the `postgres.<ref>` user,
   `pg_control_system().system_identifier` and `app_settings.domain`. Non-apply sessions are
