@@ -22,8 +22,8 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 127 · Moosii 127** (main) + **0008**
-(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126 and 127; **075 is financial-only** (decision D6);
+(Current APPLIED high-water, per project from 069: **financial 128 · Moosii 127** (main) + **0008**
+(prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126 and 127; **128 is applied on financial only** (Moosii awaits a separate go); **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
 Every migration 008..068 is applied and verified on MOOSII, with one caveat: 059 is applied
@@ -1038,6 +1038,63 @@ Main track:
   FOLLOW-UP, not in this file: the routes (`GET /users/test-accounts`, `PATCH /users/:id/test-account`,
   `POST /users/:id/reset`), `api-contract.md` §12 and the route tests are a separate commit, held; and
   moosii-rn's `onboarding_complete ?? true` coercion is a separate prompt in the app repo.
+
+- **128 — catalog modes: one global mode over a grouped track catalog** — **APPLIED financial (2026-11-19) · Moosii PENDING (awaiting Mark's go).**
+  BOTH PROJECTS, DIFFERENT BACKFILL (branched on `app_settings.domain`). `tracks` gains `test_group`
+  (`live` | `mem` | `mdm` | `legacy`, NOT NULL) and `mode_archived`; an append-only
+  `catalog_mode_switches` log whose latest row **by `seq`** IS the current mode; a BEFORE INSERT
+  default and a BEFORE UPDATE OF archived_at manual-archive trigger on `tracks` (the CMS writes that
+  table directly — invariant 4); the same-group rule over all five questionnaire→track paths, as
+  statement-level AFTER triggers calling one whole-graph `assert_no_cross_group_links()`; and
+  `switch_catalog_mode` / `set_track_group`, SECURITY DEFINER + pinned `search_path` +
+  service_role-only EXECUTE (094).
+  **NOT an MLP change** (invariant 1): archival is already the single filter plan selection honours
+  (invariant 6, 045/046, preserved by 074), so a switch is a bulk archive/unarchive plus one
+  `scope:all` rebuild. `mode_archived` is what makes it reversible — it records WHO archived a
+  track, so a switch back never resurrects something a human shelved. Two CHECKs keep that honest
+  (`mode_archived ⇒ archived_at IS NOT NULL`, `mode_archived ⇒ test_group <> 'legacy'`).
+  ⚠ **Trigger order on `tracks` is load-bearing and asserted in VERIFY**: alphabetical, so
+  `tracks_archive_guard_trg` (126) gets first refusal and writes its audit row before
+  `tracks_mode_archived_sync_trg` normalises the flag. Renaming either reorders them.
+  **RE-RUNNABLE** — all DDL is IF NOT EXISTS / DROP IF EXISTS + CREATE, the backfill only touches
+  rows whose `test_group` is still NULL, and the seed log row is written only when the log is empty.
+  Proven by a second apply in the harness.
+  **Local harness `docs/drafts/128-catalog-modes/`** (PG 17 cluster from a read-only Moosii schema
+  dump; nine steps: 127 → fixture → 128 → re-apply → 14 behaviour tests
+  (`src/lib/__tests__/catalogModes.db.test.ts`) → an undo rehearsal that rolls back). The fixture
+  reproduces the ONE real cross-group link, so the harness proves the backfill RESOLVES it rather
+  than that a clean graph stays clean.
+  **It caught three defects, all invisible on paper**: (1) `current_catalog_mode()` was missing its
+  094 revoke/grant and was therefore callable with the anon key through PostgREST — 128's own VERIFY
+  failed the apply and named it; (2) the log ordered by `switched_at`, which is the TRANSACTION
+  timestamp, so two switches in one transaction tied and the tie-break fell to a random uuid, making
+  "the current mode" non-deterministic (a test that passed and failed on alternate runs) — fixed
+  with a `seq` identity column; (3) the undo revealed tracks archived BEFORE 128 existed, because it
+  looked for `mode_archived` — which the backfill sets on the already-archived `mooselist` rows
+  without touching their `archived_at`. The undo now reverses the two id sets the seed row names
+  (`backfill_archived_ids` / `backfill_unarchived_ids`) and nothing else.
+  Financial 2026-11-19: identity confirmed read-only first (sysid 7678069749886157684, domain
+  financial, PG 17.6); pre-apply 7 tracks all active, 0 questionnaires, 126's guard present, 128 not
+  applied, `content_approvals` 47 rows (2 `track`); apply OK —
+  `128 VERIFY OK: domain=financial mode=live — groups live 7, mem 0, mdm 0, legacy 0 (0 archived,
+  0 unarchived by the backfill); cross-group links 0`. Post-apply read-only verification: all 7
+  tracks `live` and active, `mode_archived` 0 everywhere, one seed log row (`live`, actor_role
+  `migration`, both id lists `[]`), `content_approvals` **still 47** — the apply archived nothing and
+  wrote no audit row — all 7 functions SECURITY DEFINER with anon/authenticated `f` and service_role
+  `t`, and the five `tracks` triggers in the required alphabetical order.
+  **Post-apply `scope:all` rebuild** (amendment, Mark 2026-11-19): job
+  `cd782ee9-6a21-47c8-99a7-10022c14404e`, **succeeded** in 1.6 s — 3 users processed, 3 succeeded, 0
+  failed. Enqueued through `POST /jobs` with `FINANCIAL_INTERNAL_API_KEY`; the coalesced
+  `enqueueRebuildAllIfIdle` route (`POST /mlp/rebuild-all`) needs an admin JWT, and with no rebuild
+  in flight the two produce the same single job.
+  Moosii, measured read-only and NOT applied: 69 tracks → 30 `live` (all already archived, now
+  switcher-owned), 2 `mem`, 37 `legacy`; **15 active tracks get archived** (one carrying a published
+  lesson, "Single parent challenges" — accepted, Mark 2026-11-19), writing 15 `track`/`archive`
+  `content_approvals` rows; and the join-in "Baby Is Crawling" is retagged to `mem` and **unarchived**
+  (1 `unarchive` row), which is what resolves the one pre-existing cross-group link so the same-group
+  rule can be turned on at all. Initial Moosii mode is `mem`.
+  FOLLOW-UP, not in this file: the three routes, `api-contract.md` §13 and the route/unit tests are a
+  separate commit, held until both applies are verified.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
