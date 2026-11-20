@@ -8,3 +8,7 @@ migrations/0007_coverage_audit_empty_band_delta.sql -text
 # Shell hooks must keep LF line endings: with core.autocrlf=true a CRLF checkout breaks
 # `set -eu`, and the fail-closed .env hook would then refuse every commit.
 .githooks/* text eol=lf
+
+# Same for the local test harnesses' runners: core.autocrlf=true would hand a fresh checkout a
+# CRLF copy, and bash then fails on the shebang and `set -euo pipefail`.
+docs/drafts/**/*.sh text eol=lf
