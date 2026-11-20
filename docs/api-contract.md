@@ -3048,3 +3048,116 @@ rebuild is derive-and-overwrite (delete + insert per user) and never populates `
 094 rule), so the reasons cannot be assembled client-side: `user_track_activations` is RLS-on with no policy.
 Code: `src/plan/shape.ts` (pure, golden-tested), `src/plan/router.ts` (factory), `src/plan/db.ts`,
 `src/routes/plan.ts`.
+
+---
+
+## 12. Test accounts + reset — BUILT (migration 127; both domains)
+
+A **test account** is a demo/QA login a super_admin has deliberately flagged. It is the only kind of
+account `reset_test_account` will touch — the flag is a safety interlock, not a label. The first two
+are Mark's and Michelle's own super_admin CMS logins, which is why every check below is on the
+actor's **role** and never on `auth.uid() = target`: a super_admin must be able to flag and reset
+their own login.
+
+Investigation and evidence: `docs/FINDINGS-test-mode.md` §B1–B4 and §C. Local proof:
+`docs/drafts/127-test-accounts/`.
+
+### Auth — super_admin only, three independent layers
+
+All three routes are mounted behind `jwtAuthMiddleware` (any admin role reaches the router) and then
+require the **`super_admin` role in TypeScript**. `admin` is refused. The actor is always
+`req.user.id` from the verified JWT, never the body (invariant 7), and is passed to the RPC as
+`p_actor`, which re-checks it — the database is the authority.
+
+The `is_test_account` column is guarded three ways, and **RLS is not one of them**:
+
+| layer | mechanism | refusal |
+|---|---|---|
+| 1. privilege | no column grant exists; 112 left `anon`/`authenticated` with no table-level INSERT/UPDATE on `"user"` | `42501` |
+| 2. trigger | `test_account_flag_guard` (BEFORE UPDATE OF is_test_account) refuses a non-super_admin JWT | `23514` + HINT |
+| 3. route | this section | `403` |
+
+RLS would **not** do it: `user_self_update`'s qual is `(id = auth.uid()) OR is_super_admin() OR
+(auth.role() = 'service_role')`, and policies OR — so RLS by itself permits an account to write its
+own row. The column grant is the lock.
+
+### `PATCH /users/:id/test-account`
+
+Body `{ "is_test_account": boolean }` — a strict boolean; `"true"` is a 400, not an intent.
+
+```json
+{ "ok": true, "user_id": "…", "is_test_account": true, "changed": true }
+```
+
+Idempotent: setting the state it already has returns `changed: false` and writes **no** audit row.
+
+### `POST /users/:id/reset`
+
+Body `{ "depth": "activity" | "full" }`. No default — an omitted or misspelled depth is a 400
+`bad_depth` before any RPC runs.
+
+```json
+{ "ok": true, "user_id": "…", "depth": "activity",
+  "deleted": { "completed_items": 4, "user_mlp": 12, "quiz_user_progress": "skipped_no_user_column", "…": 0 },
+  "rows_deleted": 31,
+  "rebuild": "queued", "rebuild_job_id": "…" }
+```
+
+* **`activity`** — everything the parent DID: completions, progress, quiz/questionnaire answers,
+  starred items, follow-ups, the MLP rows, classify events and their detections, milestone facts,
+  notifications, the moosies ledger **and** `"user".moosies = 0`. `user_facts` only where
+  `source IN ('derived','manual')`. Onboarding (demographics, children, config) is **kept**.
+* **`full`** — all of the above, plus onboarding: demographics, `user_configurations`,
+  `user_settings`, `user_tracks`, children, `user_facts` also where
+  `source IN ('platform_api','estimated')`, and the `"user"` onboarding columns —
+  `onboarding_complete = false` (never NULL) and the three `has_seen_*` flags false.
+
+**Never touched at either depth.** `user_facts` where `source = 'seed'` (the demo outcome story),
+`demo_outcome_series` / `demo_outcome_aggregate`, identity and billing tables, the social tables,
+and this column denylist on `"user"`: `id`, `email`, `role`, `can_review_editorial`,
+`can_approve_clinical`, `can_publish`, `is_verified`, `auth_provider`, `is_test_account`. That is
+what keeps the real CMS logins intact through a reset. `daily_reminder_time` is also left alone
+(NOT NULL, no default); `birth_date` and `name` go back to their DEFAULT rather than NULL, because
+`birth_date` is NOT NULL.
+
+**The server-side rebuild is part of the contract, not a nicety.** After the reset commits, the
+route enqueues a rebuild of **that one user** (`rebuild_user_mlp` — never `scope: all`, which would
+re-derive every member's plan) and reports it as `rebuild: queued | coalesced | failed`. It must
+happen server-side because **moosii-rn will not self-recompute for up to 6 hours**: the freshness
+marker `mlp_last_recompute_<userId>` lives in expo-secure-store and survives the wipe
+(`src/lib/mlpFreshness.ts:8`, `useMlpForegroundRecompute.ts:30`). Without it the app would show a
+plan derived from deleted state.
+
+**A reset takes effect in the app on its next COLD START.** The onboarding gate reads
+`profile?.onboardingComplete` from a 5-minute-stale React Query cache
+(`moosii-rn/app/_layout.tsx:40,74`, `useUserProfile.ts:24`) and there is no `focusManager` wiring,
+so the app does not notice mid-session. There is no persisted onboarding state on the device — no
+AsyncStorage, no query persister, no auth-metadata copy — so a restart is sufficient.
+
+### `GET /users/test-accounts`
+
+Super_admin only. `{ "ok": true, "users": [ { id, email, display_name, role, is_test_account, onboarding_complete, moosies } ] }`.
+
+### Errors
+
+| status | code | when |
+|---|---|---|
+| 400 | `bad_depth` | depth is not `activity` or `full` |
+| 400 | `bad_request` | `is_test_account` is not a boolean |
+| 403 | `test_account_not_permitted` | the caller is not a super_admin (route), or `p_actor` is not (RPC HINT) |
+| 404 | `not_found` | no such user |
+| 409 | `not_test_account` | the target is not flagged — flag it first |
+| 503 | `migration_pending` | migration 127 is not applied on this deployment yet |
+
+`test_account_not_permitted` and `not_test_account` are the RPC **HINT**s, used verbatim as the
+error code — the same contract as 126's publish refusals, so the CMS switches on a stable string
+rather than parsing prose.
+
+### Audit
+
+Every flag, unflag and reset writes one `test_account_events` row **in the same transaction** as the
+change: `(user_id, action, actor_id, actor_role, detail, created_at)` with `action` in
+`flag | unflag | reset_activity | reset_full`. For a reset, `detail` is the per-table deleted map.
+`actor_id` is nullable only because a migration or SQL-editor action genuinely has no actor (the
+same admission 126 made for archive/unarchive); `actor_role` then records `migration` or `service`.
+The table is RLS-on, **super_admin read, no client write** at all.
