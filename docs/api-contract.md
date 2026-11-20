@@ -3161,3 +3161,117 @@ change: `(user_id, action, actor_id, actor_role, detail, created_at)` with `acti
 `actor_id` is nullable only because a migration or SQL-editor action genuinely has no actor (the
 same admission 126 made for archive/unarchive); `actor_role` then records `migration` or `service`.
 The table is RLS-on, **super_admin read, no client write** at all.
+
+## 13. Catalog modes — BUILT, NOT APPLIED (migration 128; both domains, different backfill)
+
+One **global catalog mode** decides which group of tracks parents can see: `live` (the real
+curriculum), `mem` (Mark's tests) or `mdm` (Michelle's tests). Every track also carries
+`legacy` as a fourth **group** — old work that a mode switch must never touch, in either
+direction. `legacy` is a group and never a mode.
+
+This is **not an MLP change** (invariant 1). Archival is already the one filter plan selection
+honours — the final `JOIN tracks t … AND t.archived_at IS NULL` in `user_active_tracks_for_user`
+and its view twin (invariant 6, 045/046, preserved by 074) — so a switch is a bulk
+archive/unarchive plus one rebuild.
+
+`tracks.mode_archived` is what makes it reversible: it records **who** archived a track.
+
+| `mode_archived` | meaning | a switch into that group |
+|---|---|---|
+| `true` | the switcher archived it | **unarchives it** |
+| `false` | a human archived it, or it is legacy | leaves it alone, for good |
+
+Two CHECKs keep that honest: `mode_archived ⇒ archived_at IS NOT NULL`, and
+`mode_archived ⇒ test_group <> 'legacy'`.
+
+### The routes
+
+| route | who | what |
+|---|---|---|
+| `GET /admin/catalog-mode` | any **admin** | the current mode, who set it, per-group counts, and the latest `rebuild_mlp` job |
+| `POST /admin/catalog-mode` `{ mode }` | **super_admin** | switch, then rebuild every plan |
+| `PATCH /tracks/:id/test-group` `{ test_group }` | **super_admin** | retag one track; the archival follows from the group |
+
+Reading the mode is not privileged — the CMS shows it wherever it lists tracks. Changing it is
+super_admin in TS **and** again in the database against `p_actor`; the actor is always the verified
+JWT's user id, never the body (invariant 7).
+
+`POST` returns `{ ok, mode, previous_mode, changed, tracks_archived, tracks_unarchived, rebuild,
+rebuild_job_id }`. `PATCH` returns `{ ok, found, track_id, previous_group, test_group, changed,
+archived, mode_archived, rebuild, rebuild_job_id }`.
+
+### The rebuild is part of the contract
+
+A switch changes the visible track set for **every** user, so every plan is stale until the
+rebuild runs. One `scope:all` `rebuild_mlp` is enqueued after the switch commits, reported as
+`rebuild: queued | coalesced | failed` through the shared coalescing rule
+(`src/jobs/rebuildTrigger.ts`) — never folded into a RUNNING job, which may already have passed
+the users a switch affects.
+
+* A **refused** switch never enqueues.
+* A **no-op** switch (already in that mode) reports `rebuild: "skipped"` and enqueues nothing: a
+  needless `scope:all` rebuild would also coalesce a real one queued behind it.
+* A retag enqueues only when the group actually changed.
+* **Stale-plan window:** a `scope:all` rebuild measured ~1.1 s mean on both projects
+  (`docs/FINDINGS-test-mode.md` §C), so plans lag a switch by seconds, not minutes. Nothing blocks
+  on it; the route returns as soon as the switch is committed and the job is queued.
+
+### New tracks default by trigger, not by route
+
+The CMS **inserts tracks directly** (`docs/rls-sweep.md`), so defaulting cannot live in route
+code. A `BEFORE INSERT` trigger gives a new track the **current mode's** group when none is named,
+and a track created into any other non-legacy group is **born archived** with `mode_archived =
+true` — exactly as a switch would have left it, so switching to that group reveals it. It never
+defaults to `legacy`. A `BEFORE UPDATE OF archived_at` trigger forces `mode_archived = false`
+whenever someone changes `archived_at` without touching `mode_archived`, which is what a
+CMS-direct or SQL-editor archive looks like — so a human's decision reads as manual and survives
+every later switch.
+
+### The same-group rule
+
+A questionnaire may only point at tracks **in its own group**; otherwise answering it in `mem`
+mode could enrol a parent into a `live` track, and a switch would leave plans referring to tracks
+nobody can see. Five paths reach a track from a questionnaire, and all five are guarded:
+
+`questionnaire_response.track_id` · `questionnaire_response.tag_id → track_tag_map` ·
+`questionnaire_answer_actions.track_id` · `questionnaire_answer_actions.tag_id → track_tag_map` ·
+`questionnaire.defer_topic` (named "topic", but it is an FK to `tracks`)
+
+The triggers fire on each referencing table, on `track_tag_map`, **and** on `tracks.test_group` —
+because changing a tag mapping or a track's group breaks links that never mention the changed row.
+A violation is `409 cross_group_link`.
+
+### Errors
+
+| HTTP | code | when |
+|---|---|---|
+| 400 | `bad_mode` | `mode` is not `live`/`mem`/`mdm` (`legacy` included) |
+| 400 | `bad_group` | `test_group` is not one of the four groups |
+| 403 | `catalog_mode_not_permitted` | not a super_admin, in TS or in the database |
+| 404 | `not_found` | no such track |
+| 409 | `cross_group_link` | the write would leave a questionnaire pointing outside its group |
+| 503 | `migration_pending` | 128 is not applied on this deployment yet |
+
+### Current mode is DERIVED
+
+It is the latest `catalog_mode_switches` row **by `seq`**, not by `switched_at`: `now()` is the
+transaction timestamp, so two switches in one transaction share a `switched_at` and the tie-break
+would fall to a random uuid. The log is append-only, RLS-on, readable by any signed-in user and
+writable by no client. There is no mutable "current mode" cell to disagree with history.
+
+### The initial state each project starts in
+
+128's backfill differs per domain, and the **seed** `catalog_mode_switches` row records what it
+did — including `backfill_archived_ids` / `backfill_unarchived_ids`, the exact track ids it moved,
+so the migration's undo names rows instead of inferring them from a timestamp. Both columns are
+`NULL` on every row a switch writes; a switch's rows are identified by `mode_archived` instead.
+
+| | initial mode | groups | archived by the backfill |
+|---|---|---|---|
+| financial | `live` | all 7 tracks `live` | none — the catalog is unchanged |
+| Moosii | `mem` | 30 `live` (all already archived, now switcher-owned), 2 `mem`, 37 `legacy` | **15**, each audited through 126's guard |
+
+On Moosii the backfill also resolves the one pre-existing cross-group link (Mark, 2026-11-19):
+`Baby Is Crawling` is the target of a response on a questionnaire hosted in `mem`, so it **joins
+`mem` and is unarchived** — one `unarchive` audit row. Without that the same-group rule could not
+be turned on, and 128's PRE-CHECK refuses rather than rewriting 69 track rows first.
