@@ -352,14 +352,17 @@ Every AI API call is logged to `ai_generation_log` (migration 005) via `logAiCal
   classification prompts are DB-composed (`prompts` + `prompt_blocks` + `content_size_profiles`),
   managed via admin CRUD or migrations, not files.
 - Prefer minimal formatting and minimal dependencies. Keep it debuggable.
-- **Database types** (`src/types/database.types.ts`) are generated from the MOOSII schema via the
-  Supabase CLI; regenerate after any schema migration and drop any temporary `(supabase as any)`
-  bridge that existed only for a MISSING COLUMN in the same pass:
-  `npx supabase@latest gen types typescript --project-id <ref> > <scratch>/new.ts`, verify, then
-  move it over. **Never redirect straight onto the real file** (`>` truncates it first). The
-  committed file is **CRLF**; the CLI emits LF, so convert on the way in. The ~27 remaining
-  `(supabase as any)` bridges are mostly for VIEWS and RPCs the generator does not type — those
-  stay.
+- **Database types** (`src/types/database.types.ts`): **`npm run gen:types`**, then read the diff.
+  Run it after any schema migration and drop any temporary `(supabase as any)` bridge that existed
+  only for a MISSING COLUMN in the same pass. The script (`src/scripts/genTypes.ts`) generates from
+  MOOSII read-only, formats with **oxfmt**, writes CRLF, and replaces the file only via a temp dir
+  after sanity checks — never redirect onto the real file yourself (`>` truncates it first).
+  **Both tools are pinned EXACTLY** (supabase 3.1.0, oxfmt 0.78.0) and run as Node entry points,
+  not `npx`: the CLI no longer formats its own output, a formatter bump would reformat all 7.8k
+  lines, and Node 24 on Windows cannot spawn a `.cmd` without a shell. **A CLI bump is its own
+  commit** — 3.1.0→3.2.0-era changes alone added `ComputedFields` to every table and dropped
+  `| null` from 85 view columns. The ~27 remaining `(supabase as any)` bridges are mostly for VIEWS
+  and RPCs the generator does not type — those stay.
 - **Ad-hoc scripts:** run scripts that import repo code from the repo root (`npx tsx`), so imports
   and `.env` resolve; delete them afterwards. supabase-js on Node 20 needs `ws` for realtime — for a
   one-off query use psql or `fetch` against PostgREST instead.
