@@ -441,6 +441,168 @@ published lessons and zero approved images, so neither can trip §3 or §4.
 
 ---
 
+## 9. A new candidate image sends an approved card back to DRAFT
+
+**Added 2026-11-24** on a separate INVESTIGATE-ONLY brief, after the CMS walk-through: when an image
+job lands a new candidate, an approved card drops to `draft` and its lesson to `pending`. It belongs
+in this document because §4 and §2g already turn on what a new image costs. Read-only; a fuller
+standalone write-up of the same investigation is in `docs/FINDINGS-image-candidate-reset.md`.
+
+### 9.1 The exact path — it is **not** a trigger
+
+It is explicit application code, in two places, and both pass `'draft'`:
+
+| # | Call site | When |
+|---|---|---|
+| 1 | [generateSubSegmentImage.ts:297](../src/jobs/handlers/generateSubSegmentImage.ts:297) — `await resetCardsToDraft(subSeg.seg_id!, [sub_segment_id])` | the `generate_sub_segment_image` job, step 8, on the **non-`auto_approve`** branch. Comment: *"A new candidate image means THIS card is no longer fully reviewed → reset it to 'draft'"* |
+| 2 | [subSegments.ts:297](../src/routes/subSegments.ts:297) — `await resetCardsAndReport(segId!, [subSegmentId])` | `POST /sub-segments/:id/upload-image`, step 9, after the candidate row is inserted |
+
+Both reach [cardReview.ts:47-48](../src/lib/cardReview.ts:47) →
+`set_card_review_state(p_seg_id, [card], 'draft', NULL, NULL)` (**migration 056**). `p_from_state` is
+`NULL`, which the RPC reads as "any current state", so there is no floor: a `clinically_approved`
+card goes straight to `draft`.
+
+**What it resets, precisely:**
+
+| | before | after |
+|---|---|---|
+| editorial approval | held | **lost** |
+| clinical approval | held | **lost** |
+| `segments.seg_status` | `complete` | **`pending`** — `recompute_seg_status` runs inside the same RPC (056) and requires ≥1 card AND *every* card `clinically_approved` |
+| `segments.approved_by` | set | **NULLed** by `recompute_seg_status` when the result is `pending` |
+| `lessons_review_status.content_state` (065) | `published_reviewed` | `published_unreviewed` — and the lesson becomes **un-openable in the app** (065 §B.4: moosii-rn `useLesson.ts` selects `.eq('seg_status','complete')` and throws when nothing matches) |
+
+**Why it looks like a trigger but is not.** `sub_segments.image` *used* to be in the 066 trigger's
+column list, and that was the **092** bug — approving an image un-approved the card it had just
+approved. 092 removed it; the live trigger is `AFTER INSERT OR DELETE OR UPDATE OF title, content,
+sequence` (confirmed on both projects). 092 deliberately **kept** the code reset for the candidate
+paths: *"A NEW image (generate / upload) never touches `image` — it inserts a `content_images`
+candidate and resets the card explicitly in code … The card is re-reviewed when the candidate
+appears, not when the reviewer approves it."* So the behaviour is intended; how far it resets was
+never revisited.
+
+**The inconsistency.** Migration **093** (Mark, 2026-09-21) settled the neighbouring case — an
+*approved* image swapped onto a `clinically_approved` card — and chose the lighter penalty:
+
+| event | penalty today | where |
+|---|---|---|
+| a **candidate** arrives (generate / upload) | `clinically_approved` → **`draft`** (both stages) | code, §9.1 |
+| an **approved** image replaces a different approved one | `clinically_approved` → **`editorial_reviewed`** (clinical only) | `sub_segments_image_swap_review` trigger, 093 |
+
+The merely-proposed picture costs more review than the one that actually goes live.
+
+**Live cost (Moosii, read-only 2026-11-24):** **7** cards are `draft` while holding *both* an approved
+image and a newer candidate — i.e. they had a finished picture, a regenerate dropped a candidate
+beside it, and the card lost its whole review. 244 more are `draft` with a candidate and no approved
+image (same mechanism, nothing lost, but indistinguishable in the queue). **No `clinically_approved`
+card anywhere holds a candidate** — necessarily, because a candidate resets it. 23 of the 50 pending
+segments have the property that every draft card in them holds a candidate.
+
+### 9.2 Proposal, as specified
+
+Three parts, matching the brief.
+
+**(a) A new candidate keeps the card's TEXT (editorial) approval.** Change both call sites from
+`'draft'` to a **demotion floored at `editorial_reviewed`**: a `clinically_approved` card →
+`editorial_reviewed`; a card already `editorial_reviewed` or `draft` → unchanged. `set_card_review_state`
+already takes `p_from_state`, so this is `set_card_review_state(seg, [card], 'editorial_reviewed',
+'clinically_approved', NULL)` — the existing RPC, no migration needed for this part, and the
+`IS DISTINCT FROM` / `p_from_state` guard makes it a no-op on an unapproved card.
+
+This is exactly 093's rule, applied to the candidate event. Two bonuses: it makes all three image
+paths agree (`auto_approve` already skips the reset and ends `editorial_reviewed` via 093), and it
+stops a regenerate from costing an editor a second pass over text they never changed.
+
+**(b) Image approve = editorial capability — already true, nothing to change.**
+[images.ts:17](../src/routes/images.ts:17) is `if (!hasCapability(req.user, "editorial"))`, documented
+at `api-contract.md:200`: *"cap: EDITORIAL. A picture is an editorial choice; the clinical consequence
+is handled by the database."* Confirmed, no work.
+
+**(c) Clinical on image approve stays as today — 093 untouched.** Approving a different picture on a
+`clinically_approved` card keeps dropping it to `editorial_reviewed`
+(`sub_segments_image_swap_review`, `AFTER UPDATE OF image … WHEN OLD.review_state =
+'clinically_approved'`). Nothing in (a) interferes: by the time the image is approved the card is
+already `editorial_reviewed`, so 093's `WHEN` clause is false and the trigger simply does not fire.
+
+### 9.3 ⚠ What (a) alone does **not** give you
+
+> *"the lesson is not complete again until the image is approved"*
+
+**Demotion alone does not enforce that.** It makes the lesson *not complete until the card is
+clinically re-approved* — which is a different condition, and strictly weaker in one direction and
+stronger in another:
+
+* **Weaker:** `POST /segments/:id/clinical-approve` gates only on *card* state —
+  `countDraftInScope` ([segments.ts:178-187](../src/routes/segments.ts:178)) refuses with
+  `409 editorial_review_required` when a card is `draft`, and a card at `editorial_reviewed` passes
+  cleanly. So a clinician can promote the card and return the segment to `complete` **with the
+  candidate still unapproved** and the card's live picture still the old one. Today's `draft` reset
+  accidentally blocks that, because `draft` trips the 409.
+* **Stronger:** approving the image is not *sufficient* either — 093 then demotes, so a clinical
+  sign-off is still required. That is part (c), as intended.
+
+To make the requirement structural, `complete` has to know about the image. The minimal form:
+extend **`recompute_seg_status`** so a segment is `complete` only when ≥1 card AND every card
+`clinically_approved` **AND** no card holds an *unadjudicated candidate* — a `content_images` row
+with `status='candidate'` created after that card's current approved image was approved (any
+candidate if the card has none). `rejected`/`superseded` never count, so
+`POST /content-images/:id/reject` ([images.ts:80](../src/routes/images.ts:80), writes
+`status='rejected'`) is the escape hatch and already exists. It needs one companion trigger on
+`content_images` — `AFTER INSERT OR DELETE OR UPDATE OF status`, whose **only** action is
+`PERFORM recompute_seg_status(<owning segment>)`, never a card-state write — so the gate closes when
+a candidate lands and re-opens when it is approved or rejected, whoever did it. `content_images`
+carries no trigger on either project today, so that part is additive.
+
+**Measured impact of the gate change:** **7** currently-`complete` segments hold an unadjudicated
+candidate and would go `pending`. All 7 also have unapproved cards (no `clinically_approved` card
+anywhere holds a candidate), so all 7 are already inside the 25 stale-`complete` segments that
+`docs/FINDINGS-complete-with-draft-cards.md` recommends re-deriving. **Effect on correctly-complete
+segments: 0.** **0** segments move the other way. On financial: 0 either way.
+
+⚠ Only **1** `rejected` row exists on Moosii against 269 candidates, so the CMS needs a visible
+reject action before the gate ships or editors will be stuck behind candidates nobody adjudicated.
+CMS-seat follow-up.
+
+### 9.4 Classification
+
+| part | class | why |
+|---|---|---|
+| (a) demotion floored at `editorial_reviewed` | **code only, no migration** | two call sites, uses `set_card_review_state`'s existing `p_from_state`. It cannot make anything more approved than today — it only stops a demotion going too far |
+| (b) editorial capability on image approve | **no change** | already the case |
+| (c) 093 behaviour | **no change** | explicitly preserved |
+| (d) the `recompute_seg_status` gate + `content_images` trigger | **REVIEW REQUIRED** | replaces **the single writer of `seg_status`** — the only function on either project whose body writes it. md5 guard per CLAUDE.md: live value `660ed036da2cf30d2886244d850e7dab` (`md5(replace(pg_get_functiondef(oid), chr(13), ''))`), **identical on both projects**; re-grant EXECUTE per 094 after the replace. It also **tightens an app-facing gate** — 056 promised *"seg_status keeps its EXACT shape/meaning"*, and the app plus three RLS SELECT policies key on `complete`, so a segment going `pending` makes the lesson un-openable. That is the intent for an unreviewed picture, but it is a visible catalog change |
+
+**Sequencing:** (a) can ship alone, immediately, as a strict improvement. (d) should land **with or
+after** the stale-`complete` repair, or the 7 overlapping segments get re-derived twice for two
+reasons and neither verification is separable.
+
+### 9.5 What else depends on the current behaviour
+
+| depends on "a new candidate resets the card to `draft`" | effect of the change |
+|---|---|
+| **092's safety argument** ([092 header](../migrations/092_card_reset_ignores_image_pointer.sql:19), *"WHY THIS LOSES NO RESET"*) rests on the code reset existing for the generate/upload paths — it is the reason dropping `image` from 066's column list was safe | still holds: (a) keeps a reset, just floored at `editorial_reviewed`. The header's wording needs updating, not its logic |
+| **`countDraftInScope`'s 409** ([segments.ts:178](../src/routes/segments.ts:178), `api-contract.md:275`) today blocks a clinical approve after an image generate, because the card is `draft` | **changes behaviour**: the card is `editorial_reviewed`, so clinical-approve now succeeds. This is the §9.3 hole — intended under (a)+(d), a regression under (a) alone |
+| **`approve_segment_bundle`'s 093 ordering** (093 §2: remember the `editorial_reviewed` cards, approve images, then promote only those) | **improves**: cards demoted by a candidate are now in the remembered set, so one whole-lesson approve finishes them. Under today's `draft` they are excluded from promotion and the bundle silently leaves them behind |
+| **`POST /lessons/:id/approve`'s image pre-check** ([lessons.ts:120-140](../src/routes/lessons.ts:120)) collects the latest linkable candidate per card and 409s `image_not_linkable` | unaffected — keys on `content_images` + `image_assets`, never on `review_state` |
+| **Batch image planning**: `POST /segments/:id/generate-images` modes `unapproved` / `gaps` ([segments.ts:56-70](../src/routes/segments.ts:56)) and `planTrackImages` ([generateTrackImages.ts:72-78](../src/jobs/handlers/generateTrackImages.ts:72)) | unaffected — both key on `content_images.status IN ('candidate','approved')`, never on `review_state` |
+| **`POST /sub-segments/:id/upload-image` returns `approval_reset`** ([subSegments.ts:312](../src/routes/subSegments.ts:312)) — the boolean, though not the `approval_reset_detail` breakdown | **the value changes meaning**: it will report a demotion, not a full reset. Still `true` when the card was clinically approved; now `false` where the card was already `editorial_reviewed`. (Correcting my own earlier report: this route *does* return the boolean — only the detail object is deliberately absent) |
+| **`api-contract.md:203-211`** documents the current split in so many words, including *"The card was already reset to draft when the candidate was generated/uploaded (migration 092)"* | must be rewritten with the change |
+| **`FINDINGS-cover-image.md`** path table (rows 1 and 11) states *"new candidate resets the card to draft"* as the behaviour the cover slice mirrors | the cover slice's design inherits this; its lesson-level variant was already specified as *"never touches any card or its review state"*, which (a) brings the card-level path closer to |
+| **Tests** | **none.** No test in `package.json`'s list covers the image-reset behaviour, so (a) ships with no red suite and no safety net — it needs a new unit test, and the `test` script updated (CLAUDE.md) |
+| **`docs/FINDINGS-reset-audit.md`** | none of these resets writes an audit row today, so the change is invisible in `content_approvals` either way |
+| **§4 of this document** (approved images the content phase destroys) | unchanged — §4 is about `purgeImagesForSubSegments` deleting approved rows on a content replace, a different path |
+
+### 9.6 Decisions (image reset) — separate from the eight above
+
+| # | Decision | Recommendation |
+|---|---|---|
+| **I1** | (a) alone, or (a) + (d)? | **Both.** (a) alone leaves the §9.3 hole *and* removes the accidental block that `draft` currently provides, so shipping it by itself makes "complete without an approved image" easier than it is today. |
+| **I2** | Floor at `editorial_reviewed` (as briefed), or no state change at all plus (d)? | **As briefed** — it is the smaller change, it needs no migration for part (a), and it matches 093. Noting the trade-off once: a demotion still spends the clinical sign-off on a picture that may be rejected seconds later, whereas "no state change + (d)" would make rejecting an unwanted generation cost nothing. Your call; the briefed version is what §9.2 specifies. |
+| **I3** | Ship (d) before, with, or after the stale-`complete` repair? | **With or after** (7 segments overlap). |
+| **I4** | CMS reject action before (d) ships? | **Yes** — 1 `rejected` row against 269 candidates says the action is not being used today. |
+
+---
+
 ## Decisions for Mark
 
 1. **Reverse §2g's "not chained" decision?** (§1) The contract states it deliberately: images fire
