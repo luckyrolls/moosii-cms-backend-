@@ -5,7 +5,7 @@ import { supabase } from "../supabase";
 import { createAndStartJob } from "../jobs/runner";
 import { purgeImagesForSubSegments } from "../storage/purgeImages";
 import { uploadImage } from "../storage/upload";
-import { resetCardsAndReport, recomputeSegStatus, captureReview, diffReview, toApprovalFields } from "../lib/cardReview";
+import { resetCardsAndReport, recomputeSegStatus, captureReview, diffReview, toApprovalFields, applyCandidateArrival } from "../lib/cardReview";
 import { apiError } from "../lib/errors";
 
 // content_images.source / uploaded_by postdate database.types.ts (migration applied, types
@@ -292,9 +292,13 @@ router.post(
       apiError(res, 500, "insert_failed", ciErr?.message ?? "content_images insert failed"); return;
     }
 
-    // 9. A new image for this card invalidates its review → reset THAT card to 'draft' and
-    //    recompute (migration 056). seg_status is derived, never written here.
-    const { approval_reset } = await resetCardsAndReport(segId!, [subSegmentId]);
+    // 9. SLICE A1. A new candidate keeps the card's TEXT approval: clinically_approved drops
+    //    to editorial_reviewed only when the card has no approved image to fall back on, and
+    //    nothing moves at all when it does (the live picture is unchanged, so a published
+    //    lesson stays reviewed). The segment's gate is recomputed by migration 129's
+    //    content_images trigger. `approval_reset` keeps its meaning — "did this cost an
+    //    approval" — and is now false on a replacement candidate.
+    const { demoted: approval_reset } = await applyCandidateArrival(segId!, subSegmentId);
 
     res.status(201).json({
       ok: true,

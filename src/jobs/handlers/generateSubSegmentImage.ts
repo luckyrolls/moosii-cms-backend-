@@ -5,7 +5,7 @@ import { getLLMClient } from "../../llm";
 import { getImageGenerator } from "../../imagegen";
 import { uploadImage } from "../../storage/upload";
 import { logAiCall, formatLlmPrompt } from "../../lib/aiLog";
-import { resetCardsToDraft } from "../../lib/cardReview";
+import { applyCandidateArrival } from "../../lib/cardReview";
 import type { Job } from "../registry";
 import { DOMAIN } from "../../lib/domain";
 
@@ -290,11 +290,14 @@ export async function generateSubSegmentImage(
 
     finalStatus = "approved";
   } else {
-    // A new candidate image means THIS card is no longer fully reviewed → reset it to 'draft'
-    // and recompute the segment's derived gate (migration 056). seg_status is never written
-    // directly. auto_approve is an explicit "approve this now" (never set by CMS regen paths),
-    // so it correctly skips the invalidation.
-    await resetCardsToDraft(subSeg.seg_id!, [sub_segment_id]); // loadContext threw if seg_id was null
+    // SLICE A1. A new candidate NO LONGER sends the card to 'draft' (which also threw away
+    // the editorial pass over text nobody had edited). It keeps the card's TEXT approval:
+    // clinically_approved → editorial_reviewed when the card has no approved image to fall
+    // back on, and NOTHING AT ALL when it does — a replacement candidate beside an approved
+    // image leaves the live picture alone, so a published lesson stays reviewed. The segment's
+    // gate is recomputed by migration 129's content_images trigger either way.
+    // auto_approve is an explicit "approve this now" and still skips this entirely.
+    await applyCandidateArrival(subSeg.seg_id!, sub_segment_id); // loadContext threw if seg_id was null
   }
 
   return {

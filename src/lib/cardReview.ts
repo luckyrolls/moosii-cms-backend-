@@ -1,4 +1,5 @@
 import { supabase } from "../supabase";
+import { candidateArrivalTarget } from "./approvalSafety";
 
 // review_state / the RPCs postdate database.types.ts (migration 056). Untyped bridge.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +47,45 @@ export async function setCardsReviewState(
 // that changed a card's content or image. cardIds null = the whole segment (full regen).
 export async function resetCardsToDraft(segId: string, cardIds: string[] | null): Promise<SetCardsResult> {
   return setCardsReviewState(segId, cardIds, "draft", null, null);
+}
+
+// SLICE A1 — a NEW CANDIDATE image arrived on a card. This replaces the old
+// `resetCardsToDraft` call on the two candidate paths (the image job and the upload route).
+//
+// The rule is in `candidateArrivalTarget` (src/lib/approvalSafety.ts) and comes to two cases:
+//   * the card already has an APPROVED image → change NOTHING. The live picture is still the
+//     approved one, so a published lesson must not drop to published_unreviewed because
+//     somebody pressed regenerate. The segment's gate is still recomputed — by the
+//     content_images trigger (migration 129), not from here.
+//   * no approved image → a clinically_approved card drops to 'editorial_reviewed' and keeps
+//     its TEXT approval. A draft or editorial card is untouched (the `p_from_state` guard
+//     makes that a no-op, so this is safe to call unconditionally).
+//
+// Returns whether an approval was actually spent, for the route's `approval_reset` field.
+export async function applyCandidateArrival(
+  segId: string,
+  cardId: string
+): Promise<{ demoted: boolean; seg_status: string | null }> {
+  const { data: card } = await db
+    .from("sub_segments").select("review_state").eq("id", cardId).maybeSingle();
+  const current = (card?.review_state as ReviewState | undefined) ?? "draft";
+
+  const { data: approved } = await db
+    .from("content_images").select("id")
+    .eq("sub_segment_id", cardId).eq("status", "approved").limit(1);
+  const hasApproved = ((approved ?? []) as unknown[]).length > 0;
+
+  const target = candidateArrivalTarget(current, { has_approved: hasApproved });
+  if (!target) {
+    // Nothing to move. Do NOT recompute here: migration 129's content_images trigger already
+    // did it when the candidate row landed, and calling it again would be a second lock on
+    // the segment for no change.
+    const { data: seg } = await db.from("segments").select("seg_status").eq("id", segId).maybeSingle();
+    return { demoted: false, seg_status: (seg?.seg_status as string | null) ?? null };
+  }
+
+  const r = await setCardsReviewState(segId, [cardId], target, "clinically_approved", null);
+  return { demoted: r.cards_updated > 0, seg_status: r.seg_status };
 }
 
 // Reset + report whether an approved segment was knocked back (preserves the old

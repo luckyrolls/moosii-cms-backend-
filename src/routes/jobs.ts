@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../supabase";
 import { createAndStartJob } from "../jobs/runner";
+import { apiError } from "../lib/errors";
+import { checkJobPrecondition } from "../lib/jobPreconditions";
 
 const router = Router();
 
@@ -13,6 +15,14 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
   }
 
   try {
+    // SLICE A1 — type-aware precondition, BEFORE the job row exists, so a refusal is an HTTP
+    // error the CMS can show rather than a 202 followed by a failed job (src/lib/jobPreconditions.ts).
+    const pre = await checkJobPrecondition(type, input);
+    if (!pre.ok) {
+      apiError(res, pre.status, pre.code, pre.message);
+      return;
+    }
+
     const jobId = await createAndStartJob(type, input);
     res.status(202).json({ job_id: jobId });
   } catch (err) {
