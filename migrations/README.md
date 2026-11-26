@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 128 · Moosii 128** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 129 · Moosii 128** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126, 127 and 128; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
@@ -1118,6 +1118,54 @@ Main track:
   no local key for the Moosii service's `/jobs` and `POST /mlp/rebuild-all` needs an admin JWT.
   FOLLOW-UP, not in this file: the three routes, `api-contract.md` §13 and the route/unit tests are a
   separate commit.
+
+- **129 — the approval image gate: an un-adjudicated candidate holds a segment out of `complete`** — **APPLIED financial (2026-11-25) · DRAFT Moosii.**
+  BOTH PROJECTS, schema only, **no rows written**. Slice A1's structural half.
+  `recompute_seg_status` — the SINGLE writer of `segments.seg_status` — gains ONE clause: a card with
+  **no approved image but an un-adjudicated candidate** keeps its segment `pending`. A replacement
+  candidate **beside** an approved image does NOT block, which is the whole asymmetry: pressing
+  regenerate on a published lesson must not drop it to `published_unreviewed`, because the live
+  picture is still the approved one. A new `content_images_recompute()` + `content_images_recompute_trg`
+  (AFTER INSERT OR DELETE OR UPDATE **OF status**) makes the gate fire on image movement without
+  writing `seg_status` itself, so the single-writer rule is preserved.
+  **Guarded on the EXACT pre-129 md5** `660ed036da2cf30d2886244d850e7dab`, compared after stripping
+  CR — the 118/120 rule, not a `prosrc LIKE`. VERIFY asserts the new body carries the clause (matched
+  on the SQL `ci.status = 'candidate'`, never on a comment's wording), the trigger's scope, the 094
+  grants, and that the **056/066/092/093** function bodies are byte-identical
+  (`sub_segments_reset_review` `947187be…`, `quiz_reset_review` `46edd210…`,
+  `sub_segments_image_swap_review` `6d673726…`, `set_card_review_state` `4bb5e0cb…`).
+  Post-129 body md5: `017a190fd685972a20924e1a98e16170`.
+  **The file re-derives nothing.** Affected segments flip only when something next recomputes them
+  (a card transition, an image change, or the stale-complete repair), so an apply cannot change what
+  a parent sees on its own. Measured read-only before the apply: **financial 0 segments, Moosii 7**
+  — and all 7 Moosii ones already have unapproved cards, i.e. they are already in the 25-segment
+  stale-`complete` set (migration 056 ran no re-derive loop; `docs/FINDINGS-complete-with-draft-cards.md`).
+  0 correctly-complete segments move on either project.
+  **No type change** — functions and a trigger only, so `database.types.ts` is unaffected.
+  **UNDO** (four steps, verbatim in the file header): drop the trigger, drop `content_images_recompute()`,
+  restore `recompute_seg_status` to the pre-129 body quoted in §1 until it hashes back to
+  `660ed036…` and re-apply the 094 revoke/grant, then `SELECT recompute_seg_status(id) FROM segments;`.
+  Nothing this file wrote needs undoing.
+  **Local harness `docs/drafts/129-approval-safety/`** (PG 17 cluster, port 55435, from a read-only
+  Moosii schema dump; ten steps, including a **second apply that must be REFUSED by the md5 guard**
+  and 17 behaviour tests, `src/lib/__tests__/approvalGate.db.test.ts`). One of those tests asserts the
+  TypeScript `deriveSegStatus` and the SQL agree on every fixture segment — the duplication is
+  deliberate (the gate must hold against CMS-direct writes too) and that test is what keeps it honest.
+  ⚠ **The dump now already contains 127 and 128**, so this harness asserts they arrived with it
+  rather than applying them; re-applying 128 against such a dump fails in its own VERIFY. 128's own
+  `run.sh` still applies it and will hit that — logged in `docs/backlog.md` (P3).
+  Financial 2026-11-25: identity confirmed read-only first (sysid 7678069749886157684, domain
+  financial, PG 17.6); pre-apply the guard md5 matched, `content_images_recompute()` and the trigger
+  name both free, 10 `complete` / 3 `pending` segments. Apply OK —
+  `129 PRE-CHECK ok on domain financial` →
+  `129 VERIFY ok: the gate is live, the trigger is scoped to status, 056/066/093 untouched`.
+  Post-apply read-only verification: body md5 `017a190f…`; the trigger present and scoped to
+  `UPDATE OF status`; both functions anon/authenticated `f`, service_role `t`; the four
+  056/066/092/093 md5s **unchanged**; seg_status **still 10 `complete` / 3 `pending`**; **0** `complete`
+  rows violating the new gate and **13/13 segments agreeing** with the gate predicate; lessons
+  `10 published_reviewed` / `3 draft`, unchanged.
+  FOLLOW-UP, not in this file: the route and job changes that depend on this gate ship in the same
+  slice but a separate commit, and are **not pushed until Moosii is applied too**.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
