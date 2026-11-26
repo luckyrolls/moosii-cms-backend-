@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 129 · Moosii 128** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 129 · Moosii 129** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126, 127 and 128; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
@@ -1119,7 +1119,7 @@ Main track:
   FOLLOW-UP, not in this file: the three routes, `api-contract.md` §13 and the route/unit tests are a
   separate commit.
 
-- **129 — the approval image gate: an un-adjudicated candidate holds a segment out of `complete`** — **APPLIED financial (2026-11-25) · DRAFT Moosii.**
+- **129 — the approval image gate: an un-adjudicated candidate holds a segment out of `complete`** — **APPLIED financial (2026-11-25) · APPLIED Moosii (2026-11-25).**
   BOTH PROJECTS, schema only, **no rows written**. Slice A1's structural half.
   `recompute_seg_status` — the SINGLE writer of `segments.seg_status` — gains ONE clause: a card with
   **no approved image but an un-adjudicated candidate** keeps its segment `pending`. A replacement
@@ -1164,8 +1164,24 @@ Main track:
   056/066/092/093 md5s **unchanged**; seg_status **still 10 `complete` / 3 `pending`**; **0** `complete`
   rows violating the new gate and **13/13 segments agreeing** with the gate predicate; lessons
   `10 published_reviewed` / `3 draft`, unchanged.
-  FOLLOW-UP, not in this file: the route and job changes that depend on this gate ship in the same
-  slice but a separate commit, and are **not pushed until Moosii is applied too**.
+  Moosii 2026-11-25: identity confirmed read-only first (sysid 7481590244898220655, domain moosii,
+  **PG 15.8** — the harness is PG 17, and the file uses nothing newer than 15); the file applied was
+  byte-identical to the one that ran on financial (`git diff` clean). Pre-apply the guard md5 matched,
+  both new names free, **31 `complete` / 139 `pending`**. Apply OK —
+  `129 PRE-CHECK ok on domain moosii` →
+  `129 VERIFY ok: the gate is live, the trigger is scoped to status, 056/066/093 untouched`.
+  Post-apply read-only verification: body md5 `017a190f…`; the trigger present and scoped to
+  `UPDATE OF status`; both functions anon/authenticated `f`, service_role `t`; the four
+  056/066/092/093 md5s **unchanged**; seg_status **still 31 `complete` / 139 `pending`** — nothing
+  moved, as expected from a file that writes no rows; lessons `11 published_reviewed` / `145 draft`,
+  unchanged.
+  **The 7 pending re-derivations, confirmed in place:** 7 `complete` segments now violate the gate,
+  and **all 7 are inside the pre-existing stale set** — overlap 7, "blocked by the new gate but
+  otherwise correctly complete" **0**. For scale: of 31 stored `complete`, 22 have unapproved cards
+  and 3 are cardless (25 disagreeing with the derived value, the 056 defect), leaving 6 genuinely
+  complete and untouched by this gate. The 7 flip the next time anything recomputes them.
+  FOLLOW-UP, not in this file: the stale-`complete` repair + structural guard
+  (`docs/FINDINGS-complete-with-draft-cards.md`, decisions still open) is what re-derives those 25.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
