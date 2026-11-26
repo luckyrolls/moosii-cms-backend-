@@ -12,6 +12,16 @@ import {
   type SkipReason,
   type TrackGate,
 } from "../../lib/approvalSafety";
+import {
+  buildPerLesson,
+  attachTokens,
+  type LessonRow,
+  type PerLesson,
+  type PlannedUnit,
+  type SkippedUnit,
+  type UnitOutcome,
+} from "../../lib/batchReport";
+import { lessonTokensForRun } from "../../lib/batchUsage";
 
 // ---------------------------------------------------------------------------
 // generate_track_content — ORCHESTRATOR over the existing per-unit generators.
@@ -43,7 +53,7 @@ type Input = {
   include_approved?: never;
 };
 
-export type Unit = { type: "content" | "quiz"; seg_id: string; ref: string };
+export type Unit = { type: "content" | "quiz"; seg_id: string; ref: string; lesson_id: string };
 
 export type BatchResult = {
   status: "running" | "succeeded" | "completed_with_errors";
@@ -57,6 +67,19 @@ export type BatchResult = {
   skipped_by_reason: Record<SkipReason, number>;
   current_unit: string | null;
   errors: { unit: string; message: string }[];
+  // SLICE A2 — the per-lesson report the CMS renders directly (one row per lesson the plan
+  // touched or refused). Written live as units complete; `tokens` is filled by one
+  // ai_generation_log read once the run is over. ADDITIVE: every field above keeps its meaning.
+  per_lesson: PerLesson[];
+  // SLICE A2 — run totals from ai_generation_log for this job's correlation id. `null` until
+  // the post-run pass; `unattributed_calls` are logged calls with no entity to map to a lesson.
+  usage: {
+    ai_calls: number;
+    tokens_in: number;
+    tokens_out: number;
+    tokens_total: number;
+    unattributed_calls: number;
+  } | null;
 };
 
 const CONCURRENCY = parseInt(process.env.BATCH_CONCURRENCY ?? "2", 10);
@@ -65,10 +88,19 @@ const CONCURRENCY = parseInt(process.env.BATCH_CONCURRENCY ?? "2", 10);
 // checkpoint). Pure read — no generation. Exported so the DoD proofs can assert the
 // plan directly without firing the LLM, and so re-planning after partial completion
 // (the resume story) is inspectable.
+export type ContentPlan = {
+  plan: Unit[];
+  skipped_approved: number;
+  skipped_by_reason: Record<SkipReason, number>;
+  // SLICE A2 — the records the per-lesson report and the preview are built from.
+  lessons: LessonRow[];
+  skipped: SkippedUnit[];
+};
+
 export async function planTrackContent(
   track_id: string,
   opts: { mode: Mode; quizzes: boolean; batchCreatedAt: string }
-): Promise<{ plan: Unit[]; skipped_approved: number; skipped_by_reason: Record<SkipReason, number> }> {
+): Promise<ContentPlan> {
   const { mode, quizzes, batchCreatedAt } = opts;
 
   // The TRACK's own archival (invariant 6: a lesson is archived if its own archived_at is set
@@ -88,11 +120,20 @@ export async function planTrackContent(
 
   // tracks <- lessons <- segments. SLICE A1: carry the publish/archive gate down.
   const { data: lessons, error: lErr } = await supabase
-    .from("lessons").select("id, is_published, archived_at").eq("track_id", track_id);
+    .from("lessons").select("id, lesson_name, is_published, archived_at, kind").eq("track_id", track_id);
   if (lErr) throw new Error(`Failed to load lessons for track ${track_id}: ${lErr.message}`);
   const lessonGate = new Map<string, LessonGate>();
+  const lessonRows: LessonRow[] = [];
   for (const l of lessons ?? []) {
-    lessonGate.set(l.id, lessonGateFor(l, trackGate));
+    const gate = lessonGateFor(l, trackGate);
+    lessonGate.set(l.id, gate);
+    lessonRows.push({
+      lesson_id: l.id,
+      lesson_name: l.lesson_name ?? null,
+      kind: gate.kind,
+      is_published: gate.published,
+      archived: gate.archived,
+    });
   }
   const lessonIds = [...lessonGate.keys()];
 
@@ -170,7 +211,10 @@ export async function planTrackContent(
   // it with 400 before the job row exists (src/lib/jobPreconditions.ts).
   const plan: Unit[] = [];
   const reasons: (SkipReason | null)[] = [];
-  const OPEN: LessonGate = { published: false, archived: false };
+  const skippedUnits: SkippedUnit[] = [];
+  const OPEN: LessonGate = {
+    published: false, archived: false, kind: "lesson", editorially_approved: false,
+  };
   for (const seg of segments) {
     const lesson = lessonGate.get(seg.lesson_id) ?? OPEN;
     // seg_status is a two-state model in this DB: 'complete' = approved (regen resets to
@@ -188,8 +232,12 @@ export async function planTrackContent(
       },
       mode
     );
-    if (c.plan) plan.push({ type: "content", seg_id: seg.id, ref: `content:${seg.id}` });
+    const contentRef = `content:${seg.id}`;
+    if (c.plan) plan.push({ type: "content", seg_id: seg.id, ref: contentRef, lesson_id: seg.lesson_id });
     reasons.push(c.skip);
+    if (c.skip) {
+      skippedUnits.push({ kind: "content", ref: contentRef, lesson_id: seg.lesson_id, reason: c.skip });
+    }
 
     if (quizzes) {
       const count = quizCount.get(seg.id) ?? 0;
@@ -203,8 +251,12 @@ export async function planTrackContent(
         },
         mode
       );
-      if (q.plan) plan.push({ type: "quiz", seg_id: seg.id, ref: `quiz:${seg.id}` });
+      const quizRef = `quiz:${seg.id}`;
+      if (q.plan) plan.push({ type: "quiz", seg_id: seg.id, ref: quizRef, lesson_id: seg.lesson_id });
       reasons.push(q.skip);
+      if (q.skip) {
+        skippedUnits.push({ kind: "quiz", ref: quizRef, lesson_id: seg.lesson_id, reason: q.skip });
+      }
     }
   }
   const skipped_by_reason = tallySkips(reasons);
@@ -212,6 +264,8 @@ export async function planTrackContent(
     plan,
     skipped_approved: skipped_by_reason.approved_content + skipped_by_reason.approved_images,
     skipped_by_reason,
+    lessons: lessonRows,
+    skipped: skippedUnits,
   };
 }
 
@@ -271,17 +325,34 @@ const realRunUnit: RunUnit = makeRunUnit({ generate: generateSegmentContent, rec
 // orchestration (progress shape, resume, poisoned unit) without the LLM. Returns the
 // final result (the runner then persists it + flips jobs.status).
 export async function executeTrackContent(
-  jobId: string, plan: Unit[],
-  skips: { skipped_approved: number; skipped_by_reason: Record<SkipReason, number> },
+  jobId: string, planned: ContentPlan,
   tone_id: string,
   runUnit: RunUnit = realRunUnit
 ): Promise<BatchResult> {
+  const plan = planned.plan;
+  // SLICE A2 — per-lesson rows, rebuilt from the plan + outcomes on every progress write. The
+  // plan is tens of units, so rebuilding is cheaper than keeping two sources of truth in step.
+  const outcomes = new Map<string, UnitOutcome>();
+  const plannedUnits: PlannedUnit[] = plan.map((u) => ({
+    kind: u.type, ref: u.ref, lesson_id: u.lesson_id,
+  }));
   const result: BatchResult = {
     status: "running", total: plan.length, done: 0, failed: 0,
-    skipped_approved: skips.skipped_approved,
-    skipped_by_reason: skips.skipped_by_reason,
+    skipped_approved: planned.skipped_approved,
+    skipped_by_reason: planned.skipped_by_reason,
     current_unit: null, errors: [],
+    per_lesson: [], usage: null,
   };
+  const rebuildPerLesson = () => {
+    result.per_lesson = buildPerLesson({
+      lessons: planned.lessons,
+      planned: plannedUnits,
+      skipped: planned.skipped,
+      outcomes,
+      errors: result.errors,
+    });
+  };
+  rebuildPerLesson();
   // Mutations are safe between awaits (single-threaded). Live progress for CMS polling.
   const writeProgress = async () => {
     await supabase.from("jobs").update({ result: { ...result } as never }).eq("id", jobId);
@@ -298,10 +369,13 @@ export async function executeTrackContent(
       try {
         await runUnit(unit, tone_id, jobId);
         result.done++;
+        outcomes.set(unit.ref, "done");
       } catch (e) {
         result.failed++;
+        outcomes.set(unit.ref, "failed");
         result.errors.push({ unit: unit.ref, message: e instanceof Error ? e.message : String(e) });
       }
+      rebuildPerLesson();
       await writeProgress();
     }
   };
@@ -309,6 +383,16 @@ export async function executeTrackContent(
 
   result.current_unit = null;
   result.status = result.failed > 0 ? "completed_with_errors" : "succeeded";
+
+  // SLICE A2 — what it cost, read back from ai_generation_log by this job's correlation id.
+  // A failure here is logged and leaves `usage` null / tokens 0: a report must never turn a
+  // finished run into a failed one.
+  const segToLesson = new Map(plan.map((u) => [u.seg_id, u.lesson_id]));
+  const { byLesson, usage } = await lessonTokensForRun(jobId, segToLesson);
+  rebuildPerLesson();
+  attachTokens(result.per_lesson, byLesson);
+  result.usage = usage;
+
   await writeProgress();
   return result;
 }
@@ -328,7 +412,6 @@ export async function generateTrackContentHandler(job: Job): Promise<unknown> {
       "or approved images. Unapprove the segments you really mean to replace."
     );
   }
-  const { plan, skipped_approved, skipped_by_reason } =
-    await planTrackContent(track_id, { mode, quizzes, batchCreatedAt: job.created_at });
-  return executeTrackContent(job.id, plan, { skipped_approved, skipped_by_reason }, tone_id);
+  const planned = await planTrackContent(track_id, { mode, quizzes, batchCreatedAt: job.created_at });
+  return executeTrackContent(job.id, planned, tone_id);
 }

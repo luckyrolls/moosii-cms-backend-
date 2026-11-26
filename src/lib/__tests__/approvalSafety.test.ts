@@ -11,10 +11,19 @@ import {
   regenApprovedImageBlock,
   trackExcludedFromBatch,
   lessonGateFor,
+  SKIP_REASONS,
   type ReviewState,
 } from "../approvalSafety";
 
-const OPEN = { published: false, archived: false };
+const OPEN = {
+  published: false,
+  archived: false,
+  kind: "lesson" as const,
+  editorially_approved: false,
+};
+/** A lesson gate with everything signed off, for the rules that read the extra fields. */
+const APPROVED = { ...OPEN, editorially_approved: true };
+const ACTIVITY = { ...OPEN, kind: "activity" as const };
 
 // ---------------------------------------------------------------------------
 // 1. The gate
@@ -145,7 +154,7 @@ test("track: a missing row reads as eligible, not as archived", () => {
 test("lessonGateFor: the lesson's own archived_at is always manual", () => {
   assert.deepEqual(
     lessonGateFor({ is_published: false, archived_at: "2026-11-19T00:00:00Z" }, trk()),
-    { published: false, archived: true }
+    { published: false, archived: true, kind: "lesson", editorially_approved: false }
   );
 });
 
@@ -155,7 +164,7 @@ test("lessonGateFor: a mode-hidden track leaves its lessons buildable", () => {
       { is_published: false, archived_at: null },
       trk({ archived_at: "2026-11-19T00:00:00Z", mode_archived: true })
     ),
-    { published: false, archived: false }
+    { published: false, archived: false, kind: "lesson", editorially_approved: false }
   );
 });
 
@@ -165,7 +174,7 @@ test("lessonGateFor: a manually archived track excludes its unarchived lessons",
       { is_published: true, archived_at: null },
       trk({ archived_at: "2026-11-19T00:00:00Z", mode_archived: false })
     ),
-    { published: true, archived: true }
+    { published: true, archived: true, kind: "lesson", editorially_approved: false }
   );
 });
 
@@ -306,8 +315,11 @@ test("images: the lesson gate outranks has_image, so an excluded lesson reports 
 test("tallySkips: every reason is present even at zero", () => {
   const t = tallySkips(["published", "published", "approved_images", null]);
   assert.deepEqual(t, {
-    published: 2, archived: 0, approved_images: 1, approved_content: 0, resume: 0, no_content: 0,
+    published: 2, archived: 0, approved_images: 1, approved_content: 0, resume: 0,
+    no_content: 0, activity: 0, not_editorially_approved: 0,
   });
+  // Every reason in the union must be in the tally, or a batch loses a skip silently.
+  assert.deepEqual(Object.keys(t).sort(), [...SKIP_REASONS].sort());
 });
 
 // ---------------------------------------------------------------------------
@@ -342,4 +354,118 @@ test("regen block: single_card with no card_id cannot match anything", () => {
     regenApprovedImageBlock({ scope: "single_card", card_id: null, approvedImageCardIds: ["c1"] }),
     null
   );
+});
+
+// ---------------------------------------------------------------------------
+// 6. Slice A2 — the activity rule and the optional editorial gate
+// ---------------------------------------------------------------------------
+
+test("quiz: an ACTIVITY never gets a quiz, in either mode", () => {
+  for (const mode of ["fill_missing", "replace"] as const) {
+    assert.deepEqual(quizSkipReason(qseg({ lesson: ACTIVITY }), mode), {
+      plan: false,
+      skip: "activity",
+    });
+  }
+});
+
+test("quiz: an activity is refused even when it has no questions at all", () => {
+  // fill_missing would otherwise plan exactly this segment — the whole point of the rule.
+  assert.equal(quizSkipReason(qseg({ lesson: ACTIVITY, question_count: 0 }), "fill_missing").plan, false);
+  assert.equal(quizSkipReason(qseg({ lesson: OPEN, question_count: 0 }), "fill_missing").plan, true);
+});
+
+test("quiz: published/archived still outrank the activity reason", () => {
+  assert.equal(
+    quizSkipReason(qseg({ lesson: { ...ACTIVITY, published: true } }), "replace").skip,
+    "published"
+  );
+  assert.equal(
+    quizSkipReason(qseg({ lesson: { ...ACTIVITY, archived: true } }), "replace").skip,
+    "archived"
+  );
+});
+
+test("quiz: CONTENT is still generated for an activity (only the quiz is refused)", () => {
+  assert.deepEqual(contentSkipReason(seg({ lesson: ACTIVITY }), "fill_missing"), {
+    plan: true,
+    skip: null,
+  });
+});
+
+const slot = (over: Partial<Parameters<typeof imageSkipReason>[0]> = {}) => ({
+  sub_segment_id: "c1",
+  lesson: OPEN,
+  has_image: false,
+  segment_has_content: true,
+  ...over,
+});
+
+test("images: by DEFAULT editorial approval is not required (Mark, 2026-11-25)", () => {
+  assert.deepEqual(imageSkipReason(slot()), { plan: true, skip: null });
+  assert.deepEqual(imageSkipReason(slot(), {}), { plan: true, skip: null });
+  assert.deepEqual(imageSkipReason(slot(), { onlyEditoriallyApproved: false }), {
+    plan: true,
+    skip: null,
+  });
+});
+
+test("images: only_editorially_approved refuses a lesson with cards awaiting editorial", () => {
+  assert.deepEqual(imageSkipReason(slot(), { onlyEditoriallyApproved: true }), {
+    plan: false,
+    skip: "not_editorially_approved",
+  });
+  assert.deepEqual(
+    imageSkipReason(slot({ lesson: APPROVED }), { onlyEditoriallyApproved: true }),
+    { plan: true, skip: null }
+  );
+});
+
+test("images: the editorial gate outranks has_image, so the row says WHY", () => {
+  assert.deepEqual(
+    imageSkipReason(slot({ has_image: true }), { onlyEditoriallyApproved: true }),
+    { plan: false, skip: "not_editorially_approved" }
+  );
+  // and without the flag, an existing image is still a silent skip
+  assert.deepEqual(imageSkipReason(slot({ has_image: true })), { plan: false, skip: null });
+});
+
+test("images: published/archived outrank the editorial gate", () => {
+  assert.equal(
+    imageSkipReason(slot({ lesson: { ...OPEN, published: true } }), { onlyEditoriallyApproved: true }).skip,
+    "published"
+  );
+});
+
+test("lessonGateFor: editorial approval = cards exist AND none awaiting editorial (065)", () => {
+  const g = (cards_total: number, awaiting: number) =>
+    lessonGateFor({ is_published: false, archived_at: null }, trk(), {
+      cards_total,
+      cards_awaiting_editorial: awaiting,
+    }).editorially_approved;
+  assert.equal(g(8, 0), true);
+  assert.equal(g(8, 1), false);
+  // An EMPTY lesson is not approved — nothing has been reviewed, and treating emptiness as a
+  // sign-off is how a strict sweep would quietly illustrate unreviewed work.
+  assert.equal(g(0, 0), false);
+});
+
+test("lessonGateFor: no review counts loaded → not editorially approved", () => {
+  assert.equal(
+    lessonGateFor({ is_published: false, archived_at: null }, trk()).editorially_approved,
+    false
+  );
+  assert.equal(
+    lessonGateFor({ is_published: false, archived_at: null }, trk(), null).editorially_approved,
+    false
+  );
+});
+
+test("lessonGateFor: kind comes straight from lessons.kind, defaulting to lesson", () => {
+  const k = (kind: string | null | undefined) =>
+    lessonGateFor({ is_published: false, archived_at: null, kind }, trk()).kind;
+  assert.equal(k("activity"), "activity");
+  assert.equal(k("lesson"), "lesson");
+  assert.equal(k(null), "lesson");
+  assert.equal(k(undefined), "lesson");
 });

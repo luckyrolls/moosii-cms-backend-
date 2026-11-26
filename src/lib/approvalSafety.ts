@@ -81,12 +81,32 @@ export type SkipReason =
   | "approved_images"  // the segment carries an approved image a replace would destroy
   | "approved_content" // replace only: the segment is signed off
   | "resume"           // a dead run in this lineage already regenerated this unit
-  | "no_content";      // images only: nothing to illustrate yet
+  | "no_content"       // images only: nothing to illustrate yet
+  | "activity"         // quiz only: an activity never gets a quiz (slice A2, structural)
+  | "not_editorially_approved"; // images only, when only_editorially_approved is asked for
+
+/** Every reason, in report order. A new reason MUST be added here or a tally loses it. */
+export const SKIP_REASONS: readonly SkipReason[] = [
+  "published", "archived", "approved_images", "approved_content",
+  "resume", "no_content", "activity", "not_editorially_approved",
+] as const;
 
 export type BatchMode = "fill_missing" | "replace";
 
-/** Lesson-level facts, shared by both batches. `archived` already folds in the track. */
-export type LessonGate = { published: boolean; archived: boolean };
+/**
+ * Lesson-level facts, shared by both batches. `archived` already folds in the track.
+ *
+ * `kind` drives the quiz rule only (an activity never gets a quiz). `editorially_approved`
+ * drives the image batch's optional `only_editorially_approved` filter and NOTHING else — it
+ * is false when the caller did not load the review counts, which is safe because the only
+ * rule that reads it is opt-in.
+ */
+export type LessonGate = {
+  published: boolean;
+  archived: boolean;
+  kind: "lesson" | "activity";
+  editorially_approved: boolean;
+};
 
 /** The three track columns batch eligibility reads (128 added the last two). */
 export type TrackGate = {
@@ -124,12 +144,21 @@ export function trackExcludedFromBatch(t: TrackGate): boolean {
  * is always manual — lessons have no `mode_archived` and no mode switch touches them.
  */
 export function lessonGateFor(
-  lesson: { is_published: boolean | null; archived_at: string | null },
-  track: TrackGate
+  lesson: { is_published: boolean | null; archived_at: string | null; kind?: string | null },
+  track: TrackGate,
+  review?: { cards_total: number; cards_awaiting_editorial: number } | null
 ): LessonGate {
   return {
     published: !!lesson.is_published,
     archived: !!lesson.archived_at || trackExcludedFromBatch(track),
+    // lessons.kind is NOT NULL DEFAULT 'lesson' with a CHECK of ('lesson','activity')
+    // (verified live on both projects), so anything that is not 'activity' is a lesson.
+    kind: lesson.kind === "activity" ? "activity" : "lesson",
+    // EDITORIAL APPROVAL, as the CMS shows it (lessons_review_status, migration 065):
+    // no card is still `draft`. A lesson with NO cards is NOT editorially approved — it has
+    // nothing to approve, and treating emptiness as a sign-off is how a batch would quietly
+    // illustrate unreviewed work.
+    editorially_approved: !!review && review.cards_total > 0 && review.cards_awaiting_editorial === 0,
   };
 }
 
@@ -198,6 +227,12 @@ export function quizSkipReason(
   const ls = lessonSkip(seg.lesson);
   if (ls) return { plan: false, skip: ls };
 
+  // SLICE A2 (Mark, 2026-11-25): quizzes are for LESSONS only, never activities. Structural,
+  // not a convention — an activity is a thing the parent DOES, and there is nothing to test.
+  // Enforced here rather than in the quiz generator so the batch REPORTS it as a skip with a
+  // reason instead of producing a unit that fails or, worse, succeeds.
+  if (seg.lesson.kind === "activity") return { plan: false, skip: "activity" };
+
   if (mode === "fill_missing") {
     return seg.question_count === 0 ? { plan: true, skip: null } : { plan: false, skip: null };
   }
@@ -217,9 +252,19 @@ export type ImageSlot = {
  * The image batch is fill-only, so it never destroys anything — but it still must not add
  * pictures to a published or archived lesson, which is what the lesson gate is for here.
  */
-export function imageSkipReason(slot: ImageSlot): { plan: boolean; skip: SkipReason | null } {
+export function imageSkipReason(
+  slot: ImageSlot,
+  opts: { onlyEditoriallyApproved?: boolean } = {}
+): { plan: boolean; skip: SkipReason | null } {
   const ls = lessonSkip(slot.lesson);
   if (ls) return { plan: false, skip: ls };
+  // OPT-IN (slice A2): images do NOT require editorial approval by default (Mark, 2026-11-25) —
+  // illustrating pending content is normal. When the caller asks for it, a lesson with any card
+  // still awaiting editorial is excluded WHOLE, and reports why. Ranked above has_image for the
+  // same reason the lesson gate is: an excluded lesson must not look already-illustrated.
+  if (opts.onlyEditoriallyApproved && !slot.lesson.editorially_approved) {
+    return { plan: false, skip: "not_editorially_approved" };
+  }
   if (slot.has_image) return { plan: false, skip: null };   // regen is per-image, not a batch
   if (!slot.segment_has_content) return { plan: false, skip: "no_content" };
   return { plan: true, skip: null };
@@ -227,9 +272,7 @@ export function imageSkipReason(slot: ImageSlot): { plan: boolean; skip: SkipRea
 
 /** Tally skip reasons for `jobs.result`. Always carries every key, so a zero is explicit. */
 export function tallySkips(reasons: (SkipReason | null)[]): Record<SkipReason, number> {
-  const t: Record<SkipReason, number> = {
-    published: 0, archived: 0, approved_images: 0, approved_content: 0, resume: 0, no_content: 0,
-  };
+  const t = Object.fromEntries(SKIP_REASONS.map((r) => [r, 0])) as Record<SkipReason, number>;
   for (const r of reasons) if (r) t[r]++;
   return t;
 }

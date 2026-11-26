@@ -24,6 +24,7 @@ import mlpRouter from "./routes/mlp";
 import sourceDocumentsRouter from "./routes/sourceDocuments";
 import usersRouter from "./routes/users";
 import catalogModeRouter, { trackGroupRouter } from "./routes/catalogMode";
+import { trackBuildoutRouter } from "./routes/trackBuildout";
 import factsRouter from "./routes/facts";
 import demoRouter from "./routes/demo";
 import { activitiesRouter, activityFollowupsRouter } from "./routes/activities";
@@ -76,6 +77,8 @@ app.use("/users", jwtAuthMiddleware, usersRouter);
 // super_admin in TS and again in the database against p_actor. Both mount behind the admin gate.
 app.use("/admin", jwtAuthMiddleware, catalogModeRouter);
 app.use("/tracks", jwtAuthMiddleware, trackGroupRouter);
+// GET /tracks/:id/plan-preview — slice A2 dry run of both batches (read-only, no job row).
+app.use("/tracks", jwtAuthMiddleware, trackBuildoutRouter);
 
 // App-facing (mobile) AND admin console: /classify-update and /mlp verify the
 // end-user's Supabase JWT themselves (NOT the admin-only gate). classify-update has
