@@ -2361,7 +2361,13 @@ backend must preserve and the frontend leans on:
   > ⚠️ **`seg_status` is privilege-protected — NOT directly writable (migration 057).**
   > `UPDATE(seg_status)` is `REVOKE`d from `service_role`/`authenticated`/`anon`; only
   > `recompute_seg_status()` (SECURITY DEFINER) can write it, so a stray direct write fails with
-  > "permission denied" (fail-closed, no trigger). **When you add a new `segments` column, add it
+  > "permission denied" (fail-closed, no trigger) — **on Moosii. On financial 057's revoke is
+  > ABSENT** (table-wide UPDATE to anon/authenticated/service_role, 23 of 23 columns: the schema
+  > dump that built it restored Supabase's defaults over 057). Since **migration 131** that no
+  > longer matters: a BEFORE UPDATE trigger on `segments` refuses any `seg_status` that is not
+  > `seg_status_derived(id)`, in either direction, with `23514` / HINT `seg_status_not_derived`.
+  > `recompute_seg_status` passes it by construction — it writes exactly that value. **When you
+  > add a new `segments` column, add it
   > to the `GRANT UPDATE (...)` list in migration 057 (or a follow-up), or backend writes to it
   > will fail with "permission denied".** Never `GRANT ALL`/`GRANT UPDATE` table-wide on
   > `segments` — it silently undoes the guard.

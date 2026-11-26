@@ -13,6 +13,17 @@
 -- The forbidden combination cannot be represented, so there is nothing to enforce. A stored
 -- column would only add a second source of truth to drift (invariants 6 and 12).
 --
+-- ⚠ THAT WAS WRONG IN PRACTICE FOR THREE MONTHS (added 2026-11-26, decision D9).
+-- The combination COULD be represented, because `seg_status` was a plain column anyone with the
+-- privilege could write and migration 056 had itself left 25 Moosii segments storing `complete`
+-- with every card in `draft`. This view reported all 7 published ones as `published_reviewed`:
+-- confidently wrong, on exactly the reasoning above. Migration 130 re-derived those rows and
+-- migration 131 made the state unrepresentable for real — `seg_status` may now only ever hold
+-- `seg_status_derived(id)`, enforced by a BEFORE UPDATE trigger. The tautology argument is sound
+-- again, and the view is left UNCHANGED on purpose: fixing it would have treated the symptom in a
+-- second place while `seg_status` went on lying to the app and the three RLS SELECT policies.
+-- See docs/FINDINGS-complete-with-draft-cards.md.
+--
 -- IT CLEARS ITSELF. Re-approval moves the cards to clinically_approved, seg_status recomputes
 -- to 'complete', and the lesson reads as published_reviewed again. No clearing step exists to
 -- be forgotten.

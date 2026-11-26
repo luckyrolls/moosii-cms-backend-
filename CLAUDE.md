@@ -159,7 +159,9 @@ which instruction version produced it — full provenance, so regressions are di
   `topics` and the quiz tables. `sub_segments.image` stays the app's live-image pointer;
   the backend writes it on approval in addition to `content_images`.
 - Review state is DERIVED upward: card `review_state` (draft → editorial_reviewed →
-  clinically_approved) → `segments.seg_status` via `recompute_seg_status` only (056) →
+  clinically_approved) → `segments.seg_status` via `recompute_seg_status` only (056/129, writing
+  `seg_status_derived()`; **131 refuses any other value in either direction**, HINT
+  `seg_status_not_derived` — so a repair is a recompute, never an UPDATE) →
   `lessons_review_status` view (065). Content edits reset review via backend routes AND the
   066 triggers (CMS-direct paths). Resets are NOT audited today (backlog P3).
 - Users: `public."user"` only partially covers the auth-uid space (an app parent may have no
