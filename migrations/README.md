@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 131 · Moosii 129** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 131 · Moosii 131** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126, 127 and 128; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
@@ -1183,7 +1183,7 @@ Main track:
   FOLLOW-UP, not in this file: the stale-`complete` repair + structural guard
   (`docs/FINDINGS-complete-with-draft-cards.md`, decisions still open) is what re-derives those 25.
 
-- **130 — the stale-`complete` repair: re-derive `seg_status`, unpublish what loses its last reviewed segment** — **APPLIED financial (2026-11-26) · DRAFT Moosii.**
+- **130 — the stale-`complete` repair: re-derive `seg_status`, unpublish what loses its last reviewed segment** — **APPLIED financial (2026-11-26) · APPLIED Moosii (2026-11-26).**
   BOTH PROJECTS, **REVIEW REQUIRED**. Migration 056 added `sub_segments.review_state DEFAULT 'draft'`
   and ran **no re-derive loop**, so every segment already stored `complete` kept that value with
   all-draft cards — 25 Moosii segments since 2026-08-09; financial clean, its content all postdates
@@ -1241,7 +1241,44 @@ Main track:
   rebuild. On Moosii the `seg_status` write needs the table owner (057 revokes the column), i.e. an
   apply via psql as `postgres`.
 
-- **131 — `seg_status` may only ever hold the DERIVED value** — **APPLIED financial (2026-11-26) · DRAFT Moosii.**
+  Moosii 2026-11-26: identity confirmed read-only first (sysid 7481590244898220655, domain moosii,
+  **PG 15.8**); the file applied was byte-identical to the one that ran on financial (`git diff`
+  clean); 129's body live, all three new names free; pre-apply **31 `complete` / 139 `pending` / 11
+  published**. Apply OK and EXACTLY as measured — `130 PRE-CHECK: 170 segment(s), 25 will change
+  (25 complete->pending, 0 pending->complete)`, the 7 affected published lessons each NAMED with
+  its group and reachability, then `130 SNAPSHOT: 170 segment(s) recorded` →
+  `130 RE-DERIVE: 170 recomputed, 25 changed` (every id logged) → `130 UNPUBLISH: 4 lesson(s)` →
+  `130 VERIFY ok`.
+  **The 25:** 13 lesson-attached + **12 orphans**, all `complete` → `pending`, 0 the other way.
+  **The 4 unpublished** (reachable `mem`, each with its own anonymous audit row — `unpublish`,
+  `actor_id` NULL, `actor_role='migration'`, and `published_by` cleared): *Babyproofing Your Home
+  for a Crawler* (7bdd7b8b), *Bringing your baby home from the hospital* (bcbd4eea), *Handling Your
+  Newborn Safely* (9f707e77), *Newborn Feeding Basics* (ab0a4e77).
+  **The 3 left alone** (`legacy`, tracks archived, so unreachable): *Balancing Work and Family
+  Time*, *Managing Stress and Finding Support as a Single Mom*, *Understanding Your Premature
+  Baby's Cues* — all three now report `published_unreviewed` with 9 / 7 / 8 cards awaiting
+  editorial, which is the first time that view has told the truth about them.
+  Post-apply read-only: **6 `complete` / 164 `pending` / 7 published**; snapshot covers all 170
+  segments and records exactly 25 changed + 4 lessons; **0** segments disagree with
+  `seg_status_derived`; 4 `actor_role='migration'` audit rows; `with_quiz` true on 4 lessons, down
+  from 11 — re-derived by 063's trigger with no intervention; `lessons_review_status` now 149
+  `draft` / 4 `published_reviewed` / 3 `published_unreviewed`.
+  ⚠ **D8, as flagged:** 9 `pending` quiz questions still sit on 8 of the 25 re-derived segments.
+  Untouched by design — 126's blocker catches them on any re-publish (`publish_quiz_pending`) and
+  invariant 10 keeps the app from showing them.
+  Note: `844f2a80` (*Understanding SIDS and Safe Sleep Practices*) is the **negative-control
+  lesson** with the planted error. It was in the 25 and is unpublished; it was only RE-DERIVED —
+  nothing regenerated it.
+  ⚠ **D3's `scope:all` MLP rebuild is still OUTSTANDING on Moosii** (2026-11-26). This seat cannot
+  enqueue it: `INTERNAL_API_KEY` reaches only a LOCAL dev server, there is no local key for the
+  Moosii service's `/jobs`, `POST /mlp/rebuild-all` needs an admin JWT, and a local server cannot
+  stand in because `.env` carries `DOMAIN=financial` against Moosii's `SUPABASE_URL` — the boot
+  check (invariant 4) correctly refuses that combination. Same situation as 128's Moosii rebuild,
+  which Mark fired from the CMS MLP management screen. **Until it runs, 33 `user_mlp` rows across
+  18 users still point at the 4 unpublished lessons.** `mlp_item_pool` is a VIEW that EXPOSES
+  `is_published` rather than filtering on it (the selection code filters), so the pool already
+  reports those 4 as unpublished and one rebuild is enough to clear the plans.
+- **131 — `seg_status` may only ever hold the DERIVED value** — **APPLIED financial (2026-11-26) · APPLIED Moosii (2026-11-26).**
   BOTH PROJECTS, schema only, no rows, **REVIEW REQUIRED** (it refuses a write that is legal today).
   Extracts **`seg_status_derived(uuid)`** so the writer and the guard share ONE definition, rebases
   `recompute_seg_status` on it (behaviour identical; md5-guarded on the 129 body
@@ -1281,6 +1318,14 @@ Main track:
   `131 VERIFY ok`. Post-apply read-only: all three functions SECURITY DEFINER with
   anon/authenticated `f` and service_role `t`; the trigger present and scoped to
   `UPDATE OF seg_status`; 0 segments disagree with `seg_status_derived`.
+  Moosii 2026-11-26: apply OK — `131 PRE-CHECK ok on domain moosii — 0 disagreeing segments, 170
+  segment(s) total` → `131 VERIFY: recompute_seg_status passed the guard on all 170 segment(s)` →
+  `131 VERIFY: a hand-written seg_status UPDATE on 001c90d5… was refused, row unchanged` →
+  `131 VERIFY ok`. Post-apply read-only: the three md5s are **identical to financial's**, all three
+  functions SECURITY DEFINER with anon/authenticated `f` and service_role `t`, the trigger present
+  and scoped to `UPDATE OF seg_status`, and the `segments` trigger order is
+  `content_edit_policy_guard_trg` → `segments_status_derived_guard_trg` →
+  `segments_sync_with_quiz_trg` → `set_updated_at_trigger`.
   **Local harness `docs/drafts/130-stale-complete/`** (PG 17, port 55436) covers BOTH files in 12
   steps: 131-before-130 refused, 130 applied then re-applied as a no-op, 131 applied then refused
   by its md5 guard, **16 behaviour tests**, and an undo rehearsal that asserts the stale rows come
