@@ -1802,8 +1802,11 @@ work. (Approved = segment `seg_status='complete'`; quiz = all
 | `approved_images` | a card in the segment holds an **approved** image. Content (re)generation deletes the cards and purges their images first, so the approved picture would be destroyed. Applies in **both** modes, because the purge does not care which mode planned the unit |
 | `approved_content` | `replace` only: the segment is signed off |
 | `resume` | a dead run in this lineage already regenerated this unit |
+| `activity` | **quiz only (slice A2):** the lesson is `kind = 'activity'`. An activity never gets a quiz — there is nothing to test. Its CONTENT is still generated |
+| `not_editorially_approved` | **image batch only (slice A2), and only when `only_editorially_approved: true`:** the lesson still has cards awaiting editorial |
 
-Precedence is fixed: `published` → `archived` → `approved_images` → `approved_content` → `resume`.
+Precedence is fixed: `published` → `archived` → (`activity` / `not_editorially_approved`) →
+`approved_images` → `approved_content` → `resume`.
 Track eligibility is `trackExcludedFromBatch` in that same module; `lessonGateFor` folds the track
 into the lesson.
 `approved_images` deliberately outranks `approved_content` so the report names the loss that cannot
@@ -1829,9 +1832,35 @@ jobs.result = {
     approved_content: number, resume: number, no_content: number
   },
   current_unit: string | null,   // e.g. "content:<seg_id>" | "quiz:<seg_id>"
-  errors: [ { unit: string, message: string } ]
+  errors: [ { unit: string, message: string } ],
+
+  // SLICE A2 — ADDITIVE. Every field above keeps its meaning and its value.
+  per_lesson: [ {
+    lesson_id, lesson_name, kind: 'lesson'|'activity', is_published, archived,
+    planned: number,                       // units this lesson contributed to the plan
+    planned_by_kind: { content, quiz, image },
+    done: number, failed: number,          // a unit that never ran is NEITHER (killed batch)
+    skipped: { <reason>: count },          // only the reasons that fired; {} when none
+    skipped_total: number,
+    errors: [ { unit, message } ],
+    tokens: number | null,                 // filled after the run; null on the image batch
+    image_calls: number | null,            // image batch only; null here
+    findings_count: null                   // slice B (automatic review) fills this
+  } ],
+  usage: {                                 // null until the run finishes
+    ai_calls, tokens_in, tokens_out, tokens_total,
+    unattributed_calls                     // logged calls with no entity to map to a lesson
+  } | null
 }
 ```
+`per_lesson` holds ONE ROW PER LESSON the plan touched or refused — a lesson the plan never
+looked at is absent, not a zero row. It is written live (planned / done / failed / skipped /
+errors update as units complete) and `tokens` is filled in one pass at the end from
+`ai_generation_log` where `correlation_id = job.id`; a lesson row sorts published-first, then by
+name, and units with no lesson (orphan segments) land in a single trailing row with
+`lesson_id: null`. CSV falls straight out of it. `usage` is the run total from the same log —
+including calls that could not be attributed to a lesson, so the total always reconciles even
+when a row cannot.
 `skipped_approved` keeps its old meaning and is now the SUM of `approved_content` and
 `approved_images`, so a CMS reading only that field still sees every approval the batch respected.
 `skipped_by_reason` is additive (§API conventions: app-facing shapes only grow).
@@ -1854,6 +1883,12 @@ mixed-vintage output). Excludes images (own flow) and lesson-stub creation
 
 ## 2g. Generate track images (batch orchestrator) — DELIVERED
 
+```
+input: {
+  track_id: string,                      // required
+  only_editorially_approved?: boolean    // default FALSE (slice A2)
+}
+```
 `POST /jobs { type:'generate_track_images', input:{ track_id } } → 202 { job_id }`.
 Sibling of §2f — fans out the EXISTING single-unit image job across a track's
 sub_segments. **FILL-MISSING ONLY, no replace** (image regeneration stays per-image via
@@ -1867,6 +1902,16 @@ present, approval NOT required — same predicate as §2f, images generate again
 content). **Plan = slots with no image AND content present.** Slots with no image and NO
 content are NOT planned and counted `skipped_no_content` — the first-class "run/fix
 content generation first" signal (run §2f, then re-fire this).
+
+**`only_editorially_approved` (slice A2, default `false`).** Images do **NOT** require editorial
+approval (Mark, 2026-11-25): illustrating pending content is the normal path, and the content a
+batch has just written is pending by definition. Set the flag and every lesson with **any card
+still awaiting editorial** is excluded whole, reported as `not_editorially_approved`. "Awaiting
+editorial" is exactly what the CMS shows — `lessons_review_status.cards_awaiting_editorial > 0`
+(migration 065) — and a lesson with **no cards at all** is NOT editorially approved: there is
+nothing to have approved, and treating emptiness as a sign-off is how a strict sweep would
+quietly illustrate unreviewed work. The flag ranks ABOVE `has_image`, so an excluded lesson says
+why instead of looking already-illustrated. A non-boolean value fails the job.
 
 **Lesson exclusions (slice A1).** A **published** or **archived** lesson is excluded entirely, with
 the same `published` / `archived` reasons and the same shared module as §2f. This batch destroys
@@ -1891,9 +1936,25 @@ jobs.result = {
     approved_content: number, resume: number, no_content: number
   },
   current_unit: string | null,   // "image:<sub_segment_id>"
-  errors: [ { unit, message } ]
+  errors: [ { unit, message } ],
+
+  // SLICE A2 — ADDITIVE, the same per_lesson shape as §2f.
+  per_lesson: [ { …, image_calls: number | null, tokens: null, findings_count: null } ],
+  usage: { ai_calls, tokens_in, tokens_out, tokens_total, unattributed_calls } | null,
+  images_created: number | null   // content_images rows this run wrote
 }
 ```
+**Per lesson this batch reports CALLS, not tokens.** Each slot makes exactly two AI calls —
+`image_prompt_generate` then `image_generate` — and only the second records an entity
+(`related_entity_type='content_image'`), the first being an intermediate call that logs none. So
+`image_calls` is `2 x (the images this lesson gained in this run)`, a pairing that follows from
+the code path, and the prompt-writer half shows up in `usage.unattributed_calls`. `usage.tokens_*`
+counts BOTH halves, which is why the run total is the honest number and per-lesson `tokens` is
+`null` here.
+⚠ Contrary to `FINDINGS-track-buildout.md` §6, image generation **does** report tokens: Gemini
+uses `response.usageMetadata` (391 of 391 rows, ~1 550 tokens each) rather than OpenAI's
+`response.usage`. Both shapes are read (`src/lib/aiUsage.ts`). What is still missing is a PRICE,
+which is why no money appears anywhere in this slice.
 `skipped_no_content` is unchanged and equals `skipped_by_reason.no_content`. The image batch never
 sets `approved_images`, `approved_content` or `resume` — the keys are present at 0 so one CMS
 renderer serves both batches.
@@ -1903,6 +1964,76 @@ batch is finished by re-firing; the re-plan skips created images. Unlike §2f th
 replace hole. NOT chained from the content batch (deliberate — content output is pending
 review; images fire on a human decision, not automatically). Excludes image
 replace/regeneration (per-image flow).
+
+---
+
+## 2h. Plan preview (dry run, both batches) — DELIVERED (slice A2)
+
+`GET /tracks/:id/plan-preview` → `200`. Admin JWT. **Generates nothing, writes nothing, creates
+no job row.** It calls the SAME planners the two jobs call (`planTrackContent` /
+`planTrackImages`, both pure reads), so the preview cannot disagree with the run — a second
+implementation of "what would happen" would drift within a slice.
+
+```
+query: mode=fill_missing|replace        (default fill_missing)   → 400 bad_mode
+       quizzes=true|false|1|0           (default false)          → 400 bad_request
+       only_editorially_approved=…      (default false)          → 400 bad_request
+       window_days=1..3650              (default 90)             → 400 bad_request
+```
+
+```
+200 {
+  track: { id, track_name, test_group, archived_at, mode_archived,
+           excluded_from_batches },          // legacy or a HUMAN archival; mode-hidden is NOT
+  content: { mode, quizzes,
+             planned: { content, quiz, total },
+             skipped_by_reason: {…}, skipped_total, skipped_approved },
+  images:  { only_editorially_approved,
+             planned: { image, total },
+             skipped_by_reason: {…}, skipped_total,
+             editorial: { lessons_eligible, lessons_without_editorial_approval } },
+  per_lesson: [ … ],                         // the §2f shape, BOTH batches merged
+  estimates: { content, images, combined, basis },
+  generated_at
+}
+```
+
+**`images.editorial` is the CMS's confirm-dialog warning, N of M:** how many of the lessons this
+batch would otherwise consider (not published, not archived) still have cards awaiting editorial.
+It is reported whether or not the flag is set, so the dialog can offer the stricter sweep.
+
+**`per_lesson` merges both batches** against one lesson list, with `planned_by_kind` splitting
+content / quiz / image. A lesson excluded from both appears ONCE, with the refusal counted per
+refused unit — an excluded lesson genuinely costs the content batch and the image batch one skip
+each.
+
+**Estimates are measured, never assumed, and carry no money.**
+- `ai_calls` is exact: one call per content unit, one per quiz unit, **two** per image slot
+  (prompt writer + image), a property of the code path.
+- tokens are the planned units times per-operation averages from `ai_generation_log` over
+  `window_days`. An operation with fewer than **three** calls in the window falls back to its
+  all-time average and says so (`basis.operations[op].window = 'window' | 'all_time'`); a missing
+  average contributes 0 rather than `NaN`, and `basis.operations[op].calls` shows how thin it is.
+- `image_slots_content_will_create: { expected, low, high }` is the slots the CONTENT phase will
+  CREATE, which do not exist yet and are **NOT** in `ai_calls`. The card count per segment is
+  chosen by the model (§2b), so it is a measured band from the live population
+  (`basis.cards_per_segment`, 7.49 avg over 78 segments on Moosii today, range 4–10), never a
+  promise.
+- **No dollar figure anywhere.** There is no rate card in this repo and a hard-coded price goes
+  stale silently; calls and tokens are facts this database has.
+
+Measured examples (Moosii, read-only, 2026-11-26, `mode=fill_missing&quizzes=true`):
+
+| track | content | quiz | images | editorial (N of M) | estimate |
+|---|---:|---:|---:|---|---|
+| **Military** (`live`, mode-hidden) | 0 | 0 | 8 | 1 of 1 awaiting | 16 calls, 27 840 tokens |
+| **Adoption** (`live`, mode-hidden) | 7 | 7 | 0 | 7 of 7 awaiting | 14 calls, 19 481 tokens, plus **52 image slots (28–70)** the content phase will create |
+
+Military's single lesson already has content (so `fill_missing` plans none) but no images;
+Adoption's seven have neither, so it plans content and quiz and there are no image slots to fill
+YET. With `only_editorially_approved=true`, Military plans **0** and reports 8 slots skipped
+`not_editorially_approved`; Adoption is unchanged at 0, having no slots either way. Both tracks
+are eligible only because a mode-hidden track stays buildable (slice A1).
 
 ---
 
@@ -3293,6 +3424,7 @@ Two CHECKs keep that honest: `mode_archived ⇒ archived_at IS NOT NULL`, and
 | `GET /admin/catalog-mode` | any **admin** | the current mode, who set it, per-group counts, and the latest `rebuild_mlp` job |
 | `POST /admin/catalog-mode` `{ mode }` | **super_admin** | switch, then rebuild every plan |
 | `PATCH /tracks/:id/test-group` `{ test_group }` | **super_admin** | retag one track; the archival follows from the group |
+| `GET /tracks/:id/plan-preview` | any **admin** | §2h — dry run of both batches for that track. Read-only; nothing is generated |
 
 Reading the mode is not privileged — the CMS shows it wherever it lists tracks. Changing it is
 super_admin in TS **and** again in the database against `p_actor`; the actor is always the verified
