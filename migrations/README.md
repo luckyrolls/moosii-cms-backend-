@@ -22,7 +22,7 @@ that.
 Each hand-applied file's header carries a line like
 `APPLY VIA THE SUPABASE SQL EDITOR — on the 008..0NN reconciliation list`, and the
 high-water number is bumped as migrations are added.
-(Current APPLIED high-water, per project from 069: **financial 129 · Moosii 129** (main) + **0008**
+(Current APPLIED high-water, per project from 069: **financial 131 · Moosii 129** (main) + **0008**
 (prompt track). Both projects share 008..074, 076..081, 086, 092..095, 098..099, 101..105, 107..113, 115, 117, 118, 119, 120, 125, 126, 127 and 128; **075 is financial-only** (decision D6);
 **082–083 are Moosii-only** (child-health seeds + classify prompt); **084–085, 087–091, 096–097, 100, 106, 114 and 116 are financial-only**
 (all APPLIED).
@@ -1182,6 +1182,112 @@ Main track:
   complete and untouched by this gate. The 7 flip the next time anything recomputes them.
   FOLLOW-UP, not in this file: the stale-`complete` repair + structural guard
   (`docs/FINDINGS-complete-with-draft-cards.md`, decisions still open) is what re-derives those 25.
+
+- **130 — the stale-`complete` repair: re-derive `seg_status`, unpublish what loses its last reviewed segment** — **APPLIED financial (2026-11-26) · DRAFT Moosii.**
+  BOTH PROJECTS, **REVIEW REQUIRED**. Migration 056 added `sub_segments.review_state DEFAULT 'draft'`
+  and ran **no re-derive loop**, so every segment already stored `complete` kept that value with
+  all-draft cards — 25 Moosii segments since 2026-08-09; financial clean, its content all postdates
+  056. Cause proven by an exact timestamp boundary: `docs/FINDINGS-complete-with-draft-cards.md`.
+  Every reader gates on `seg_status` alone (the app's `useLesson.ts`, the three RLS SELECT policies,
+  `lessons_review_status`, `lesson_publish_blocker`), so a stale row served unreviewed content AND
+  reported itself `published_reviewed`.
+  **Shape:** snapshot every segment first into `repair_130_snapshot` (the only thing the undo needs;
+  RLS on, no policy, service_role only) → re-derive through `recompute_seg_status`, the single
+  sanctioned writer, so **no `UPDATE … SET seg_status` appears in the file at all** → unpublish the
+  lessons that lose their last `complete` segment **and are reachable** (own `archived_at` NULL and
+  their track's too).
+  **DECISIONS (Mark, 2026-11-25) D1–D9**, recommendations accepted: re-derive only (D1); unpublish
+  the 4 reachable `mem` lessons here and leave the 3 `legacy` ones (D2 — unreachable, so
+  unpublishing them is an editorial call); one `scope:all` rebuild after, because the unpublishes
+  change `mlp_item_pool` while a re-derive alone would not (D3); re-derive the 12 orphans too,
+  deletion backlogged (D4); the `sub_segments.review_state` column REVOKE ships with the
+  reset-audit slice (D5); two migrations, repair then guard, so each has a clean undo (D6);
+  `lesson_publish_blocker` and the RLS policies keying on CARD state is its own slice (D7); the 9
+  unapproved quiz questions on 8 of these segments are **flagged only** — 126's blocker catches
+  them on any re-publish and invariant 10 keeps the app from showing them (D8); 065's header gets a
+  note and the view is unchanged (D9).
+  ⚠ **It WIDENS `content_approvals_actor_required`** to allow a NULL `actor_id` when
+  `actor_role = 'migration'`. An `unpublish` row previously had to name an actor, and
+  `set_lesson_published` additionally demands `can_publish` — so a migration could only have
+  audited itself by impersonating a super_admin, i.e. by putting a false name in an audit table
+  (invariant 7 exists to stop exactly that). The alternatives were a false actor or no audit row at
+  all. The undo restores the original CHECK, which requires deleting the actor-less rows first.
+  **Knock-ons, all intended and VERIFIED rather than assumed:** `lessons.with_quiz` re-derives
+  itself through 063's trigger on `segments` (7 Moosii lessons carry `true` and own a re-derived
+  segment); `lessons_review_status` starts telling the truth; and the repair writes **no**
+  `content_approvals` row for a re-derive, because resets are unaudited today — the snapshot table
+  is the traceability.
+  **RE-RUNNABLE**, and honest about it: the snapshot is taken once and NOT retaken, so a second
+  apply still reports the change count relative to the ORIGINAL state while unpublishing 0.
+  **Measured read-only 2026-11-26** — Moosii: 170 segments → **25 change, every one
+  `complete` → `pending`, 0 the other way**, 12 orphans, 17 with a stale `approved_by`; 13 distinct
+  lessons each with exactly ONE segment (so `complete_after = 0` for all); 7 published, of which 4
+  reachable `mem` (unpublished) and 3 `legacy` (left alone). financial: 13 segments → **0**.
+  Financial 2026-11-26: identity confirmed read-only first (sysid 7678069749886157684, domain
+  financial, PG 17.6); 129's body live, and `repair_130_snapshot` / `seg_status_derived` /
+  `segments_status_derived_guard_trg` all free; pre-apply 10 `complete` / 3 `pending` / 10
+  published. Apply OK — `130 PRE-CHECK: 13 segment(s), 0 will change` →
+  `130 SNAPSHOT: 13 segment(s) recorded` → `130 RE-DERIVE: 13 recomputed, 0 changed` →
+  `130 UNPUBLISH: 0 lesson(s)` → `130 VERIFY ok`. Post-apply read-only: **0 segments changed, 0
+  lessons unpublished, 0 `actor_role='migration'` audit rows**; 10 `complete` / 3 `pending` / 10
+  published unchanged; `lessons_review_status` 10 `published_reviewed` / 3 `draft` unchanged; the
+  snapshot holds all 13 segments; the widened CHECK in place; `repair_130_snapshot` RLS on with 0
+  policies. **A pure no-op, as measured.**
+  **UNDO** (verbatim in the file header, rehearsed in `docs/drafts/130-stale-complete/undo.sql`):
+  drop 131's guard FIRST — it refuses the undo's own `seg_status` write — restore `seg_status` +
+  `approved_by` from the snapshot, **then** `is_published` (126's content precondition refuses to
+  re-publish a lesson with no `complete` segment, so the order is forced), restore the CHECK after
+  deleting the actor-less rows, drop the snapshot, re-create the guard, then one `scope:all`
+  rebuild. On Moosii the `seg_status` write needs the table owner (057 revokes the column), i.e. an
+  apply via psql as `postgres`.
+
+- **131 — `seg_status` may only ever hold the DERIVED value** — **APPLIED financial (2026-11-26) · DRAFT Moosii.**
+  BOTH PROJECTS, schema only, no rows, **REVIEW REQUIRED** (it refuses a write that is legal today).
+  Extracts **`seg_status_derived(uuid)`** so the writer and the guard share ONE definition, rebases
+  `recompute_seg_status` on it (behaviour identical; md5-guarded on the 129 body
+  `017a190fd685972a20924e1a98e16170`), and adds `segments_status_derived_guard_trg` —
+  `BEFORE UPDATE OF seg_status ON segments` — refusing any value that is not
+  `seg_status_derived(id)`, **in either direction**, with `23514` and HINT `seg_status_not_derived`.
+  "Wrong in the safe direction" is still wrong: a silent demotion would hide from the audit that
+  the reset-audit slice is about to add.
+  **Why extract rather than duplicate:** a guard that re-implemented the rule would eventually
+  disagree with the writer it guards, and then the guard would be the bug.
+  `src/lib/approvalSafety.ts deriveSegStatus` stays the TypeScript mirror, and
+  `src/lib/__tests__/staleCompleteRepair.db.test.ts` asserts the two agree on every fixture segment.
+  **Measured first:** `recompute_seg_status` is the ONLY function in `public` on either project
+  whose body writes the column (1 row for a `SET seg_status` match on `prosrc`), and the only
+  TypeScript path is that RPC (`src/lib/cardReview.ts:15`) — so the guard refuses nothing any
+  caller does today. On Moosii 057 already revokes the column from every role but `postgres`;
+  **on financial 057's revoke is ABSENT** (table-wide UPDATE to anon/authenticated/service_role, 23
+  of 23 columns, restored by the schema dump that built it), so financial is the project this guard
+  actually protects.
+  ⚠ **INSERT is deliberately NOT guarded.** A segment is inserted before any card exists, so the
+  derived value is always `pending` then and an INSERT guard would fire on every ordinary create.
+  `create_lessons_with_segments` is the only function that inserts `segments` and never mentions
+  `seg_status` (measured), so the column takes its `'pending'` DEFAULT. The residual hole is a
+  hand-written `INSERT … (seg_status) VALUES ('complete')`, corrected by the first recompute.
+  **PRE-CHECK refuses to guard a lying table:** if any row still disagrees with the derivation it
+  raises and names 130, so the two cannot be applied out of order (D6). Proven in the harness.
+  Post-131 md5s: `recompute_seg_status` **`1d6496aa4a2ca26c719493bcf056eae2`**,
+  `seg_status_derived` `792e79f121ce93cfd9b53261429bf5ed`, `segments_status_derived_guard`
+  `c6d50349250d4461339fcb97d320df4c`.
+  **Trigger order on `segments`:** BEFORE triggers fire in NAME order, so
+  `segments_status_derived_guard_trg` sorts before `set_updated_at_trigger` ('seg' < 'set') —
+  harmless either way, since `set_updated_at` touches only `updated_at`. Renaming either reorders
+  them; don't.
+  Financial 2026-11-26: apply OK — `131 PRE-CHECK ok on domain financial — 0 disagreeing segments,
+  13 segment(s) total` → `131 VERIFY: recompute_seg_status passed the guard on all 13 segment(s)` →
+  `131 VERIFY: a hand-written seg_status UPDATE on 28036658… was refused, row unchanged` →
+  `131 VERIFY ok`. Post-apply read-only: all three functions SECURITY DEFINER with
+  anon/authenticated `f` and service_role `t`; the trigger present and scoped to
+  `UPDATE OF seg_status`; 0 segments disagree with `seg_status_derived`.
+  **Local harness `docs/drafts/130-stale-complete/`** (PG 17, port 55436) covers BOTH files in 12
+  steps: 131-before-130 refused, 130 applied then re-applied as a no-op, 131 applied then refused
+  by its md5 guard, **16 behaviour tests**, and an undo rehearsal that asserts the stale rows come
+  BACK — the proof the undo is exact rather than merely clean.
+  **UNDO:** drop the trigger, drop `segments_status_derived_guard()`, restore `recompute_seg_status`
+  to the 129 body quoted in §2 (must hash back to `017a190f…`) with its 094 grants, drop
+  `seg_status_derived(uuid)`. No rows written, nothing else to undo.
 
 Prompt track:
 - **0005** — seed the questionnaire-generation prompt row; cutover of `generate_questionnaire`
