@@ -121,3 +121,15 @@ docs); a CMS editor for the grounding block (the text is now DB block `grounding
 editable only by SQL); a size cap at ingestion (`POST/PATCH /source-documents`, against
 `app_settings.grounding_max_chars`); a voice-lint rule for citation leaks ("according to the
 document…"); chaining the doc_grounded review (after review dedup).
+
+### 128's harness `run.sh` can no longer apply 128
+**Why:** `docs/drafts/128-catalog-modes/run.sh` restores a schema-only dump of live Moosii and then
+applies `migrations/128_catalog_modes.sql`. Now that 128 IS live, the dump already carries
+`tracks.test_group` and `tracks_mode_insert_default_trg`, so every fixture row is born with a
+`test_group`, the backfill's `WHERE test_group IS NULL` matches nothing, and the run dies at
+`128 VERIFY: 4 track(s) outside the active mode (mem) are still active`. The migration is fine —
+the harness's assumption that the dump predates it is not. Found while building the 129 harness
+(`docs/drafts/129-approval-safety/README.md`, trap 1), which sidesteps it by asserting 127/128
+arrived with the dump instead of applying them.
+**What:** one line — drop the 128 apply step and assert the dump already contains it, as the 129
+harness does. Any later harness in this family inherits the same rule.

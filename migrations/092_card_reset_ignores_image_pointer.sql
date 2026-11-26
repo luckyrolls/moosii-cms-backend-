@@ -2,6 +2,18 @@
 -- MIGRATION 092: approving an image no longer un-approves its card — BOTH PROJECTS
 --   — APPLIED financial 2026-09-21 · APPLIED Moosii 2026-09-21
 -- ============================================================================
+-- ⚠ SUPERSEDED IN PART BY MIGRATION 129 (slice A1, 2026-11-25). This file's trigger change is
+-- unchanged and still correct: `image` stays OUT of sub_segments_reset_review_trg's column list.
+-- What is NO LONGER TRUE is the sentence in "WHY THIS LOSES NO RESET" below —
+--   "A NEW image (generate / upload) … resets the card explicitly in code … The card is
+--    re-reviewed when the candidate appears, not when the reviewer approves it."
+-- Those two code sites no longer reset the card to 'draft'. A new candidate now costs the card
+-- AT MOST its clinical stage (clinically_approved -> editorial_reviewed), and NOTHING at all when
+-- the card already has an approved image to fall back on. What holds the lesson back meanwhile is
+-- 129's gate inside recompute_seg_status — a card with no approved image but a candidate keeps the
+-- segment out of 'complete' — not a destroyed review state. 092's own conclusion survives: writing
+-- an approved image must not undo the approval that wrote it.
+-- ============================================================================
 -- BUG (FINDINGS-cover-image.md §0, proven on live Moosii in rolled-back probes 2026-09-21):
 -- POST /lessons/:id/approve reports the segment "complete" but leaves every card with a new image
 -- in 'draft'. approve_segment_bundle promotes the cards FIRST, then loops approve_content_image,

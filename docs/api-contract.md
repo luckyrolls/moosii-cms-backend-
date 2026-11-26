@@ -146,7 +146,8 @@ trigger effects are included. `approval_reset` stays a **boolean** — widening 
 would have made `if (approval_reset)` true on every call. Routes returning it: `PATCH
 /sub-segments/:id`, `DELETE /sub-segments/:id` (scope `segment` — a delete re-gates every
 remaining card, invariant 2), `POST /content-images/:id/approve` (scope `card`).
-**Paths that do NOT return it, and why:** `POST /sub-segments/:id/upload-image` and
+**Paths that do NOT return `approval_reset_detail`, and why:** `POST /sub-segments/:id/upload-image` (it
+returns the `approval_reset` boolean only — see §1g for what slice A1 changed about that value) and
 `POST /content-images/:id/reject` change no review state (an upload lands a *candidate*; a reject
 never touches `sub_segments.image`); the quiz routes move `answer_status` deliberately rather than
 resetting anything; and **`generate_segment_content` / `regen_segment_content` are JOBS, not
@@ -205,9 +206,14 @@ directly so the frontend can update optimistically. Effect on the card's `review
   review; the text needs no re-edit) and `seg_status` is recomputed — so the segment leaves
   `complete` until a clinician approves again (migration 093, a trigger on `sub_segments.image`; it
   also covers the generate job's `auto_approve`).
-- **Same picture re-written, or a card not yet clinically approved → unchanged.** The card was
-  already reset to draft when the candidate was generated/uploaded (migration 092 — before it,
-  066's trigger reset the card on this write).
+- **Same picture re-written, or a card not yet clinically approved → unchanged.**
+**⚠ CORRECTED BY SLICE A1 (migration 129).** This block used to add "the card was already reset to
+draft when the candidate was generated/uploaded (migration 092)". It no longer is. A new candidate
+now costs the card **at most its clinical stage, never its text approval**, and costs it **nothing
+at all** when the card already has an approved image to fall back on — see §1g and §2c. What holds
+the lesson back meanwhile is the GATE, not a reset: `recompute_seg_status` refuses `'complete'`
+while any card has no approved image but does have a candidate (129). Approving the picture then
+behaves exactly as above — 093 is unchanged.
 The response shape is unchanged; the CMS must re-read the card/lesson after approving.
 
 ### 1d. Reject a candidate
@@ -345,13 +351,31 @@ rejected (`image_out_of_spec`) unless both hold: **aspect `width/height` ∈ [1.
 failed (both, if both), so the CMS can show something actionable. A conforming file is stored via
 the shared `uploadImage` helper (WebP, ≤1200 long edge, `illustrations/sub-segment-{id}/{imageId}.webp`).
 
-**Stamping + re-gate.** `uploaded_by` is taken from the **verified JWT (`req.user.id`), never the
-body** (same rule as `content_approvals`). The three provenance fields
+**Stamping.** `uploaded_by` is taken from the **verified JWT (`req.user.id`), never the body**
+(same rule as `content_approvals`). The three provenance fields
 (`final_prompt`/`image_prompt`/`image_generator_name`) plus `scene` are NULL — allowed by the
-migration's CHECK (`source<>'generated'`). If the segment was `complete`, it is re-gated to
-`pending` + `approved_by=null` (shared helper with `generate_sub_segment_image`; `approval_reset`
-reports whether it fired). On a post-upload failure the stored object is removed so no orphan file
-or `image_assets` row is left.
+migration's CHECK (`source<>'generated'`). On a post-upload failure the stored object is removed so
+no orphan file or `image_assets` row is left.
+
+**What the upload costs the card's review — CHANGED BY SLICE A1 (migration 129).** It used to send
+the card to `'draft'`, spending its editorial review as well as its clinical one. Now
+(`applyCandidateArrival`, `src/lib/cardReview.ts`):
+- the card **already has an approved image** → **nothing moves.** The live picture is still the
+  approved one, so a published lesson stays `published_reviewed` and openable.
+- **no approved image**, card `clinically_approved` → drops to **`editorial_reviewed`**. The TEXT
+  approval survives; only the clinical/visual sign-off is spent.
+- a `draft` or `editorial_reviewed` card → **nothing moves** (nothing left to lose).
+
+`approval_reset` keeps its exact meaning — *"did this cost an approval"* — so it is now **`false`
+for a replacement candidate** where it used to be `true`. It is still a boolean and still the only
+approval field this route returns (no `approval_reset_detail`).
+
+**And the lesson is still held back until the picture is dealt with**, by the gate rather than by a
+reset: `recompute_seg_status` (129) refuses `'complete'` while any card has **no approved image but
+does have a candidate**. Approving the candidate, or rejecting it
+(`POST /content-images/:id/reject`), re-opens the gate; a rejected or superseded row never blocks.
+The re-derivation is fired by a recompute-only trigger on `content_images`, so it happens however
+the image arrived — job, route or CMS-direct.
 
 ---
 
@@ -456,6 +480,10 @@ commit atomically, or none do. Also creates one `segments` row per lesson
 ---
 
 ### 2b. Generate segment content — DELIVERED
+
+**⚠ Also refused with `409 segment_has_approved_images`** when any card in the segment holds an
+approved image — this job replaces the whole segment and purges its images first. See §2c for the
+shape and the scope table.
 ```
 POST /jobs
 Authorization: Bearer <jwt>
@@ -616,6 +644,32 @@ With `generate_quiz: true`, result also includes:
 ---
 
 ### 2c. Regenerate segment content — DELIVERED
+
+**⚠ `409 segment_has_approved_images` (slice A1, new).** `POST /jobs` REFUSES a content
+(re)generation that would destroy an approved image, before the job row exists — so the CMS gets an
+error it can show instead of a 202 and a job that fails later:
+
+```
+→ 409 { error: { code: "segment_has_approved_images", message: "… Cards: <id>, <id>." } }
+```
+
+Why: both `regen_segment_content` (whole_segment) and `generate_segment_content` DELETE the cards
+in scope and **purge their images first** (`purgeImagesForSubSegments` — storage object, then
+`image_assets`, then `content_images`, in that order, invariant 5), so an approved picture is gone
+and unrecoverable. The check is **scope-aware**, because the destruction is:
+
+| job / scope | refused when |
+|---|---|
+| `regen_segment_content` `whole_segment` | **any** card in the segment holds an approved image |
+| `regen_segment_content` `single_card` | **that** card holds one (a sibling's is irrelevant) |
+| `regen_segment_content` with no `scope` | treated as `whole_segment` — an absent scope is never the permissive case |
+| `generate_segment_content` (§2b) | any card in the segment holds one; `scope`/`card_id` are ignored, it always replaces the whole segment |
+
+The message names the blocking card ids. To proceed, reject or unapprove those images first
+(`POST /content-images/:id/reject`). The predicate and the precedence are unit-tested in
+`src/routes/__tests__/jobPreconditions.test.ts`; the rule itself is
+`regenApprovedImageBlock` in `src/lib/approvalSafety.ts`.
+
 ```
 POST /jobs
 Authorization: Bearer <jwt>
@@ -1721,17 +1775,39 @@ input: {
   track_id: string,           // required
   tone_id: string,            // required — prompts.id of the segment tone (per-unit content)
   mode?: 'fill_missing' | 'replace',  // default 'fill_missing'
-  quizzes?: boolean,          // default false — also generate/replace quizzes
-  include_approved?: boolean  // default false — replace-only, destructive override
+  quizzes?: boolean           // default false — also generate/replace quizzes
 }
 ```
+
+**⚠ `include_approved` WAS REMOVED by slice A1 (migration 129).** It was the one way a batch could
+overwrite a human sign-off — and with it an approved image, which cannot be recovered. Sending it
+now gets **`400 include_approved_removed`** from `POST /jobs`, before the job row exists; the
+handler refuses it again if a job row reaches it another way. To replace approved content,
+unapprove the segments you mean first.
 
 **Modes.** `fill_missing` (default, IDEMPOTENT — and the resume mechanism): generate
 only for segments with NO content; quizzes only where absent (`quizzes=true`).
 Re-running is always safe and completes a killed batch. `replace`: regenerate
-PENDING/unapproved content (+ quizzes); APPROVED is skipped unless
-`include_approved=true`. Never destroys approved work. (Approved = segment
-`seg_status='complete'`; quiz = all `quiz_questions.answer_status='approved'`.)
+PENDING/unapproved content (+ quizzes); APPROVED is **always** skipped. Never destroys approved
+work. (Approved = segment `seg_status='complete'`; quiz = all
+`quiz_questions.answer_status='approved'`.)
+
+**What a batch refuses to touch, and why (slice A1).** The decisions are one unit-tested module
+(`src/lib/approvalSafety.ts`), shared by the content and image batches, so the two cannot drift:
+
+| reason | meaning |
+|---|---|
+| `published` | the lesson is `is_published` — parent-facing content is never rewritten by a batch |
+| `archived` | a **human** shelved it: the lesson's own `archived_at` is set, or its track is `test_group = 'legacy'`, or its track is archived with `mode_archived = false` (invariant 6: archival is DERIVED, so an excluded track excludes every lesson under it). A track hidden only by the **current catalog mode** (`mode_archived = true`, §13) is **NOT** excluded — it is another mode's live catalog, invisible to parents today and buildable today, which is the state of every `live` track while Moosii sits in `mem`. `legacy` is tested by name as well, so a legacy track someone unarchived by hand is still out |
+| `approved_images` | a card in the segment holds an **approved** image. Content (re)generation deletes the cards and purges their images first, so the approved picture would be destroyed. Applies in **both** modes, because the purge does not care which mode planned the unit |
+| `approved_content` | `replace` only: the segment is signed off |
+| `resume` | a dead run in this lineage already regenerated this unit |
+
+Precedence is fixed: `published` → `archived` → `approved_images` → `approved_content` → `resume`.
+Track eligibility is `trackExcludedFromBatch` in that same module; `lessonGateFor` folds the track
+into the lesson.
+`approved_images` deliberately outranks `approved_content` so the report names the loss that cannot
+be undone by re-approving.
 
 **Units.** A unit = a segment; content and quiz are INDEPENDENT units, each
 success/failure recorded separately. One unit failing NEVER fails the batch. Content
@@ -1747,11 +1823,18 @@ jobs.result = {
   total: number,             // planned units
   done: number,              // succeeded
   failed: number,            // failed (never fails the batch)
-  skipped_approved: number,  // approved units left alone (replace, !include_approved)
+  skipped_approved: number,  // approved units left alone = approved_content + approved_images
+  skipped_by_reason: {       // slice A1 — every skip, named; every key always present
+    published: number, archived: number, approved_images: number,
+    approved_content: number, resume: number, no_content: number
+  },
   current_unit: string | null,   // e.g. "content:<seg_id>" | "quiz:<seg_id>"
   errors: [ { unit: string, message: string } ]
 }
 ```
+`skipped_approved` keeps its old meaning and is now the SUM of `approved_content` and
+`approved_images`, so a CMS reading only that field still sees every approval the batch respected.
+`skipped_by_reason` is additive (§API conventions: app-facing shapes only grow).
 Written incrementally as units complete. `jobs.status` stays `succeeded`/`failed` (the
 CHECK constraint); `completed_with_errors` (⇔ `failed>0`) lives in `result.status`. A
 catastrophic failure (track/enumeration) → `jobs.status='failed'`.
@@ -1785,6 +1868,12 @@ content). **Plan = slots with no image AND content present.** Slots with no imag
 content are NOT planned and counted `skipped_no_content` — the first-class "run/fix
 content generation first" signal (run §2f, then re-fire this).
 
+**Lesson exclusions (slice A1).** A **published** or **archived** lesson is excluded entirely, with
+the same `published` / `archived` reasons and the same shared module as §2f. This batch destroys
+nothing (it is fill-only), but it must not add pictures to parent-facing or shelved content. The
+lesson gate outranks `has_image`, so an excluded lesson reports WHY rather than looking like a slot
+that was already illustrated.
+
 **Execution:** same as §2f — parent job, live progress in `jobs.result`, units via the
 `generate_sub_segment_image` core with `correlationId = parent job.id` (whole run = one
 `ai_generation_log` query; `content_images.job_id` = the batch too). Concurrency
@@ -1797,10 +1886,17 @@ jobs.result = {
   status: 'running' | 'succeeded' | 'completed_with_errors',
   total, done, failed,
   skipped_no_content,        // slots not planned because their segment has no content
+  skipped_by_reason: {       // slice A1 — same six keys as §2f; published/archived/no_content
+    published: number, archived: number, approved_images: number,
+    approved_content: number, resume: number, no_content: number
+  },
   current_unit: string | null,   // "image:<sub_segment_id>"
   errors: [ { unit, message } ]
 }
 ```
+`skipped_no_content` is unchanged and equals `skipped_by_reason.no_content`. The image batch never
+sets `approved_images`, `approved_content` or `resume` — the keys are present at 0 so one CMS
+renderer serves both batches.
 
 **Survival:** fill-missing is fully derivable (image-exists is the state) — a killed
 batch is finished by re-firing; the re-plan skips created images. Unlike §2f there is NO
